@@ -21,10 +21,10 @@ class MemberApi {
 
   Future<MemberProfile> myProfile() async {
     final json = await transport.request('GET', '/api/v1/me/profile');
-    return ApiEnvelope<MemberProfile>.fromJson(
-      json,
-      (value) => MemberProfile.fromJson(value as Map<String, dynamic>),
-    ).data;
+    final envelope = ApiEnvelope<MemberProfile>.fromJson(json, (value) {
+      return MemberProfile.fromJson(value as Map<String, dynamic>);
+    });
+    return envelope.data;
   }
 
   Future<MemberProfile> updateDisplayName(String value) async {
@@ -37,10 +37,10 @@ class MemberApi {
       '/api/v1/me/profile',
       body: {'display_name': normalized},
     );
-    return ApiEnvelope<MemberProfile>.fromJson(
-      json,
-      (data) => MemberProfile.fromJson(data as Map<String, dynamic>),
-    ).data;
+    final envelope = ApiEnvelope<MemberProfile>.fromJson(json, (data) {
+      return MemberProfile.fromJson(data as Map<String, dynamic>);
+    });
+    return envelope.data;
   }
 
   Future<List<Notice>> notices() async {

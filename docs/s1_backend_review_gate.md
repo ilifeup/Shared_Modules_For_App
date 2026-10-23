@@ -11,6 +11,6 @@ User approved the S1-A user journey, not the exact security or persistent schema
 4. Roles: propose `member` and `admin` through Spatie, with explicit Filament panel authorization policy; only admin may create/publish notices. Confirm.
 5. Disposable MySQL: CI service container, no production credentials or shared environment. Confirm.
 
-These are proposals, not approved values. No migrations or security-sensitive code should be merged before review. Use Laravel 12 / Filament 4 / Spatie 6 only as preliminary compatibility targets, subject to matching Tiandi's actual Laravel 13 / Filament 5 / Spatie 7 stack before final implementation. Avoid locking in divergent versions.
+These are proposals, not approved values. No migrations or security-sensitive code should be merged before review. The manifest targets Tiandi's Laravel 13 / PHP 8.4 / Filament 5 / Spatie 7 versions. Compatibility remains unverified until Composer installation and boot tests succeed.
 
 Acceptance after approval: real app bootstrap, database migration, Sanctum 401/403/logout tests, member profile isolation, notice publication filtering, Filament admin vs member tests, then Flutter Dio integration and Android testing.

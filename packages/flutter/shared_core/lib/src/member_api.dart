@@ -49,12 +49,14 @@ class MemberApi {
       if (value is! List) {
         throw const FormatException('Expected notice list');
       }
-      return value.map((item) {
-        if (item is! Map<String, dynamic>) {
-          throw const FormatException('Invalid notice list item');
-        }
-        return NoticeDto.fromJson(item);
-      }).toList(growable: false);
+      return value
+          .map((item) {
+            if (item is! Map<String, dynamic>) {
+              throw const FormatException('Invalid notice list item');
+            }
+            return NoticeDto.fromJson(item);
+          })
+          .toList(growable: false);
     }).data;
   }
 }

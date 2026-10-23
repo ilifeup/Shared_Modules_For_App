@@ -18,7 +18,10 @@ class FakeTransport implements ApiTransport {
       return {'data': <Map<String, dynamic>>[]};
     }
     return {
-      'data': {'id': 'synthetic-1', 'display_name': body?['display_name'] ?? 'Test'},
+      'data': {
+        'id': 'synthetic-1',
+        'display_name': body?['display_name'] ?? 'Test',
+      },
     };
   }
 }

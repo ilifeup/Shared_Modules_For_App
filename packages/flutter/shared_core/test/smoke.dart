@@ -10,7 +10,7 @@ void main() {
   check(DisplayName.normalize(' Test ') == 'Test', 'trim display name');
   check(DisplayName.isValid('Test'), 'valid display name');
   check(!DisplayName.isValid('   '), 'reject empty display name');
-  check(!DisplayName.isValid('x' * 81), 'reject long display name');
+  check(!DisplayName.isValid(List.filled(81, 'x').join()), 'reject long display name');
 
   final now = DateTime.utc(2026, 10, 23, 9);
   final published = Notice(

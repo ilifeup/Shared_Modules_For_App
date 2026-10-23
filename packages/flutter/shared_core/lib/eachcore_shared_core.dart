@@ -5,3 +5,4 @@ export 'src/notice.dart';
 export 'src/api_envelope.dart';
 export 'src/member_profile.dart';
 export 'src/notice_dto.dart';
+export 'src/member_api.dart';

@@ -25,6 +25,7 @@ jobs:
           set -euo pipefail
           for f in packages/laravel/shared_core/src/*.php packages/laravel/shared_core/tests/*.php; do php -l "$f"; done
           php packages/laravel/shared_core/tests/smoke.php
+          php packages/laravel/shared_core/tests/notice_read_smoke.php
       - name: Composer package validation
         working-directory: packages/laravel/shared_core
         run: composer validate --strict
@@ -45,3 +46,4 @@ jobs:
           dart analyze
           dart run test/smoke.dart
           dart run test/contracts_smoke.dart
+          dart run test/member_api_smoke.dart

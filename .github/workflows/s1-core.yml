@@ -47,3 +47,4 @@ jobs:
           dart run test/smoke.dart
           dart run test/contracts_smoke.dart
           dart run test/member_api_smoke.dart
+          dart run test/session_api_smoke.dart

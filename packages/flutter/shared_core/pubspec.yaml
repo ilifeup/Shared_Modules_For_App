@@ -1,0 +1,6 @@
+name: eachcore_shared_core
+description: Shared pure Dart contracts for independent EachCore apps
+version: 0.0.1
+publish_to: none
+environment:
+  sdk: '>=3.5.0 <4.0.0'

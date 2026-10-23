@@ -1,0 +1,14 @@
+{
+  "name": "eachcore/shared-core",
+  "description": "Portable domain services for three independent Laravel apps",
+  "type": "library",
+  "license": "proprietary",
+  "require": {
+    "php": "^8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "EachCore\\SharedCore\\": "src/"
+    }
+  }
+}

@@ -44,3 +44,4 @@ jobs:
           dart pub get
           dart analyze
           dart run test/smoke.dart
+          dart run test/contracts_smoke.dart

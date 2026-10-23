@@ -1,4 +1,3 @@
-/// Minimal S1 member projection. No role, VIP or verification fields.
 class MemberProfile {
   const MemberProfile({required this.id, required this.displayName});
 
@@ -14,7 +13,5 @@ class MemberProfile {
     return MemberProfile(id: id, displayName: name);
   }
 
-  Map<String, String> toDisplayNamePatch() => {
-    'display_name': displayName,
-  };
+  Map<String, String> toDisplayNamePatch() => {'display_name': displayName};
 }

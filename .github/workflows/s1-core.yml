@@ -38,9 +38,7 @@ jobs:
           sdk: stable
       - name: Dart format
         working-directory: packages/flutter/shared_core
-        run: |
-          dart format --output=show lib/src/member_api.dart
-          dart format --output=none --set-exit-if-changed lib test
+        run: dart format --output=none --set-exit-if-changed lib test
       - name: Dart analyze and smoke
         working-directory: packages/flutter/shared_core
         run: |

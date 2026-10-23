@@ -45,3 +45,4 @@ jobs:
           dart analyze
           dart run test/smoke.dart
           dart run test/contracts_smoke.dart
+          dart run test/member_api_smoke.dart

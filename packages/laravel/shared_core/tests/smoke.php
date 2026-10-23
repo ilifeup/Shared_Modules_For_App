@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/NoticeVisibility.php';
 require __DIR__ . '/../src/DisplayName.php';
+require __DIR__ . '/../src/ApiEnvelope.php';
 
 use EachCore\SharedCore\DisplayName;
+use EachCore\SharedCore\ApiEnvelope;
 use EachCore\SharedCore\NoticeVisibility;
 
 function check(bool $condition, string $description): void
@@ -25,5 +27,8 @@ check(DisplayName::normalize('  Test User  ') === 'Test User', 'trim display nam
 check(DisplayName::isValid('Test User'), 'valid display name');
 check(!DisplayName::isValid('   '), 'blank display name invalid');
 check(!DisplayName::isValid(str_repeat('x', 81)), 'overlong display name invalid');
+
+check(ApiEnvelope::success(['id' => 1]) === ['data' => ['id' => 1]], 'success envelope');
+check(ApiEnvelope::failure('UNAUTHORIZED', 'Denied', 'test-id')['error']['request_id'] === 'test-id', 'failure envelope');
 
 echo "S1 shared PHP domain smoke tests: PASS\n";

@@ -1,0 +1,24 @@
+name: Validate S0 Documentation
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify required files and module IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in README.md AGENTS.md CLAUDE.md docs/shared_modules_list.md docs/module_matrix.md docs/architecture.md docs/project_plan.md docs/decisions/ADR-001.md docs/specs/three_apps_shared_modules_spec_v1.md docs/specs/three_apps_poc_acceptance_plan_v1.md; do
+            test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
+          done
+          for n in $(seq -w 1 20); do
+            grep -q "M$n" docs/shared_modules_list.md || { echo "Missing module M$n"; exit 1; }
+          done
+          grep -q 'AGENTS.md' CLAUDE.md
+          echo "S0 documentation structure: PASS"

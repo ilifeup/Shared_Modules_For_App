@@ -30,8 +30,8 @@ void check(bool condition) {
 Future<void> main() async {
   final fake = FakeSessionTransport();
   final api = SessionApi(fake);
-  check(await api.login(' test@example.invalid ', 'fake-password') ==
-      'synthetic-token');
+  final token = await api.login(' test@example.invalid ', 'fake-password');
+  check(token == 'synthetic-token');
   check(fake.method == 'POST');
   check(fake.path == '/api/v1/auth/login');
   check(fake.body?['email'] == 'test@example.invalid');

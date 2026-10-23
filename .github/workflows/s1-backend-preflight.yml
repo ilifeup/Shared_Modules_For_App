@@ -1,0 +1,29 @@
+name: S1 Backend Manifest Preflight
+on:
+  pull_request:
+    paths:
+      - 'examples/poc_backend/**'
+      - '.github/workflows/s1-backend-preflight.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'examples/poc_backend/**'
+      - '.github/workflows/s1-backend-preflight.yml'
+permissions:
+  contents: read
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Check PHP preflight script
+        run: php -l examples/poc_backend/scripts/preflight.php
+      - name: Validate Composer syntax
+        working-directory: examples/poc_backend
+        run: composer validate --no-check-publish
+      - name: Validate dependency declarations
+        run: php examples/poc_backend/scripts/preflight.php

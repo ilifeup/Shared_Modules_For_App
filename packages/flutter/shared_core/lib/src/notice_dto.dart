@@ -1,7 +1,5 @@
 import 'notice.dart';
 
-/// Decodes only the agreed portable fields; application authorization is
-/// enforced by the server, never by this DTO.
 class NoticeDto {
   const NoticeDto._();
 
@@ -18,9 +16,7 @@ class NoticeDto {
         (publishedAt != null && publishedAt is! String)) {
       throw const FormatException('Invalid notice');
     }
-    final date = publishedAt == null
-        ? null
-        : DateTime.tryParse(publishedAt);
+    final date = publishedAt == null ? null : DateTime.tryParse(publishedAt);
     if (publishedAt != null && date == null) {
       throw const FormatException('Invalid publication timestamp');
     }

@@ -96,7 +96,7 @@ it('saves the session and SMS settings to the database and audits the change', f
         ->and($settings->int('otp_max_attempts'))->toBe(4);
 
     $event = AuditEvent::query()->where('event', 'settings.updated')->firstOrFail();
-    expect($event->details['changes']['sms_provider'])->toBe(['old' => 'fake', 'new' => 'smsgo']);
+    expect($event->details['changes']['sms_provider'])->toEqual(['old' => 'fake', 'new' => 'smsgo']); // MySQL JSON does not keep key order
 });
 
 it('creates and publishes a notice from Filament that members can then read', function () {

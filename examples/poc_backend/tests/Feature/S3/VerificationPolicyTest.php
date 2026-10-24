@@ -87,7 +87,7 @@ it('lets an authorized admin switch the policy with confirmation and records the
 
     $event = AuditEvent::query()->where('event', 'member.verification_policy_changed')->firstOrFail();
     expect($event->actor_id)->toBe($admin->id)
-        ->and($event->details)->toBe(['old' => 'email_required', 'new' => 'phone_required'])
+        ->and($event->details)->toEqual(['old' => 'email_required', 'new' => 'phone_required'])
         ->and($event->created_at)->not->toBeNull();
 });
 

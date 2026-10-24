@@ -245,3 +245,42 @@ S6 在 `calendar_events` 增加 `booking_enabled`、`booking_capacity`、`bookin
 - [ ] 逐項對照 S9 M08/M09/M11 具體 Schema 草案與上述既有 Migration，產生增量欄位／表格提案。
 - [ ] 查驗兩 Repo 其餘 workflows、部署／發布環境、分支保護設定（不讀取或公開 Secrets 值）。
 - [ ] 檢查 M14/M15/M17 與 S8 文章分享／統計功能的介面責任。
+
+## 12. 第五輪：S8 CI 實際結果、跨 Repo 漂移與場地決策（2026-10-25）
+
+### 12.1 S8 PR 指定 HEAD 的實際 GitHub Actions 執行結果
+
+| Repository / PR | 查驗的 HEAD | 成功的 PR workflow |
+|---|---|---|
+| Shared [#20](https://github.com/ilifeup/Shared_Modules_For_App/pull/20) | `0e16f591ce17e2fc23ac8ff61061c012c4d15299` | Validate S0 Documentation、S1 PoC Backend、S1 Shared Core Checks、S1 PoC Mobile（均 completed/success） |
+| Tiandi [#17](https://github.com/ilifeup/tiandi-app/pull/17) | `5b071aefd25459d9cad1b586cbc9374cc279dafd` | backend、mobile（均 completed/success） |
+
+此結果來自 GitHub 指定 commit 的 PR workflow runs；並非重新執行測試，也**不等於**全部分支保護規則已符合、可自動合併或已部署。Combined commit status 回傳空陣列，不能把它解讀為「沒有 Actions」；以上以 workflow runs 為準。
+
+### 12.2 Shared / Tiandi 精確內容比對
+
+| 比對項目 | Shared | Tiandi | 結果 |
+|---|---|---|---|
+| 預約服務（main） | `examples/poc_backend/app/Services/BookingService.php` | `backend/app/Services/BookingService.php` | **內容完全一致**，blob `eb98eb936d01336b74efb057acc501d36dc8c961` |
+| 活動 Model（main） | `examples/poc_backend/app/Models/CalendarEvent.php` | `backend/app/Models/CalendarEvent.php` | **內容完全一致**，blob `a7f4104358ddb05350eb06b2653bef376a534225` |
+| S8 API routes（未合併功能分支） | `examples/poc_backend/routes/api.php` | `backend/routes/api.php` | **內容完全一致**，blob `bf127fd245a93d593afd9fe91cb446b25ed4ab3f` |
+
+注意：這只涵蓋以上三組檔案，不代表兩個 Repository 全部程式碼完全一致。
+
+### 12.3 M08 Location／樓層／Studio 補充決策（已核准 A）
+
+依 `docs/s9_decisions.md` 於 2026-10-25 新增的使用者決策：
+
+- **每個實際活動場次僅對應一組** `location`、`floor`、`studio`；三欄全部 nullable、可獨立填寫。
+- **不支援同一場次多 Studio**；名額依活動場次，不依 Studio 分配。
+- M09 是活動／場次資訊主責；M08 預約、M11 簽到讀取同一份場地資訊，不各自複製場地主資料。
+- 既有 S5 `calendar_events.location` 已存在；增量 Migration **不得再次新增同名欄位**。
+- 場地欄位不納入現有預約唯一索引；新增 `floor`／`studio` 及場次關聯時應與重複活動 Schema 一起規劃。
+- 尚未核准建立獨立場地主檔或非活動型預約；本輪不自行擴大範圍。
+
+### 12.4 本輪結論與後續
+
+- **已降低的風險**：S8 指定 HEAD 有成功的 GitHub Actions 記錄；三組核心檔案無內容漂移。
+- **仍存在的 P0**：S8 PR 尚未合併；S9 全自動合併部署尚未證明可用；M08 多人／訪客／候補及 M09 場次仍需增量 Schema。
+- **下輪**：核對 S8 文章分享／可見性與 M14/M15/M17 的介面；補充九模組的 API 差距矩陣；審查其他 workflow、分支保護與部署前置條件。
+- 本輪僅唯讀核對與文件更新；**未修改程式、CI 設定、PR 合併狀態或部署**。

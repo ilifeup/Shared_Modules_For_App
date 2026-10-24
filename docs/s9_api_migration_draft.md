@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.1｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.2｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -115,3 +115,148 @@
 - [ ] 由使用者一次確認完整技術契約後，**另行取得實作授權**。
 
 **執行界線：目前只編寫 GitHub 草案；不修改程式、Migration、OpenAPI、PR、CI 或部署。**
+
+## 8. v0.2 候選資料字典與索引（未核准）
+
+**統一慣例（候選）**：各表 `BIGINT UNSIGNED id`、`created_at/updated_at`；所有時間以 UTC 儲存，顯示依 App 設定時區；文字使用 `utf8mb4`。多型 `content_type` 以允許清單驗證，不接受任意 PHP class name。以下只列業務核心欄位，非完整 Laravel Migration。
+
+| 候選表／增量 | 核心欄位（型別候選） | 主要約束／索引 |
+|---|---|---|
+| `event_series` | `id BIGINT`、`frequency ENUM(weekly,monthly)`、`timezone VARCHAR(64)`、`starts_at TIMESTAMP`、`until_at TIMESTAMP NULL` | `INDEX(frequency,starts_at)`；不得以系列 ID 直接當預約場次 |
+| `event_occurrences` | `id BIGINT`、`series_id BIGINT NULL`、`calendar_event_id BIGINT NULL`、`starts_at/ends_at TIMESTAMP`、`status VARCHAR(20)`、`location/floor/studio VARCHAR(255) NULL`、`capacity INT UNSIGNED NULL`、`revision INT UNSIGNED` | `INDEX(series_id,starts_at)`、`INDEX(status,starts_at)`；舊 S5 event 映射策略待決 |
+| `event_occurrence_exceptions` | `series_id BIGINT`、`occurrence_id BIGINT`、`exception_type VARCHAR(20)`、`changed_fields JSON` | `UNIQUE(series_id,occurrence_id)`；不覆蓋 L01 保護的單次例外 |
+| `event_booking_groups` | `occurrence_id BIGINT`、`booker_user_id BIGINT NULL`、`guest_contact_id BIGINT NULL`、`status VARCHAR(20)`、`seat_count SMALLINT UNSIGNED`、`booked_at TIMESTAMP` | `INDEX(occurrence_id,status)`、`INDEX(booker_user_id,booked_at)` |
+| `event_booking_attendees` | `group_id BIGINT`、`occurrence_id BIGINT`、`display_name VARCHAR(255)`、`member_user_id BIGINT NULL`、`status VARCHAR(20)` | `INDEX(occurrence_id,status)`、`INDEX(group_id,status)`；參加者個資需保存政策 |
+| `event_waitlist_entries` | `group_id BIGINT`、`occurrence_id BIGINT`、`sequence BIGINT UNSIGNED`、`seat_count SMALLINT UNSIGNED`、`status VARCHAR(20)` | `UNIQUE(occurrence_id,sequence)`、`INDEX(occurrence_id,status,sequence)`；嚴格 FIFO |
+| `guest_booking_contacts` | `id BIGINT`、`email VARCHAR(255) NULL`、`phone VARCHAR(40) NULL`、`verified_at TIMESTAMP NULL`、`claimed_user_id BIGINT NULL` | email/phone 至少一項；claim 須驗證原聯絡方式；隱私與限流 |
+| `event_attendances` | `occurrence_id BIGINT`、`attendee_id BIGINT`、`checked_in_at TIMESTAMP NULL`、`checked_out_at TIMESTAMP NULL`、`status VARCHAR(20)` | `UNIQUE(occurrence_id,attendee_id)`；不允許候補簽到 |
+| `attendance_audits` | `attendance_id BIGINT NULL`、`actor_id BIGINT NULL`、`action VARCHAR(40)`、`occurred_at TIMESTAMP`、`details JSON NULL` | `INDEX(attendance_id,occurred_at)`；保存期後去識別 |
+| `verification_applications` | `user_id BIGINT`、`type_id BIGINT`、`status VARCHAR(20)`、`reviewed_by BIGINT NULL`、`expires_at TIMESTAMP NULL` | `INDEX(user_id,type_id,status)`；拒絕可重新申請 |
+| `verification_evidence` | `application_id BIGINT`、`storage_key VARCHAR(512)`、`mime_type VARCHAR(120)` | `INDEX(application_id)`；私有儲存，後端授權下載 |
+| `member_verifications` | `user_id BIGINT`、`type_id BIGINT`、`status VARCHAR(20)`、`public_badge BOOLEAN`、`expires_at TIMESTAMP NULL` | `INDEX(user_id,status)`；撤銷／到期狀態須一致 |
+| `content_tags` | `name VARCHAR(120)`、`normalized_name VARCHAR(120)`、`color VARCHAR(16) NULL`、`enabled BOOLEAN` | `UNIQUE(normalized_name)`（各 App DB 獨立）；合併不重複 |
+| `content_tag_assignments` | `tag_id BIGINT`、`content_type VARCHAR(40)`、`content_id BIGINT` | `UNIQUE(tag_id,content_type,content_id)`、`INDEX(content_type,content_id)`；每內容最多 10 需交易驗證 |
+| `member_bookmarks` | `user_id BIGINT`、`content_type VARCHAR(40)`、`content_id BIGINT`、`created_at TIMESTAMP` | `UNIQUE(user_id,content_type,content_id)`、`INDEX(user_id,created_at)`；內容刪除不 cascade |
+| `marketing_campaigns` | `title VARCHAR(255)`、`status VARCHAR(20)`、`starts_at/ends_at TIMESTAMP NULL`、`target_type VARCHAR(40)`、`target_id BIGINT NULL` | `INDEX(status,starts_at,ends_at)`；受限目標不公開 |
+| `marketing_placements` | `campaign_id BIGINT`、`placement_key VARCHAR(80)`、`sort_order INT` | `INDEX(placement_key,sort_order)`；由各 App 配置 |
+| `link_click_events` | `link_key VARCHAR(120)`、`occurred_at TIMESTAMP`、`source VARCHAR(40)`、`dedupe_token_hash VARCHAR(128) NULL`、`opened_at TIMESTAMP NULL` | `INDEX(link_key,occurred_at)`、`INDEX(occurred_at)`；不存完整 IP |
+| `link_daily_aggregates` | `link_key VARCHAR(120)`、`date DATE`、`source VARCHAR(40)`、`total_clicks BIGINT`、`estimated_unique BIGINT` | `UNIQUE(link_key,date,source)`；App 固定統計時區 |
+
+**重要待驗證**：`event_occurrences.calendar_event_id` 與既有 `event_bookings.calendar_event_id` 的實際映射；`event_booking_groups` 和既有 `event_bookings` 是一對一延伸或獨立新流程；單次例外與場次 materialization；刪除 FK 策略。這些不能僅憑本表直接產生 Migration。
+
+## 9. v0.2 JSON API payload 範例（候選，非正式 OpenAPI）
+
+### 9.1 場次多人預約
+
+`POST /api/v1/occurrences/{id}/bookings`，**會員範例**：
+
+```json
+{
+  "attendees": [
+    {"display_name": "Attendee A"},
+    {"display_name": "Attendee B"}
+  ],
+  "client_request_id": "b0c12e23-96c9-4b90-8df2-770cf0556200"
+}
+```
+
+成功 `201` 範例（欄位候選）：
+
+```json
+{
+  "data": {
+    "booking_group_id": "123",
+    "occurrence_id": "456",
+    "status": "confirmed",
+    "seat_count": 2,
+    "attendees": [
+      {"id": "901", "status": "confirmed"},
+      {"id": "902", "status": "confirmed"}
+    ]
+  }
+}
+```
+
+額滿且開放候補時，整組回傳 `waitlisted`，不可部分確認；是否以 `201` 表示候補建立仍待契約核准。訪客請求另加 `guest_contact`，聯絡方式須滿足姓名＋email 或 phone 的 M08-D06 規則；claim 不得僅憑猜測 email/phone。
+
+### 9.2 重複活動修改
+
+`PATCH /api/v1/admin/event-series/{id}` 候選：
+
+```json
+{
+  "scope": "future",
+  "effective_occurrence_id": "456",
+  "changes": {
+    "starts_at": "2026-11-03T10:00:00Z",
+    "ends_at": "2026-11-03T12:00:00Z",
+    "location": "Room A",
+    "floor": null,
+    "studio": "Studio 1"
+  },
+  "expected_revision": 4
+}
+```
+
+`scope` 只允許 `single|future|all`；L01 A 保護已開始／結束場次與已建立單次例外；`expected_revision` 是候選樂觀鎖欄位，非已核准。
+
+### 9.3 簽到與重複請求
+
+`POST /api/v1/occurrences/{id}/checkins` 候選：
+
+```json
+{
+  "attendee_id": "901",
+  "qr_token": "short-lived-signed-token",
+  "client_request_id": "7a029e22-8c7c-4c0e-97b7-a1cb3d1f9321"
+}
+```
+
+回傳 `data.attendance_id`、`status`、`checked_in_at`；同參加者同場次重複請求應回傳已簽到狀態而非再新增有效紀錄。實際 QR 簽章、token 不可在日誌記明文。
+
+### 9.4 搜尋與收藏
+
+`GET /api/v1/search?q=example&type=article&tags[]=1&tags[]=2&page=1` 候選：回傳 `data[]` 各項含 `content_type`、`content_id`、`title`（僅授權可見）、`meta.current_page/last_page/total`；多標籤 AND。
+
+`POST /api/v1/me/bookmarks` 候選：
+
+```json
+{"content_type":"article","content_id":"123"}
+```
+
+已失權／下架／永久刪除內容只能呈現不可用佔位，不回傳受限標題或封面；1,000 筆上限包含佔位，併發需在交易中檢查。
+
+### 9.5 共通錯誤格式
+
+```json
+{
+  "error": {
+    "code": "BOOKING_FULL",
+    "message": "名額已滿。",
+    "request_id": "req-example"
+  }
+}
+```
+
+現有 `BOOKING_FULL` 應沿用；其他新錯誤碼待正式 OpenAPI 與 Laravel Exception 對照。
+
+## 10. v0.2 FK、索引、刪除與回退檢查清單
+
+- [ ] 既有 S6 `event_bookings.calendar_event_id` 是 `restrictOnDelete`；`user_id` 是 `cascadeOnDelete`；`cancelled_by` 是 `nullOnDelete`。新增群組／簽到稽核時必須明確處理會員刪除對個資與合法稽核的影響。
+- [ ] 同場次 `event_waitlist_entries.sequence` 必須在鎖定下產生；不能用單純 `MAX(sequence)+1` 的無鎖查詢。
+- [ ] `event_booking_attendees.occurrence_id` 與 `group_id` 必須避免跨場次錯誤關聯；可用複合 FK 或交易內驗證，具體策略待核准。
+- [ ] `event_attendances` 的唯一約束阻止同人同場次重複有效簽到；管理員更正保留獨立稽核。
+- [ ] `member_bookmarks` 不應以會隨內容永久刪除而 cascade 的 FK 指向原內容；會員帳號刪除時清除個人收藏。
+- [ ] 90 天 M17 原始與 24 月彙總保存須依 App 固定統計時區正確清理。
+- [ ] Migration 先 additive，舊資料 backfill 必須可重跑且驗證總數；不可在沒有備份／回退演練時直接切換正式資料。
+- [ ] 以上候選 Schema 尚未對兩 Repo 全部 migration、Laravel models、routes、政策逐項校驗；**不符合直接開發 Gate**。
+
+## 11. v0.2 尚缺的正式契約工作
+
+1. 每條候選 API 的完整 OpenAPI 3.1 JSON Schema（required、nullable、min/max、enum、security、HTTP statuses、example）。
+2. 實際場次與 S5/S6 既有表的精確資料遷移策略，以及現有 Flutter 端相容性。
+3. M03、M14、M15、M16、M17、M19 管理 API 的完整 payload 與 Filament 權限。
+4. Google 失敗重試的次數、間隔與人工處理門檻。
+5. 完整 migration up/down、測試資料集、併發壓力測試及部署回退驗證。
+
+**本節是 v0.2 候選資料字典與 JSON 範例，不是已核准 API/Migration，更不是開發授權。**

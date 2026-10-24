@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 /**
  * S5 M09 calendar event. Stored in UTC; Apps display local time.
@@ -46,6 +47,14 @@ class CalendarEvent extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (CalendarEvent $event): void {
+            if ($event->starts_at === null || $event->ends_at === null || ! $event->ends_at->greaterThan($event->starts_at)) {
+                throw ValidationException::withMessages([
+                    'ends_at' => ['結束時間必須晚於開始時間。'],
+                ]);
+            }
+        });
+
         static::saved(function (CalendarEvent $event): void {
             if (! $event->wasRecentlyCreated && ! $event->wasChanged('status')) {
                 return;

@@ -839,9 +839,7 @@ void main() {
     expect(find.textContaining('【未讀】'), findsNothing);
   });
 
-  testWidgets('shows empty and error states for notifications', (
-    tester,
-  ) async {
+  testWidgets('shows empty and error states for notifications', (tester) async {
     final backend = FakeBackend()..notifications.clear();
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-notifications')));

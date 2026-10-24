@@ -13,6 +13,8 @@ import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
 import 'features/notices/notices_screen.dart';
 import 'features/notices/public_notices_screen.dart';
+import 'features/notifications/notification_detail_screen.dart';
+import 'features/notifications/notifications_screen.dart';
 import 'features/profile/change_email_screen.dart';
 import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
@@ -80,6 +82,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/notices/:id',
         builder: (context, state) =>
             NoticeDetailScreen(id: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/notifications/:id',
+        builder: (context, state) =>
+            NotificationDetailScreen(id: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/profile',

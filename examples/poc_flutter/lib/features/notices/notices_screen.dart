@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ui/status_box.dart';
+import '../notifications/notification_providers.dart';
 import 'notice_providers.dart';
 
 class NoticesScreen extends ConsumerWidget {
@@ -41,11 +42,25 @@ class NoticesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notices = ref.watch(noticesProvider);
     final unread = notices.value?.unreadCount;
+    final unreadNotifications =
+        ref.watch(unreadNotificationsProvider).value ?? 0;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(unread != null && unread > 0 ? '公告（未讀 $unread）' : '公告'),
         actions: [
+          IconButton(
+            key: const Key('open-notifications'),
+            tooltip: unreadNotifications > 0
+                ? '通知（未讀 $unreadNotifications）'
+                : '通知',
+            icon: Badge(
+              isLabelVisible: unreadNotifications > 0,
+              label: Text('$unreadNotifications'),
+              child: const Icon(Icons.notifications),
+            ),
+            onPressed: () => context.push('/notifications'),
+          ),
           IconButton(
             key: const Key('open-profile'),
             tooltip: '個人資料',

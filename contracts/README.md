@@ -1,6 +1,6 @@
 # API contract
 
-`openapi.yaml` describes the API implemented by `examples/poc_backend` (S1–S3) and integrated by each App.
+`openapi.yaml` describes the API implemented by `examples/poc_backend` (S1–S4) and integrated by each App.
 Each App runs its own backend; this is a contract, not a shared service.
 
 - CI (`s1-poc-backend.yml`) compares it with `php artisan route:list` — every route must be documented and every
@@ -20,4 +20,5 @@ Each App runs its own backend; this is a contract, not a shared service.
 | `/me/avatar` | App `AvatarRepository` (binary / multipart, outside the JSON transport) |
 | `/me/membership`, `/membership-levels` | `MembershipApi` → `Membership`, `MembershipLevel` |
 | `/notices`, `/notices/{id}/read`, `/public/notices`, `/notice-categories` | `NoticeApi` → `NoticePage`, `Notice`, `NoticeCategory` (`MemberApi.notices/notice` unchanged) |
+| `/me/notifications*` | `NotificationApi` → `NotificationPage`, `MemberNotification` |
 | `Error` | App `ApiException` (`code`, `message`, `fields`, `requestId`, `statusCode`) |

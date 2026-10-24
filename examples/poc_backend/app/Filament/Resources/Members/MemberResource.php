@@ -8,11 +8,15 @@ use App\Filament\Resources\Members\RelationManagers\LevelAssignmentsRelationMana
 use App\Models\MemberLevelAssignment;
 use App\Models\MembershipLevel;
 use App\Models\User;
+use App\Notifications\MemberNotification;
+use App\Services\MemberNotifier;
 use App\Services\MembershipService;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
@@ -24,6 +28,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Members of this App only (the administrator is excluded). Members register
@@ -145,6 +150,13 @@ class MemberResource extends Resource
 
                         Notification::make()->title('已指派會員等級')->success()->send();
                     }),
+                Action::make('sendNotification')
+                    ->label('傳送站內通知')
+                    ->visible(fn (): bool => auth()->user()?->can('notifications.send') ?? false)
+                    ->schema(static::notificationSchema())
+                    ->action(function (User $record, array $data): void {
+                        static::notify([$record], $data);
+                    }),
                 Action::make('revokeTokens')
                     ->label('撤銷全部登入')
                     ->requiresConfirmation()
@@ -153,7 +165,55 @@ class MemberResource extends Resource
 
                         Notification::make()->title('已撤銷此會員的全部登入')->success()->send();
                     }),
+            ])
+            ->toolbarActions([
+                BulkAction::make('sendNotificationBulk')
+                    ->label('傳送站內通知給選取的會員')
+                    ->visible(fn (): bool => auth()->user()?->can('notifications.send') ?? false)
+                    ->schema(static::notificationSchema())
+                    ->deselectRecordsAfterCompletion()
+                    ->action(function (Collection $records, array $data): void {
+                        static::notify($records, $data);
+                    }),
             ]);
+    }
+
+    /**
+     * S4 M04: in-app notification form (no email / SMS / push).
+     *
+     * @return array<int, mixed>
+     */
+    public static function notificationSchema(): array
+    {
+        return [
+            TextInput::make('title')->label('標題')->required()->maxLength(120),
+            Textarea::make('body')->label('內容')->required()->rows(5)->maxLength(2000),
+            Select::make('type')->label('類型')->required()->default('system')
+                ->options(['system' => '系統', 'account' => '帳號', 'membership' => '會員等級', 'notice' => '公告']),
+            TextInput::make('notice_id')->label('導向公告編號（選填）')->numeric()->minValue(1),
+        ];
+    }
+
+    /**
+     * @param  iterable<User>  $members
+     * @param  array<string, mixed>  $data
+     */
+    public static function notify(iterable $members, array $data): void
+    {
+        abort_unless(auth()->user()?->can('notifications.send'), 403);
+
+        $noticeId = filled($data['notice_id'] ?? null) ? (string) (int) $data['notice_id'] : null;
+        $count = app(MemberNotifier::class)->send(
+            $members,
+            (string) $data['title'],
+            (string) $data['body'],
+            in_array($data['type'] ?? null, MemberNotification::TYPES, true) ? $data['type'] : 'system',
+            $noticeId !== null ? 'notice' : null,
+            $noticeId,
+            auth()->user(),
+        );
+
+        Notification::make()->title("已傳送站內通知給 {$count} 位會員")->success()->send();
     }
 
     public static function getRelations(): array

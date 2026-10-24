@@ -66,3 +66,7 @@ final avatarRepositoryProvider = Provider<AvatarRepository>(
 final noticeApiProvider = Provider<NoticeApi>(
   (ref) => NoticeApi(ref.watch(apiTransportProvider)),
 );
+
+final notificationApiProvider = Provider<NotificationApi>(
+  (ref) => NotificationApi(ref.watch(apiTransportProvider)),
+);

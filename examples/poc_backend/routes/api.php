@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MembershipController;
 use App\Http\Controllers\Api\NoticeController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetController;
 use Illuminate\Support\Facades\Route;
 
@@ -55,4 +56,11 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/notices', [NoticeController::class, 'index']);
     Route::get('/notices/{id}', [NoticeController::class, 'show'])->whereNumber('id');
     Route::post('/notices/{id}/read', [NoticeController::class, 'markRead'])->whereNumber('id');
+
+    // S4 M04 in-app notifications (own notifications only).
+    Route::get('/me/notifications', [NotificationController::class, 'index']);
+    Route::get('/me/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('/me/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::get('/me/notifications/{id}', [NotificationController::class, 'show'])->whereUuid('id');
+    Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 });

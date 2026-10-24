@@ -19,10 +19,10 @@ class EditCommentModerationCase extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            $this->resolveAction('restore', '恢復公開', 'success'),
-            $this->resolveAction('keep_hidden', '維持隱藏', 'warning'),
-            $this->resolveAction('delete', '刪除留言', 'danger'),
-            $this->resolveAction('close', '結案（不變更留言）', 'gray'),
+            $this->caseAction('restore', '恢復公開', 'success'),
+            $this->caseAction('keep_hidden', '維持隱藏', 'warning'),
+            $this->caseAction('delete', '刪除留言', 'danger'),
+            $this->caseAction('close', '結案（不變更留言）', 'gray'),
         ];
     }
 
@@ -32,7 +32,7 @@ class EditCommentModerationCase extends EditRecord
         return [];
     }
 
-    private function resolveAction(string $action, string $label, string $color): Action
+    private function caseAction(string $action, string $label, string $color): Action
     {
         return Action::make($action)
             ->label($label)

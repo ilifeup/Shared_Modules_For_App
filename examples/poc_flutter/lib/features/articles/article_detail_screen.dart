@@ -237,7 +237,8 @@ class _LikeBarState extends ConsumerState<LikeBar> {
                 shrinkWrap: true,
                 children: [
                   Text('共 ${list.total} 個讚'),
-                  for (final name in list.nicknames) ListTile(title: Text(name)),
+                  for (final name in list.nicknames)
+                    ListTile(title: Text(name)),
                   if (list.unlistedCount > 0)
                     Text('另有 ${list.unlistedCount} 位會員未公開名稱'),
                 ],

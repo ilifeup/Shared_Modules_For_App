@@ -14,9 +14,10 @@ class ArticleQuery {
   final bool popular;
 }
 
-final articleQueryProvider = NotifierProvider<ArticleQueryNotifier, ArticleQuery>(
-  ArticleQueryNotifier.new,
-);
+final articleQueryProvider =
+    NotifierProvider<ArticleQueryNotifier, ArticleQuery>(
+      ArticleQueryNotifier.new,
+    );
 
 class ArticleQueryNotifier extends Notifier<ArticleQuery> {
   @override

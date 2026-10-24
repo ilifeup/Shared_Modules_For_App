@@ -666,7 +666,8 @@ Future<void> scrollTo(WidgetTester tester, String key) async {
     scrollable: find
         .byWidgetPredicate(
           (widget) =>
-              widget is Scrollable && widget.axisDirection == AxisDirection.down,
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
         )
         .first,
   );

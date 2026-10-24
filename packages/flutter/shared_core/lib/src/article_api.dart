@@ -417,7 +417,10 @@ class ArticleApi {
   }
 
   Future<List<ReportReason>> reportReasons() async {
-    final json = await transport.request('GET', '/api/v1/article-report-reasons');
+    final json = await transport.request(
+      'GET',
+      '/api/v1/article-report-reasons',
+    );
     return _list(json['data'], (item) {
       final code = item['code'];
       final label = item['label'];

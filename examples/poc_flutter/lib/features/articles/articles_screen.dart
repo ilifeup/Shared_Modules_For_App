@@ -84,7 +84,10 @@ class ArticlesScreen extends ConsumerWidget {
             _filters(ref),
             ...articles.when(
               loading: () => [
-                const Padding(padding: EdgeInsets.all(24), child: LoadingView()),
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: LoadingView(),
+                ),
               ],
               error: (error, _) => [
                 Padding(

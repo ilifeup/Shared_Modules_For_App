@@ -3,6 +3,7 @@
 use App\Models\PhoneOtp;
 use App\Models\User;
 use App\Support\Settings;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 
 /**
  * S3.1 review: public OTP endpoints must not reveal whether a number belongs to an
@@ -16,6 +17,9 @@ const ENUM_UNKNOWN = '0988000333';
 beforeEach(function () {
     // Retry-After is in whole seconds; freeze the clock so answers are comparable.
     $this->freezeTime();
+    // These tests compare the OTP limits; the per-route IP limit (tested elsewhere)
+    // would otherwise cut in after a few requests from the same test client.
+    $this->withoutMiddleware(ThrottleRequests::class);
     User::factory()->phoneOnly('+886988000111', verified: false)->create();
     User::factory()->phoneOnly('+886988000222', verified: true)->create();
 });

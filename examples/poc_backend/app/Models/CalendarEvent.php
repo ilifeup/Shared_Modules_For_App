@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -38,6 +40,11 @@ class CalendarEvent extends Model
     protected $fillable = [
         'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
         'booking_enabled', 'booking_capacity', 'booking_opens_at', 'booking_closes_at',
+        // S9 (M08/M09/M11)
+        'event_category_id', 'timezone', 'floor', 'studio', 'booking_max_seats', 'waitlist_enabled',
+        'booking_close_offset_minutes', 'cancel_closes_at', 'cancel_offset_minutes',
+        'checkin_enabled', 'checkout_enabled', 'checkin_open_before_minutes', 'checkin_close_after_end_minutes',
+        'checkin_gps_required', 'checkin_gps_radius_m',
     ];
 
     protected function casts(): array
@@ -50,6 +57,19 @@ class CalendarEvent extends Model
             'booking_capacity' => 'integer',
             'booking_opens_at' => 'datetime',
             'booking_closes_at' => 'datetime',
+            'series_original_start_at' => 'datetime',
+            'is_series_exception' => 'boolean',
+            'booking_max_seats' => 'integer',
+            'waitlist_enabled' => 'boolean',
+            'booking_close_offset_minutes' => 'integer',
+            'cancel_closes_at' => 'datetime',
+            'cancel_offset_minutes' => 'integer',
+            'checkin_enabled' => 'boolean',
+            'checkout_enabled' => 'boolean',
+            'checkin_open_before_minutes' => 'integer',
+            'checkin_close_after_end_minutes' => 'integer',
+            'checkin_gps_required' => 'boolean',
+            'checkin_gps_radius_m' => 'integer',
         ];
     }
 
@@ -67,6 +87,16 @@ class CalendarEvent extends Model
                 throw ValidationException::withMessages([
                     'booking_capacity' => ['開放預約時，名額至少 1 人。'],
                 ]);
+            }
+
+            if ($event->booking_max_seats !== null && ($event->booking_max_seats < 1 || $event->booking_max_seats > 50)) {
+                throw ValidationException::withMessages([
+                    'booking_max_seats' => ['每筆報名人數需為 1–50 人。'],
+                ]);
+            }
+
+            if ($event->timezone !== null && ! in_array($event->timezone, timezone_identifiers_list(), true)) {
+                throw ValidationException::withMessages(['timezone' => ['時區格式錯誤。']]);
             }
 
             if ($event->booking_opens_at !== null && $event->booking_closes_at !== null && ! $event->booking_closes_at->greaterThan($event->booking_opens_at)) {
@@ -126,11 +156,92 @@ class CalendarEvent extends Model
     }
 
     /**
-     * When bookings close: the configured time, otherwise the event start.
+     * When bookings close (S9-L02 A): a relative offset is recomputed from the
+     * current start; otherwise the fixed time; otherwise the event start.
      */
     public function bookingClosesAt(): Carbon
     {
+        if ($this->booking_close_offset_minutes !== null) {
+            return $this->starts_at->copy()->subMinutes($this->booking_close_offset_minutes);
+        }
+
         return $this->booking_closes_at ?? $this->starts_at;
+    }
+
+    /**
+     * Last moment a member may cancel (M08-D04, same rules as bookingClosesAt()).
+     */
+    public function cancelClosesAt(): Carbon
+    {
+        if ($this->cancel_offset_minutes !== null) {
+            return $this->starts_at->copy()->subMinutes($this->cancel_offset_minutes);
+        }
+
+        return $this->cancel_closes_at ?? $this->starts_at;
+    }
+
+    /**
+     * Fixed (admin-set) deadlines are kept on reschedule; the admin is warned.
+     *
+     * @return list<string>
+     */
+    public function fixedDeadlines(): array
+    {
+        return array_values(array_filter([
+            $this->booking_close_offset_minutes === null && $this->booking_closes_at !== null ? 'booking_closes_at' : null,
+            $this->cancel_offset_minutes === null && $this->cancel_closes_at !== null ? 'cancel_closes_at' : null,
+            $this->booking_opens_at !== null ? 'booking_opens_at' : null,
+        ]));
+    }
+
+    public function checkinOpensAt(): Carbon
+    {
+        return $this->starts_at->copy()->subMinutes($this->checkin_open_before_minutes ?? 60);
+    }
+
+    public function checkinClosesAt(): Carbon
+    {
+        return $this->ends_at->copy()->addMinutes($this->checkin_close_after_end_minutes ?? 0);
+    }
+
+    /**
+     * @return BelongsTo<EventCategory, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(EventCategory::class, 'event_category_id');
+    }
+
+    /**
+     * @return BelongsTo<EventSeries, $this>
+     */
+    public function series(): BelongsTo
+    {
+        return $this->belongsTo(EventSeries::class, 'event_series_id');
+    }
+
+    /**
+     * @return HasMany<EventBookingGroup, $this>
+     */
+    public function bookingGroups(): HasMany
+    {
+        return $this->hasMany(EventBookingGroup::class);
+    }
+
+    /**
+     * @return HasMany<EventBookingAttendee, $this>
+     */
+    public function attendees(): HasMany
+    {
+        return $this->hasMany(EventBookingAttendee::class);
+    }
+
+    /**
+     * @return BelongsToMany<CheckinLocation, $this>
+     */
+    public function checkinLocations(): BelongsToMany
+    {
+        return $this->belongsToMany(CheckinLocation::class, 'checkin_location_events');
     }
 
     public function cancel(?string $reason): void

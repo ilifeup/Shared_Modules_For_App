@@ -27,5 +27,6 @@ class CreateArticle extends CreateRecord
     protected function afterCreate(): void
     {
         ArticleResource::saveAccessRules($this->record, $this->form->getRawState());
+        ArticleResource::saveTags($this->record, $this->form->getRawState());
     }
 }

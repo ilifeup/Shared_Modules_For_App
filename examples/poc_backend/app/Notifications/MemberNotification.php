@@ -13,7 +13,7 @@ class MemberNotification extends Notification
 {
     use Queueable;
 
-    public const TYPES = ['system', 'account', 'membership', 'notice'];
+    public const TYPES = ['system', 'account', 'membership', 'notice', 'booking', 'verification'];
 
     public function __construct(
         public readonly string $title,

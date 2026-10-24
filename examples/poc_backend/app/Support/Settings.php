@@ -38,6 +38,39 @@ final class Settings
         'article_like_weight' => 10,
         'article_view_dedupe_minutes' => 30,
         'comment_report_threshold' => 3,
+
+        // S9 content types per module (comma separated; allowlist in CONTENT_TYPES).
+        'content_search_types' => 'article,event',      // M19-D02/D12
+        'content_bookmark_types' => 'article,event',    // M19-D04/D12
+        'content_tag_types' => 'article,event',         // M16-D03
+        'content_share_types' => 'article,event,notice', // M14-D02/D23
+        'content_analytics_types' => 'article,event,notice,campaign', // M17-D02
+        'marketing_target_types' => 'article,event,notice,url',       // M15-D02
+
+        // S9 M09 calendar: M02 level codes counted as "高級 VIP" (D22), default zone (D21).
+        'calendar_vip_level_codes' => '',
+        'calendar_default_timezone' => 'Asia/Taipei',
+
+        // S9 M11 check-in App defaults (events may override GPS, D26) and retention (D24).
+        'checkin_gps_required' => false,
+        'checkin_gps_radius_m' => 200,
+        'checkin_retention_days' => 365,
+
+        // S9 M17 fixed statistics time zone (D29).
+        'analytics_timezone' => 'Asia/Taipei',
+    ];
+
+    /** Content types S9 modules can refer to (type + id; never class names). */
+    public const CONTENT_TYPES = ['article', 'event', 'notice'];
+
+    /** Allowed values per comma-separated setting. */
+    public const CSV_ALLOWED = [
+        'content_search_types' => ['article', 'event'],
+        'content_bookmark_types' => ['article', 'event'],
+        'content_tag_types' => ['article', 'event'],
+        'content_share_types' => ['article', 'event', 'notice'],
+        'content_analytics_types' => ['article', 'event', 'notice', 'campaign'],
+        'marketing_target_types' => ['article', 'event', 'notice', 'url'],
     ];
 
     public const SMS_PROVIDERS = ['fake', 'mitake', 'every8d', 'smsgo'];
@@ -121,7 +154,25 @@ final class Settings
             throw new InvalidArgumentException("Unknown verification policy [{$merged['verification_policy']}].");
         }
 
-        foreach (['article_like_weight' => [0, 1000], 'article_view_dedupe_minutes' => [1, 1440], 'comment_report_threshold' => [1, 100]] as $key => [$min, $max]) {
+        foreach (self::CSV_ALLOWED as $key => $allowed) {
+            $unknown = array_diff(self::csv((string) $merged[$key]), $allowed);
+            if ($unknown !== []) {
+                throw new InvalidArgumentException("Setting [{$key}] has unknown types: ".implode(',', $unknown).'.');
+            }
+        }
+
+        foreach (['calendar_default_timezone', 'analytics_timezone'] as $key) {
+            if (! in_array($merged[$key], timezone_identifiers_list(), true)) {
+                throw new InvalidArgumentException("Setting [{$key}] must be an IANA time zone.");
+            }
+        }
+
+        if (preg_match('/^[a-z0-9_,]*$/', (string) $merged['calendar_vip_level_codes']) !== 1) {
+            throw new InvalidArgumentException('Setting [calendar_vip_level_codes] must be comma-separated level codes.');
+        }
+
+        foreach (['article_like_weight' => [0, 1000], 'article_view_dedupe_minutes' => [1, 1440], 'comment_report_threshold' => [1, 100],
+            'checkin_gps_radius_m' => [10, 5000], 'checkin_retention_days' => [1, 3650]] as $key => [$min, $max]) {
             if ($merged[$key] < $min || $merged[$key] > $max) {
                 throw new InvalidArgumentException("Setting [{$key}] must be between {$min} and {$max}.");
             }
@@ -145,6 +196,24 @@ final class Settings
         $this->values = null;
     }
 
+    /**
+     * "a, b,,c" => ['a', 'b', 'c']
+     *
+     * @return list<string>
+     */
+    public static function csv(string $value): array
+    {
+        return array_values(array_unique(array_filter(array_map('trim', explode(',', $value)), fn (string $v): bool => $v !== '')));
+    }
+
+    /**
+     * Whether $type is enabled in a comma-separated content-type setting.
+     */
+    public function allows(string $key, string $type): bool
+    {
+        return in_array($type, self::csv($this->string($key)), true);
+    }
+
     private function cast(string $key, mixed $value): bool|int|string
     {
         $default = self::DEFAULTS[$key];
@@ -152,6 +221,7 @@ final class Settings
         return match (true) {
             is_bool($default) => filter_var($value, FILTER_VALIDATE_BOOL),
             is_int($default) => is_numeric($value) ? (int) $value : $default,
+            is_array($value) && array_key_exists($key, self::CSV_ALLOWED) || is_array($value) && $key === 'calendar_vip_level_codes' => implode(',', array_map('strval', $value)),
             default => is_scalar($value) ? (string) $value : $default,
         };
     }

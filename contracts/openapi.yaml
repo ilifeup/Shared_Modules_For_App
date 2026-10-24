@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: EachCore shared member API (per-App backend)
-  version: 0.7.0
+  version: 0.8.0
   description: |
-    Contract of the API implemented by examples/poc_backend (S1–S8) and integrated by each App
+    Contract of the API implemented by examples/poc_backend (S1–S9) and integrated by each App
     (tiandi-app first). Every App runs its own backend, database and tokens; nothing here is a
     shared production service and there is no SSO.
 
@@ -34,6 +34,11 @@ tags:
   - name: calendar
   - name: bookings
   - name: articles
+  - name: checkin
+  - name: discovery
+  - name: links
+  - name: marketing
+  - name: verification
 security:
   - bearer: []
 paths:
@@ -1163,6 +1168,549 @@ paths:
                         code: { type: string }
                         label: { type: string }
 
+  # ---- S9 (0.8.0) ----
+  /event-categories:
+    get:
+      tags: [calendar]
+      operationId: eventCategories
+      security: []
+      x-dart: CalendarApi.categories -> List<EventCategory>
+      description: 'S9 M09 event categories with their colour (D11).'
+      responses:
+        '200': { $ref: '#/components/responses/EventCategoryList' }
+
+  /verification-types:
+    get:
+      tags: [verification]
+      operationId: verificationTypes
+      security: []
+      x-dart: VerificationApi.types -> List<VerificationType>
+      description: 'S9 M03 active verification types of this App.'
+      responses:
+        '200': { $ref: '#/components/responses/VerificationTypeList' }
+
+  /tags:
+    get:
+      tags: [discovery]
+      operationId: publicTags
+      security: []
+      x-dart: DiscoveryApi.tags -> List<ContentTag>
+      description: 'S9 M16 active tags with at least one public item; counts public content only (D12–D17).'
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 50 } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [order, popular] } }
+      responses:
+        '200': { $ref: '#/components/responses/TagList' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /search:
+    get:
+      tags: [discovery]
+      operationId: searchContent
+      security: []
+      x-dart: DiscoveryApi.search -> SearchPage
+      description: 'S9 M19 search (optional login): AND keywords, tags AND, filters, sort, 20 per page; only content the viewer may open. Search terms are not stored.'
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [article, event] } }
+        - { name: 'tags[]', in: query, required: false, schema: { type: array, maxItems: 10, items: { type: integer } } }
+        - { name: article_category_id, in: query, required: false, schema: { type: integer } }
+        - { name: event_category_id, in: query, required: false, schema: { type: integer } }
+        - { name: from, in: query, required: false, schema: { type: string } }
+        - { name: to, in: query, required: false, schema: { type: string } }
+        - { name: location, in: query, required: false, schema: { type: string, maxLength: 100 } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [relevance, newest, oldest] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500 } }
+      responses:
+        '200': { $ref: '#/components/responses/SearchPage' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /content/{type}/{id}/share:
+    get:
+      tags: [links]
+      operationId: contentShare
+      security: []
+      x-dart: LinkApi.share -> ShareLink
+      description: 'S9 M14 HTTPS fixed-id share URL when the viewer may open the content (D07, D23). Optional login.'
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string, enum: [article, event, notice] } }
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { $ref: '#/components/responses/ShareLinkResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /marketing/placements/{code}:
+    get:
+      tags: [marketing]
+      operationId: marketingPlacement
+      security: []
+      x-dart: MarketingApi.placement -> List<MarketingItem>
+      description: 'S9 M15 active campaigns of a placement for this viewer (optional login), by priority, within the placement limit.'
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9_]{1,40}$' } }
+      responses:
+        '200': { $ref: '#/components/responses/MarketingItemList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /marketing/campaigns/{id}/image:
+    get:
+      tags: [marketing]
+      operationId: marketingImage
+      security: []
+      x-dart: MarketingApi.imageUrl
+      description: 'S9 M15 campaign image (only while the campaign is displayed).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /links/clicks:
+    post:
+      tags: [links]
+      operationId: linkClick
+      security: []
+      x-dart: LinkApi.click -> String?
+      description: 'S9 M17 App tap on a tracked link (never blocks the flow). Body {content_type, content_id, utm_*?}.'
+      responses:
+        '202': { $ref: '#/components/responses/LinkClickResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /links/opens:
+    post:
+      tags: [links]
+      operationId: linkOpen
+      security: []
+      x-dart: LinkApi.open -> bool
+      description: 'S9 M17 explicit success report: {click_id} from the web page or {content_type, content_id} from the App; counted once (D21, D25).'
+      responses:
+        '202': { $ref: '#/components/responses/LinkOpenResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /events/{id}/booking-groups:
+    post:
+      tags: [bookings]
+      operationId: bookGroup
+      x-verification: required
+      x-dart: BookingGroupApi.book -> BookingGroup
+      description: 'S9 M08 group booking (self and/or named attendees, idempotent by client_request_id). Whole group confirmed or waitlisted (strict FIFO).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '201': { $ref: '#/components/responses/BookingGroupResponse' }
+        '200': { $ref: '#/components/responses/BookingGroupResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/booking-groups:
+    get:
+      tags: [bookings]
+      operationId: myBookingGroups
+      x-verification: required
+      x-dart: BookingGroupApi.mine -> BookingGroupPage
+      description: 'S9 M08 groups I booked, newest first, 20 per page.'
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [active, confirmed, waitlisted, cancelled] } }
+      responses:
+        '200': { $ref: '#/components/responses/BookingGroupPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/booking-groups/{id}/cancel:
+    post:
+      tags: [bookings]
+      operationId: cancelBookingGroup
+      x-verification: required
+      x-dart: BookingGroupApi.cancel -> BookingGroup
+      description: 'S9 M08 cancel own group (waitlist always; confirmed until the cancel deadline). Frees seats and promotes the waitlist in order.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/BookingGroupResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /me/guest-bookings:
+    get:
+      tags: [bookings]
+      operationId: claimableGuestBookings
+      x-verification: required
+      x-dart: BookingGroupApi.claimable -> List<BookingGroup>
+      description: 'S9 M08 guest bookings made with my verified email or phone (D07).'
+      responses:
+        '200': { $ref: '#/components/responses/BookingGroupList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/guest-bookings/{id}/claim:
+    post:
+      tags: [bookings]
+      operationId: claimGuestBooking
+      x-verification: required
+      x-dart: BookingGroupApi.claim -> BookingGroup
+      description: 'S9 M08 claim a guest booking after the original contact is verified on my account.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/BookingGroupResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/calendar:
+    get:
+      tags: [calendar]
+      operationId: myCalendar
+      x-verification: required
+      x-dart: CalendarApi.myCalendar -> MyCalendar
+      description: 'S9 M09 events in range (max 62 days) with my booking status and VIP private entries.'
+      parameters:
+        - { $ref: '#/components/parameters/RangeFrom' }
+        - { $ref: '#/components/parameters/RangeTo' }
+      responses:
+        '200': { $ref: '#/components/responses/MyCalendarResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/private-events:
+    post:
+      tags: [calendar]
+      operationId: createPrivateEvent
+      x-verification: required
+      x-dart: CalendarApi.createPrivate -> PrivateEvent
+      description: 'S9 M09 VIP private entry (only the owner sees it).'
+      responses:
+        '201': { $ref: '#/components/responses/PrivateEventResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/private-events/{id}:
+    patch:
+      tags: [calendar]
+      operationId: updatePrivateEvent
+      x-verification: required
+      x-dart: CalendarApi.updatePrivate -> PrivateEvent
+      description: 'S9 M09 update own private entry (VIP).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/PrivateEventResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [calendar]
+      operationId: deletePrivateEvent
+      x-verification: required
+      x-dart: CalendarApi.deletePrivate
+      description: 'S9 M09 delete own private entry (allowed after VIP ends).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/DeletedResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /me/google-calendar:
+    get:
+      tags: [calendar]
+      operationId: googleCalendarStatus
+      x-verification: required
+      x-dart: CalendarApi.googleStatus -> GoogleCalendarStatus
+      description: 'S9 M09 Google one-way sync status (no tokens returned).'
+      responses:
+        '200': { $ref: '#/components/responses/GoogleStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+    delete:
+      tags: [calendar]
+      operationId: googleCalendarDisconnect
+      x-verification: required
+      x-dart: CalendarApi.googleDisconnect
+      description: 'S9 M09 stop syncing; existing Google events stay (D13).'
+      responses:
+        '200': { $ref: '#/components/responses/GoogleDisconnectResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/google-calendar/connect:
+    post:
+      tags: [calendar]
+      operationId: googleCalendarConnect
+      x-verification: required
+      x-dart: CalendarApi.googleConnect -> String
+      description: 'S9 M09 Google consent URL (scope calendar.app.created, one-time state). 503 GOOGLE_NOT_CONFIGURED without App credentials.'
+      responses:
+        '200': { $ref: '#/components/responses/GoogleConnectResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /events/{id}/checkin:
+    get:
+      tags: [checkin]
+      operationId: checkinStatus
+      x-verification: required
+      x-dart: CheckinApi.status -> CheckinStatus
+      description: 'S9 M11 check-in settings and my attendees with their status.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [checkin]
+      operationId: checkIn
+      x-verification: required
+      x-dart: CheckinApi.checkIn -> List<CheckinResult>
+      description: 'S9 M11 member check-in by event QR (60 s + 10 s grace) or Location QR (+ GPS when required). Body {attendee_ids, event_token | location_token, lat?, lng?, accuracy?}.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinResultList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /events/{id}/checkout:
+    post:
+      tags: [checkin]
+      operationId: checkOut
+      x-verification: required
+      x-dart: CheckinApi.checkOut -> List<CheckinResult>
+      description: 'S9 M11 checkout with the same QR entry; no self re-check-in afterwards.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinResultList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /events/{id}/checkin/pass:
+    get:
+      tags: [checkin]
+      operationId: checkinPass
+      x-verification: required
+      x-dart: CheckinApi.passes -> CheckinPasses
+      description: 'S9 M11 rotating attendee passes for staff to scan.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinPassResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /checkin/locations/{token}:
+    get:
+      tags: [checkin]
+      operationId: checkinLocation
+      x-verification: required
+      x-dart: CheckinApi.location -> CheckinLocation
+      description: 'S9 M11 open occurrences of a fixed Location QR with my attendees.'
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9]{16,40}$' } }
+      responses:
+        '200': { $ref: '#/components/responses/CheckinLocationResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /events/{id}/checkin/qr:
+    get:
+      tags: [checkin]
+      operationId: checkinQr
+      x-verification: required
+      x-dart: CheckinApi.eventQr -> CheckinQr
+      description: 'S9 M11 staff (checkin.staff): current 60-second event QR.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinQrResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /events/{id}/checkin/staff:
+    post:
+      tags: [checkin]
+      operationId: staffCheckIn
+      x-verification: required
+      x-dart: CheckinApi.staffScan -> CheckinResult
+      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?}.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/CheckinResultResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /events/{id}/attendance:
+    get:
+      tags: [checkin]
+      operationId: attendance
+      x-verification: required
+      x-dart: CheckinApi.attendance -> Attendance
+      description: 'S9 M11 staff / admins: summary and attendee list (contacts masked).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/AttendanceResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /me/bookmarks:
+    get:
+      tags: [discovery]
+      operationId: myBookmarks
+      x-verification: required
+      x-dart: DiscoveryApi.bookmarks -> BookmarkPage
+      description: 'S9 M19 own bookmarks newest first, 20 per page; unavailable content is a placeholder without details.'
+      parameters:
+        - { name: type, in: query, required: false, schema: { type: string, enum: [article, event, notice] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/BookmarkPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [discovery]
+      operationId: addBookmark
+      x-verification: required
+      x-dart: DiscoveryApi.addBookmark -> Bookmark
+      description: 'S9 M19 add (idempotent, 201 new / 200 existing); max 1,000 including placeholders (409 BOOKMARK_LIMIT_REACHED).'
+      responses:
+        '201': { $ref: '#/components/responses/BookmarkResponse' }
+        '200': { $ref: '#/components/responses/BookmarkResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [discovery]
+      operationId: clearBookmarks
+      x-verification: required
+      x-dart: DiscoveryApi.clearBookmarks -> int
+      description: 'S9 M19 clear all own bookmarks (the App confirms twice).'
+      responses:
+        '200': { $ref: '#/components/responses/ClearBookmarksResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/bookmarks/{type}/{id}:
+    delete:
+      tags: [discovery]
+      operationId: removeBookmark
+      x-verification: required
+      x-dart: DiscoveryApi.removeBookmark
+      description: 'S9 M19 remove one bookmark (idempotent).'
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string, enum: [article, event, notice] } }
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { $ref: '#/components/responses/BookmarkResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /me/verifications:
+    get:
+      tags: [verification]
+      operationId: myVerifications
+      x-verification: required
+      x-dart: VerificationApi.mine -> MyVerifications
+      description: 'S9 M03 my applications and badges.'
+      responses:
+        '200': { $ref: '#/components/responses/MyVerificationsResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/verifications/{id}:
+    patch:
+      tags: [verification]
+      operationId: updateVerificationBadge
+      x-verification: required
+      x-dart: VerificationApi.setBadgePublic -> VerificationBadge
+      description: 'S9 M03 show or hide my badge {is_public}.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/VerificationBadgeResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/verification-requests:
+    post:
+      tags: [verification]
+      operationId: applyVerification
+      x-verification: required
+      x-dart: VerificationApi.apply -> VerificationRequestRef
+      description: 'S9 M03 apply (multipart: type_id, note?, evidence[] JPG/PNG/PDF ≤ 5 MB, max 5). Evidence is private.'
+      responses:
+        '201': { $ref: '#/components/responses/VerificationRequestResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/verification-requests/{id}/withdraw:
+    post:
+      tags: [verification]
+      operationId: withdrawVerification
+      x-verification: required
+      x-dart: VerificationApi.withdraw -> VerificationRequestRef
+      description: 'S9 M03 withdraw a pending application.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/VerificationRequestResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /me/verification-evidence/{id}:
+    get:
+      tags: [verification]
+      operationId: verificationEvidence
+      x-verification: required
+      x-dart: VerificationApi.evidenceUrl
+      description: 'S9 M03 own evidence file (owner and authorised reviewers only; never cached).'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearer:
@@ -1304,13 +1852,20 @@ components:
         audience: { type: string, enum: [public, members] }
         cancelled_at: { type: [string, 'null'], format: date-time }
         cancel_reason: { type: [string, 'null'], x-dart: CalendarEvent.cancelReason }
+        floor: { type: [string, 'null'], description: S9 additive }
+        studio: { type: [string, 'null'], description: S9 additive }
+        timezone: { type: string, description: S9 additive (IANA) }
+        category: { type: [object, 'null'], properties: { id: { type: string }, name: { type: string }, color: { type: [string, 'null'] } } }
+        series_id: { type: [string, 'null'] }
+        checkin_enabled: { type: boolean }
+        share_url: { type: [string, 'null'] }
     MemberNotification:
       x-dart: MemberNotification (MemberNotificationDto.fromJson)
       type: object
       required: [id, type, title, body, action, is_read, created_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [system, account, membership, notice] }
+        type: { type: string, enum: [system, account, membership, notice, booking, verification] }
         title: { type: string, maxLength: 120 }
         body: { type: string, maxLength: 2000 }
         action:
@@ -1404,6 +1959,164 @@ components:
               type: object
               additionalProperties: { type: array, items: { type: string } }
             request_id: { type: string }
+    EventCategory:
+      x-dart: EventCategory (EventCategory.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: [string, 'null'] }
+    VerificationType:
+      x-dart: VerificationType (VerificationType.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        requires_evidence: { type: boolean }
+        required_approvals: { type: integer }
+        validity_days: { type: [integer, 'null'] }
+        allow_multiple: { type: boolean }
+    ContentTag:
+      x-dart: ContentTag (ContentTag.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string, description: '#RRGGBB (automatic palette when not chosen)' }
+        count: { type: integer, description: Public items only (absent on content tags) }
+    ContentCard:
+      x-dart: ContentCard (ContentCard.fromJson)
+      type: object
+      description: Public-safe card of an article / event / notice (S9 content registry)
+      properties:
+        content_type: { type: string, enum: [article, event, notice] }
+        content_id: { type: string }
+        title: { type: string }
+        summary: { type: [string, 'null'] }
+        image_url: { type: [string, 'null'] }
+        date: { type: [string, 'null'], format: date-time }
+        location: { type: [string, 'null'] }
+        url: { type: string, description: HTTPS fixed-id URL (M14) }
+        tags: { type: array, items: { $ref: '#/components/schemas/ContentTag' } }
+        bookmarked: { type: boolean, description: Only when signed in }
+    BookingGroup:
+      x-dart: BookingGroup (BookingGroup.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        event_id: { type: string }
+        status: { type: string, enum: [confirmed, waitlisted, cancelled, event_cancelled] }
+        seat_count: { type: integer }
+        contact_name: { type: [string, 'null'] }
+        is_guest: { type: boolean }
+        booked_at: { type: string, format: date-time }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        waitlist_position: { type: [integer, 'null'] }
+        cancel_deadline: { type: string, format: date-time }
+        can_cancel: { type: boolean }
+        attendees:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              status: { type: string, enum: [confirmed, waitlisted, cancelled] }
+              is_me: { type: boolean }
+              checkin_status: { type: [string, 'null'], enum: [checked_in, checked_out, revoked, null] }
+        event:
+          type: object
+          properties:
+            id: { type: string }
+            title: { type: string }
+            starts_at: { type: string, format: date-time }
+            ends_at: { type: string, format: date-time }
+            location: { type: [string, 'null'] }
+            floor: { type: [string, 'null'] }
+            studio: { type: [string, 'null'] }
+            status: { type: string }
+    PrivateEvent:
+      x-dart: PrivateEvent (PrivateEvent.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        notes: { type: [string, 'null'] }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        timezone: { type: string }
+        recurrence: { type: [string, 'null'], enum: [weekly, monthly, null] }
+        recurrence_until: { type: [string, 'null'], format: date }
+        editable: { type: boolean }
+    CheckinAttendee:
+      x-dart: CheckinAttendee (CheckinAttendee.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        booking_status: { type: string }
+        checkin_status: { type: [string, 'null'] }
+        checked_in_at: { type: [string, 'null'], format: date-time }
+        checked_out_at: { type: [string, 'null'], format: date-time }
+    CheckinSettings:
+      x-dart: CheckinSettings (CheckinSettings.fromJson)
+      type: object
+      properties:
+        enabled: { type: boolean }
+        checkout_enabled: { type: boolean }
+        opens_at: { type: string, format: date-time }
+        closes_at: { type: string, format: date-time }
+        open_now: { type: boolean }
+        gps_required: { type: boolean }
+        gps_radius_m: { type: integer }
+    CheckinResult:
+      x-dart: CheckinResult (CheckinResult.fromJson)
+      type: object
+      properties:
+        attendee_id: { type: string }
+        result: { type: string, enum: [checked_in, already_checked_in, already_checked_out, checked_out] }
+        checkin_status: { type: string }
+        checked_in_at: { type: [string, 'null'], format: date-time }
+        checked_out_at: { type: [string, 'null'], format: date-time }
+    BookmarkItem:
+      x-dart: BookmarkItem (BookmarkItem.fromJson)
+      type: object
+      properties:
+        content_type: { type: string, enum: [article, event, notice] }
+        content_id: { type: string }
+        bookmarked_at: { type: [string, 'null'], format: date-time }
+        available: { type: boolean, description: false = placeholder without title or details }
+        item: { oneOf: [{ $ref: '#/components/schemas/ContentCard' }, { type: 'null' }] }
+    VerificationBadge:
+      x-dart: VerificationBadge (VerificationBadge.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: object, properties: { id: { type: string }, name: { type: string } } }
+        state: { type: string, enum: [valid, expired, revoked] }
+        is_public: { type: boolean }
+        granted_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+    MarketingItem:
+      x-dart: MarketingItem (MarketingItem.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        summary: { type: [string, 'null'] }
+        image_url: { type: [string, 'null'] }
+        button_text: { type: string }
+        target:
+          type: object
+          properties:
+            type: { type: string, enum: [article, event, notice, url] }
+            id: { type: [string, 'null'] }
+            url: { type: string }
+            app_path: { type: [string, 'null'] }
+        utm: { type: object, additionalProperties: { type: string } }
   headers:
     RequestId:
       schema: { type: string }
@@ -1566,6 +2279,295 @@ components:
     RateLimited:
       description: '429 RATE_LIMITED / SMS_COOLDOWN (Retry-After) / SMS_PHONE_LIMIT / SMS_GLOBAL_LIMIT'
       headers: { Retry-After: { $ref: '#/components/headers/RetryAfter' } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    EventCategoryList:
+      description: Event categories
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/EventCategory' } }
+    VerificationTypeList:
+      description: Verification types
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/VerificationType' } }
+    TagList:
+      description: Public tags
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/ContentTag' } }
+    SearchPage:
+      description: Search results (20 per page)
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/ContentCard' } }
+              meta: { type: object, properties: { current_page: { type: integer }, last_page: { type: integer }, total: { type: integer }, per_page: { type: integer }, types: { type: array, items: { type: string } } } }
+    ShareLinkResponse:
+      description: Share link
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: ShareLink, properties: { content_type: { type: string }, content_id: { type: string }, shareable: { type: boolean }, url: { type: [string, 'null'] }, is_public: { type: boolean } } }
+    MarketingItemList:
+      description: Campaigns of the placement
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/MarketingItem' } }
+    LinkClickResponse:
+      description: Accepted (recording never blocks)
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { click_id: { type: [string, 'null'], format: uuid } } }
+    LinkOpenResponse:
+      description: Accepted
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { counted: { type: boolean }, click_id: { type: [string, 'null'] } } }
+    BookingGroupResponse:
+      description: Booking group
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/BookingGroup' }
+    BookingGroupList:
+      description: Booking groups
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/BookingGroup' } }
+    BookingGroupPage:
+      description: Booking groups (20 per page)
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/BookingGroup' } }
+              meta: { type: object, properties: { current_page: { type: integer }, last_page: { type: integer }, total: { type: integer } } }
+    MyCalendarResponse:
+      description: My calendar
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: MyCalendar, properties: { events: { type: array, items: { allOf: [{ $ref: '#/components/schemas/CalendarEvent' }, { type: object, properties: { my_booking_status: { type: [string, 'null'] } } }] } }, private_events: { type: array, items: { $ref: '#/components/schemas/PrivateEvent' } }, vip: { type: boolean } } }
+              meta: { type: object, properties: { from: { type: string }, to: { type: string }, truncated: { type: boolean } } }
+    PrivateEventResponse:
+      description: Private entry
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/PrivateEvent' }
+    DeletedResponse:
+      description: Deleted
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { deleted: { type: boolean } } }
+    GoogleStatusResponse:
+      description: Google sync status
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: GoogleCalendarStatus, properties: { configured: { type: boolean }, connected: { type: boolean }, status: { type: string, enum: [none, active, error, disconnected] }, last_synced_at: { type: [string, 'null'] }, failed_items: { type: integer }, last_error: { type: [string, 'null'] } } }
+    GoogleConnectResponse:
+      description: Google consent URL
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { authorization_url: { type: string } } }
+    GoogleDisconnectResponse:
+      description: Disconnected
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { connected: { type: boolean } } }
+    CheckinStatusResponse:
+      description: Check-in status
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: CheckinStatus, properties: { settings: { $ref: '#/components/schemas/CheckinSettings' }, attendees: { type: array, items: { $ref: '#/components/schemas/CheckinAttendee' } } } }
+    CheckinResultList:
+      description: Results per attendee
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/CheckinResult' } }
+    CheckinResultResponse:
+      description: Result
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/CheckinResult' }
+    CheckinPassResponse:
+      description: Attendee passes
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: CheckinPasses, properties: { expires_in: { type: integer }, window_seconds: { type: integer }, passes: { type: array, items: { type: object, properties: { attendee_id: { type: string }, name: { type: string }, token: { type: string } } } } } }
+    CheckinLocationResponse:
+      description: Location QR
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: CheckinLocation, properties: { location: { type: object, properties: { name: { type: string }, has_coordinates: { type: boolean } } }, events: { type: array, items: { type: object, properties: { id: { type: string }, title: { type: string }, starts_at: { type: string }, ends_at: { type: string }, settings: { $ref: '#/components/schemas/CheckinSettings' }, attendees: { type: array, items: { $ref: '#/components/schemas/CheckinAttendee' } } } } } } }
+    CheckinQrResponse:
+      description: Event QR
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: CheckinQr, properties: { event_id: { type: string }, token: { type: string }, expires_in: { type: integer }, window_seconds: { type: integer }, grace_seconds: { type: integer } } }
+    AttendanceResponse:
+      description: Attendance (staff)
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: Attendance, properties: { summary: { type: object, properties: { booked: { type: integer }, checked_in: { type: integer }, absent: { type: integer }, checked_out: { type: integer }, checkout_enabled: { type: boolean } } }, attendees: { type: array, items: { $ref: '#/components/schemas/CheckinAttendee' } } } }
+    BookmarkPage:
+      description: Bookmarks
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/BookmarkItem' } }
+              meta: { type: object, properties: { current_page: { type: integer }, last_page: { type: integer }, total: { type: integer }, count: { type: integer }, limit: { type: integer } } }
+    BookmarkResponse:
+      description: Bookmark state
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { content_type: { type: string }, content_id: { type: string }, bookmarked: { type: boolean }, bookmarked_at: { type: [string, 'null'] } } }
+    ClearBookmarksResponse:
+      description: Cleared
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { deleted: { type: integer } } }
+    MyVerificationsResponse:
+      description: My verifications
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, x-dart: MyVerifications, properties: { requests: { type: array, items: { type: object, properties: { id: { type: string }, status: { type: string, enum: [pending, approved, rejected, withdrawn] }, rejection_reason: { type: [string, 'null'] }, approvals: { type: integer }, required_approvals: { type: integer } } } }, badges: { type: array, items: { $ref: '#/components/schemas/VerificationBadge' } } } }
+    VerificationBadgeResponse:
+      description: Badge
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/VerificationBadge' }
+    VerificationRequestResponse:
+      description: Application
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { id: { type: string }, status: { type: string } } }
+    Binary:
+      description: File content (private, no-store unless public campaign image)
+      content:
+        application/octet-stream:
+          schema: { type: string, format: binary }
+    Conflict:
+      description: '409 business conflict (e.g. BOOKING_FULL, IDEMPOTENCY_CONFLICT, CANCEL_DEADLINE_PASSED, CLAIM_CONFLICT, CHECKIN_CLOSED, WAITLISTED, NOT_CHECKED_IN, CHECKOUT_DISABLED, BOOKMARK_LIMIT_REACHED, REQUEST_PENDING, ALREADY_VERIFIED)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ForbiddenOrVerification:
+      description: '403 VERIFICATION_REQUIRED, or FORBIDDEN / VIP_REQUIRED / ELIGIBILITY_FAILED (missing staff permission, VIP or verification)'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

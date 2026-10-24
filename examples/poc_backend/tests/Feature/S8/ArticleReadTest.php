@@ -76,7 +76,7 @@ it('shares links without bypassing read permission', function () {
     $draft = liveArticle(['status' => Article::STATUS_DRAFT]);
 
     $share = $this->getJson("/api/v1/articles/{$public->id}")->json('data.share_url');
-    expect($share)->toEndWith('/articles/'.$public->slug);
+    expect($share)->toEndWith('/articles/'.$public->id); // S9 M14: fixed-id URL; slug links keep working
 
     $this->get('/articles/'.$public->slug)->assertOk()->assertSee('公開內文');
     $this->get('/articles/'.$members->slug)->assertOk()

@@ -11,6 +11,8 @@ use App\Models\Article;
 use App\Models\ArticleAccessRule;
 use App\Models\ArticleCategory;
 use App\Models\MembershipLevel;
+use App\Models\Tag;
+use App\Services\Content\TagService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -125,6 +127,10 @@ class ArticleResource extends Resource
                 ->getOptionLabelFromRecordUsing(fn (ArticleCategory $record): string => $record->path())
                 ->multiple()->preload()
                 ->required(fn (Get $get): bool => $get('status') === Article::STATUS_PUBLISHED),
+            Select::make('tag_ids')->label('標籤（最多 10 個）')->multiple()->maxItems(Tag::MAX_PER_CONTENT)
+                ->options(fn (): array => Tag::query()->where('is_active', true)->orderBy('sort')->pluck('name', 'id')->all())
+                ->visible(fn (): bool => app(TagService::class)->enabledFor('article'))
+                ->dehydrated(false),
             FileUpload::make('cover_path')->label('封面上傳')->image()->disk('local')->directory('article-covers')
                 ->visibility('private')->maxSize(5120),
             TextInput::make('cover_url')->label('或封面外部網址')->url()->maxLength(2048)
@@ -175,6 +181,18 @@ class ArticleResource extends Resource
         }
         foreach ((array) ($state['access_roles'] ?? []) as $role) {
             $article->accessRules()->create(['type' => ArticleAccessRule::TYPE_ROLE, 'value' => (string) $role]);
+        }
+    }
+
+    /**
+     * S9 M16: max 10 tags enforced again in TagService (backend).
+     *
+     * @param  array<string, mixed>  $state
+     */
+    public static function saveTags(Article $article, array $state): void
+    {
+        if (array_key_exists('tag_ids', $state) && app(TagService::class)->enabledFor('article')) {
+            app(TagService::class)->sync('article', (int) $article->id, array_map('intval', (array) $state['tag_ids']), auth()->user());
         }
     }
 

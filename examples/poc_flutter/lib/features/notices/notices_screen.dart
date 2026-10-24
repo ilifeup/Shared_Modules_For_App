@@ -70,10 +70,7 @@ class NoticesScreen extends ConsumerWidget {
                     ? ListView(
                         padding: const EdgeInsets.all(16),
                         children: const [
-                          StatusBox(
-                            label: '【目前沒有公告】',
-                            detail: '有新公告時會顯示在這裡。',
-                          ),
+                          StatusBox(label: '【目前沒有公告】', detail: '有新公告時會顯示在這裡。'),
                         ],
                       )
                     : ListView.separated(

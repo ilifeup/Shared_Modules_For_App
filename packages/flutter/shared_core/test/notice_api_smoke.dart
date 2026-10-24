@@ -75,7 +75,9 @@ Future<void> main() async {
     'status': 'published',
     'published_at': '2026-10-23T00:00:00Z',
   });
-  check(!legacy.isPinned && legacy.audience == 'members' && legacy.isRead == null);
+  check(
+    !legacy.isPinned && legacy.audience == 'members' && legacy.isRead == null,
+  );
   final ended = Notice(
     id: 'x',
     title: 'x',

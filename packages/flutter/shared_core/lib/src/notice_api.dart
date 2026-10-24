@@ -46,13 +46,15 @@ class NoticeApi {
     final json = await transport.request('GET', '/api/v1/notice-categories');
     return ApiEnvelope<List<NoticeCategory>>.fromJson(json, (data) {
       if (data is! List) throw const FormatException('Expected categories');
-      return data.map((item) {
-        final map = item as Map<String, dynamic>;
-        return NoticeCategory(
-          id: map['id'].toString(),
-          name: map['name'] as String,
-        );
-      }).toList(growable: false);
+      return data
+          .map((item) {
+            final map = item as Map<String, dynamic>;
+            return NoticeCategory(
+              id: map['id'].toString(),
+              name: map['name'] as String,
+            );
+          })
+          .toList(growable: false);
     }).data;
   }
 

@@ -160,7 +160,10 @@ class FakeBackend implements ApiTransport {
         }
         return {
           'data': [_notice('1', '第一則公告', pinned: true)],
-          'meta': {'current_page': 1, 'unread_count': readIds.length == 1 ? 0 : 1},
+          'meta': {
+            'current_page': 1,
+            'unread_count': readIds.length == 1 ? 0 : 1,
+          },
         };
       case 'GET /api/v1/notices/1':
         return {'data': _notice('1', '第一則公告')};

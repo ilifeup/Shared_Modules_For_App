@@ -145,3 +145,52 @@
 - 尚未執行測試或修改功能程式。
 
 **第二輪結論：** 目前至少有兩項可定位的 S9 功能差距：M08 候補／自動遞補與 M08 訪客報名；另有一項高風險重疊：S8 文章精選／分類／分享／計數與 M14/M15/M16/M17/M19 的界線。這些屬技術整合工作，**不需重新詢問已決定的業務規則**。
+
+## 10. 第三輪：M08／M09／M11 場次與參加者整合審查（2026-10-25）
+
+### 10.1 現有程式證據（Shared `main`）
+
+- `examples/poc_backend/app/Models/CalendarEvent.php`：`draft/published/cancelled`；`starts_at/ends_at`；`booking_capacity`、`booking_opens_at`、`booking_closes_at`；`bookings()` 連至 `EventBooking`；尚未在本檔確認重複活動場次模型。
+- `examples/poc_backend/app/Models/EventBooking.php`：`calendar_event_id`、`user_id`；狀態僅 `confirmed/cancelled`，無每位實際參加者的獨立關聯欄位。
+- `examples/poc_backend/app/Services/BookingService.php`：預約使用 DB transaction + event `lockForUpdate`；同會員重複有效預約拒絕；取消保留歷史及 `AuditEvent`。候補 FIFO／多人整組遞補未在此服務中實作。
+- `examples/poc_backend/app/Http/Controllers/Api/BookingController.php`：現有 `store` 直接以 `$request->user()` 預約；`mine` 只列會員本人；`cancel` 只允許取消本人預約。
+- `examples/poc_backend/app/Http/Controllers/Api/CalendarEventController.php`：支援 `/events?from=&to=`、`/public/events`；查詢半開區間、62 天上限及 200 筆上限；沒有在已讀控制器看到重複活動單次例外或 Google 同步 API。
+
+### 10.2 已確認的 S9 規格對應
+
+| 跨模組主題 | 已確認決策 | 既有實作差距／必要設計問題 | 判讀 |
+|---|---|---|---|
+| 重複活動場次 | M09-D03/D09/D19：每週、每月；單次例外；修改單次／未來／全部 | 現有 `CalendarEvent` 以單一開始／結束時間為主；需要「系列、實際場次、例外」的穩定識別，避免用日期字串當唯一識別 | **缺口，待設計** |
+| 多人代報名 | M08-D02/D05/D07；M11-D03 | `EventBooking` 只有 `user_id`，缺每位實際參加者的獨立簽到身分 | **缺口，待設計** |
+| 訪客報名／簽到 | M08-D06/D18/D24；M11-D02/D11 | 現有 `BookingController::store` 依賴登入會員；需新增訪客聯絡驗證與註冊後安全綁定，不得直接放寬現有會員 API | **缺口，待設計** |
+| 候補 FIFO | M08-D03/D08/D09/D16/D17/D22；M11-D30 | 現有只有 confirmed/cancelled；須以報名群組大小、嚴格 FIFO、暫時故障不得跳號及轉正後才可簽到設計 | **缺口，待設計** |
+| 簽到唯一性 | M11-D05/D14/D27 | 應以「實際場次 + 實際參加者」為邏輯唯一範圍；更正／撤銷需稽核；現有簽到 Schema 尚未核對 | **設計推論，非既有程式** |
+| Google 日曆同步 | M09-D04/D06/D07/D12/D16/D17/D24/D25 | 同一報名會員、同一實際場次只同步一筆；須保存 Google 對應事件 ID 與同步狀態，並處理取消／例外 | **缺口，待設計** |
+| 會員資格與隱私 | M09-D05/D08/D14/D15/D22；M08-D19；M11-D29 | VIP 私人行程與一般活動權限分離；資格失效不得自動取消既有報名；出席明細僅授權者可讀 | **需 Policy 核對** |
+
+### 10.3 建議的最小資料責任邊界（提案，非已核准 Schema）
+
+- **M09** 主責活動系列、場次、時間、例外、Google 日曆同步對應；不可讓 M08/M11 各自複製一份場次主資料。
+- **M08** 主責報名單、實際參加者、候補佇列、資格／名額、報名狀態；重用現有 `BookingService` 的鎖定與稽核原則。
+- **M11** 主責每位參加者的簽到／簽退／更正與稽核，透過 M08 查詢「是否已正式報名」、透過 M09 查詢「實際場次」；不另建活動或報名主資料。
+- Google 同步需維持 M09-D25：同會員同場次只建立一筆 Google 事件，即使有多人參加者。
+- 以上是實作切分建議，**不得直接當成使用者已核准的具體表名、外鍵、API 路徑**。
+
+### 10.4 需注意的技術風險
+
+1. **跨 App 外鍵限制（INT-D02/D07）**：App 內部現有外鍵可保留；不可把不同 App 的資料庫用外鍵直接相連。
+2. **相容性（INT-D10）**：既有 `/api/v1/events`、`/events/{id}/bookings` 不能因引入場次而直接破壞現有回應。
+3. **併發一致性**：取消、候補遞補、管理員補報名及簽到資格檢查必須共用權威報名狀態，避免超額或候補未轉正就簽到。
+4. **權限與資料保護**：訪客聯絡資訊不可用可猜測的報名 ID 查閱；QR/GPS 簽到不得以 Flutter UI 隱藏代替後端驗證。
+5. **同步非核心失敗降級（INT-D11）**：Google 同步失敗不應讓已成功的報名交易回滾；需可追蹤重試，但不引入大型訊息平台。
+6. **Migration 仍未核實**：尚未定位既有 S5/S6 Migration 正確檔名，不得假稱已完成索引／回滾審查。
+
+### 10.5 後續唯讀核對
+
+- [ ] 透過 GitHub 樹／PR 檔案清單定位 S5/S6 Migration 正確路徑，核對表與索引。
+- [ ] 對照 Tiandi `main` 的同名 Model、Service、Controller，確認是否有程式漂移。
+- [ ] 查驗 S8 未合併 PR 的權限與文章分享路由，對照 M14/M15/M19。
+- [ ] 盤點兩 Repo 全部 CI／部署 workflow 及當前 PR checks。
+- [ ] 彙整具體 Schema／API 增量提案，僅將真正的規格衝突交由使用者裁決。
+
+本輪僅唯讀審查與文件更新，未修改程式、合併或部署。

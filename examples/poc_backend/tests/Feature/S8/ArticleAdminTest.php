@@ -31,7 +31,7 @@ it('creates the S8 tables, columns and permissions', function () {
         ->and(Schema::hasColumns('articles', ['created_by', 'author_name', 'cover_path', 'cover_url', 'unpublish_at', 'deleted_at', 'featured_order']))->toBeTrue()
         ->and(Role::findByName(User::ADMIN_ROLE, 'web')->hasPermissionTo('articles.manage'))->toBeTrue()
         ->and(Role::findByName(User::ADMIN_ROLE, 'web')->hasPermissionTo('comments.moderate'))->toBeTrue()
-        ->and(User::factory()->create()->show_in_like_list)->toBeFalse();
+        ->and(User::factory()->create()->refresh()->show_in_like_list)->toBeFalse();
 });
 
 // G02
@@ -105,14 +105,14 @@ it('allows three category levels at most and blocks deleting used categories', f
     $empty->delete();
     expect(ArticleCategory::query()->find($empty->id))->toBeNull();
 
-    $this->actingAs(makeAdmin());
+    $this->actingAs(makeAdmin(), 'web');
     Livewire::test(ListArticleCategories::class)->callTableAction('deleteCategory', $l2)->assertNotified('無法刪除');
     expect(ArticleCategory::query()->find($l2->id))->not->toBeNull();
 });
 
 it('lets a draft have no category but requires one to publish', function () {
     $admin = makeAdmin(['name' => '管理者']);
-    $this->actingAs($admin);
+    $this->actingAs($admin, 'web');
 
     Livewire::test(CreateArticle::class)
         ->fillForm(['title' => '草稿', 'body_html' => '<p>x</p>', 'status' => Article::STATUS_DRAFT])
@@ -137,7 +137,7 @@ it('lets a draft have no category but requires one to publish', function () {
 
 it('saves restricted visibility rules and a custom display author', function () {
     $admin = makeAdmin();
-    $this->actingAs($admin);
+    $this->actingAs($admin, 'web');
     $category = articleCategory();
 
     Livewire::test(CreateArticle::class)
@@ -180,7 +180,7 @@ it('publishes on schedule, takes down automatically and withdraws', function () 
     expect(fn () => liveArticle(['published_at' => now(), 'unpublish_at' => now()->subHour()]))->toThrow(ValidationException::class);
 
     $article = liveArticle(['title' => '撤回']);
-    $this->actingAs(makeAdmin());
+    $this->actingAs(makeAdmin(), 'web');
     Livewire::test(ListArticles::class)->callTableAction('withdraw', $article);
     expect($article->refresh()->status)->toBe(Article::STATUS_WITHDRAWN);
     $this->getJson("/api/v1/articles/{$article->id}")->assertNotFound();
@@ -195,7 +195,7 @@ it('publishes on schedule, takes down automatically and withdraws', function () 
 // G06
 it('moves articles to the trash, restores them and deletes them permanently', function () {
     $article = liveArticle();
-    $this->actingAs(makeAdmin());
+    $this->actingAs(makeAdmin(), 'web');
 
     Livewire::test(ListArticles::class)->callTableAction('delete', $article);
     expect($article->refresh()->trashed())->toBeTrue();
@@ -215,7 +215,7 @@ it('shows likes with member id and real name to admins only', function () {
     $member = articleMember(['name' => '真實姓名甲', 'nickname' => '小甲']);
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/articles/{$article->id}/like")->assertOk();
 
-    $this->actingAs(makeAdmin());
+    $this->actingAs(makeAdmin(), 'web');
     Livewire::test(LikesRelationManager::class, ['ownerRecord' => $article, 'pageClass' => EditArticle::class])
         ->assertSee('真實姓名甲')
         ->assertSee((string) $member->id);
@@ -224,7 +224,7 @@ it('shows likes with member id and real name to admins only', function () {
 it('forbids the article admin without the permission', function () {
     $admin = makeAdmin();
     Role::findByName(User::ADMIN_ROLE, 'web')->revokePermissionTo('articles.manage');
-    $this->actingAs($admin->refresh());
+    $this->actingAs($admin->refresh(), 'web');
 
     $this->get('/admin/articles')->assertForbidden();
     $this->get('/admin/article-categories')->assertForbidden();

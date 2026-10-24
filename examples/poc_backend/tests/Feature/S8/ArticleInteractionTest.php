@@ -98,7 +98,7 @@ it('requires a nickname, rejects blacklisted comments with a warning and publish
         ->assertJsonPath('data.nickname', '留言者')
         ->assertJsonPath('data.is_mine', true);
 
-    $this->getJson("/api/v1/articles/{$article->id}/comments")
+    $this->actingAs(articleMember(), 'sanctum')->getJson("/api/v1/articles/{$article->id}/comments")
         ->assertJsonPath('data.0.id', $created->json('data.id'))
         ->assertJsonPath('data.0.is_mine', false)
         ->assertDontSee($member->name)

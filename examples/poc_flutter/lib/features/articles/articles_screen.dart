@@ -62,9 +62,9 @@ class ArticlesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('文章')),
       body: RefreshIndicator(
-        onRefresh: () async {
+        onRefresh: () {
           ref.invalidate(featuredArticlesProvider);
-          await ref.refresh(articlesProvider.future);
+          return ref.refresh(articlesProvider.future);
         },
         child: ListView(
           children: [

@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\Articles\Pages;
 
 use App\Filament\Resources\Articles\ArticleResource;
+use App\Models\Article;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 
 class CreateArticle extends CreateRecord
 {
@@ -11,14 +13,15 @@ class CreateArticle extends CreateRecord
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
      */
-    protected function mutateFormDataBeforeCreate(array $data): array
+    protected function handleRecordCreation(array $data): Model
     {
-        // The real creator is kept; author_name is only the displayed name.
-        $data['created_by'] = auth()->id();
+        // The real creator is kept (not mass-assignable); author_name is only the displayed name.
+        $article = new Article($data);
+        $article->created_by = auth()->id();
+        $article->save();
 
-        return $data;
+        return $article;
     }
 
     protected function afterCreate(): void

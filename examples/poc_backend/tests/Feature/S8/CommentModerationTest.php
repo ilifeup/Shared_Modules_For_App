@@ -265,7 +265,7 @@ it('lets admins restore, keep hidden, delete or close; a closed case cannot be r
     $case = CommentModerationCase::query()->sole();
 
     Filament::setCurrentPanel(Filament::getPanel('admin'));
-    $this->actingAs($this->admin);
+    $this->actingAs($this->admin, 'web');
     $this->get("/admin/comment-moderation-cases/{$case->id}/edit")->assertOk()->assertSee('被檢舉的留言');
     Livewire::test(EditCommentModerationCase::class, ['record' => $case->getRouteKey()])->callAction($action);
 
@@ -288,7 +288,7 @@ it('forbids moderation pages without the permission', function () {
     $case = CommentModerationCase::query()->create(['article_comment_id' => reportedComment()->id, 'round' => 1, 'active' => 1, 'report_count' => 0, 'ai_status' => 'none']);
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     User::query()->find($this->admin->id)->roles->first()->revokePermissionTo('comments.moderate');
-    $this->actingAs($this->admin->refresh());
+    $this->actingAs($this->admin->refresh(), 'web');
 
     $this->get("/admin/comment-moderation-cases/{$case->id}/edit")->assertForbidden();
     $this->get('/admin/article-comments')->assertForbidden();

@@ -1,32 +1,11 @@
+import 'package:eachcore_shared_ui/eachcore_shared_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../core/network/api_exception.dart';
 
-/// Bordered message with a text label, so state is never shown by color only.
-class StatusBox extends StatelessWidget {
-  const StatusBox({super.key, required this.label, required this.detail});
-
-  final String label;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(border: Border.all()),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(detail),
-        ],
-      ),
-    );
-  }
-}
+// S7: StatusBox, LoadingView, ErrorRetry, LabeledTextField and showFeedback
+// come from the shared UI package.
+export 'package:eachcore_shared_ui/eachcore_shared_ui.dart';
 
 /// Shows an API error with its code and request id for support.
 class ErrorBox extends StatelessWidget {

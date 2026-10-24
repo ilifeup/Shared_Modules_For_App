@@ -88,28 +88,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
-  Widget _field(
-    String key,
-    TextEditingController controller,
-    String label, {
-    bool obscure = false,
-    TextInputType? keyboard,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        key: Key(key),
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboard,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -120,21 +98,35 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           if (_localError != null)
             StatusBox(label: '【請修正】', detail: _localError!),
           if (_error != null) ErrorBox(error: _error!),
-          _field('register-name', _name, '姓名（必填）'),
-          _field(
-            'register-email',
-            _email,
-            'Email（必填）',
-            keyboard: TextInputType.emailAddress,
+          LabeledTextField(
+            fieldKey: const Key('register-name'),
+            controller: _name,
+            label: '姓名（必填）',
           ),
-          _field(
-            'register-phone',
-            _phone,
-            '手機號碼（必填，例如 0912345678）',
-            keyboard: TextInputType.phone,
+          LabeledTextField(
+            fieldKey: const Key('register-email'),
+            controller: _email,
+            label: 'Email（必填）',
+            keyboardType: TextInputType.emailAddress,
           ),
-          _field('register-password', _password, '密碼（至少 8 字元）', obscure: true),
-          _field('register-confirm', _confirmation, '再次輸入密碼', obscure: true),
+          LabeledTextField(
+            fieldKey: const Key('register-phone'),
+            controller: _phone,
+            label: '手機號碼（必填，例如 0912345678）',
+            keyboardType: TextInputType.phone,
+          ),
+          LabeledTextField(
+            fieldKey: const Key('register-password'),
+            controller: _password,
+            label: '密碼（至少 8 字元）',
+            obscureText: true,
+          ),
+          LabeledTextField(
+            fieldKey: const Key('register-confirm'),
+            controller: _confirmation,
+            label: '再次輸入密碼',
+            obscureText: true,
+          ),
           FilledButton(
             key: const Key('register-submit'),
             onPressed: _busy ? null : _submit,

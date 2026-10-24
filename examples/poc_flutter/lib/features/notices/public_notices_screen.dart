@@ -15,7 +15,7 @@ class PublicNoticesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('公開公告')),
       body: notices.when(
-        loading: () => const Center(child: Text('【載入中】')),
+        loading: () => const LoadingView(),
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [ErrorBox(error: error)],

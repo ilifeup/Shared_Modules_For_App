@@ -55,15 +55,11 @@ class _VerifyPhoneScreenState extends ConsumerState<VerifyPhoneScreen> {
       await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
       context.go('/');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('手機驗證成功')));
+      showFeedback(ScaffoldMessenger.of(context), '手機驗證成功');
       return;
     }
     context.go('/login');
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('手機驗證成功，請登入')));
+    showFeedback(ScaffoldMessenger.of(context), '手機驗證成功，請登入');
   }
 
   Future<void> _resend() {

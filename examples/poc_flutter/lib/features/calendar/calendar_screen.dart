@@ -71,13 +71,12 @@ class CalendarScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           ...events.when<List<Widget>>(
-            loading: () => const [Center(child: Text('【載入中】'))],
+            loading: () => const [LoadingView()],
             error: (error, _) => [
-              ErrorBox(error: error),
-              OutlinedButton(
+              ErrorRetry(
                 key: const Key('calendar-retry'),
-                onPressed: () => ref.invalidate(monthEventsProvider(month)),
-                child: const Text('重試'),
+                error: ErrorBox(error: error),
+                onRetry: () => ref.invalidate(monthEventsProvider(month)),
               ),
             ],
             data: (range) {

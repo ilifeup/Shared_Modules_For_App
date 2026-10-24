@@ -75,10 +75,23 @@ jobs:
       - name: Widget and unit tests
         run: flutter test --exclude-tags e2e 2>&1 | tee "$RUNNER_TEMP/test.log"
 
+      - name: Shared UI package (format, analyze, widget tests)
+        working-directory: packages/flutter/shared_ui
+        run: |
+          flutter pub get
+          dart format lib test
+          git diff -- . > "$RUNNER_TEMP/shared_ui_format.diff"
+          if [ -s "$RUNNER_TEMP/shared_ui_format.diff" ]; then
+            bash ../../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/shared_ui_format.diff" "dart format diff (shared_ui)" 400
+            exit 1
+          fi
+          flutter analyze
+          flutter test 2>&1 | tee "$RUNNER_TEMP/shared_ui.log"
+
       - name: Publish failure details as annotations
         if: failure()
         run: |
-          for f in analyze test; do
+          for f in analyze test shared_ui; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 150
           done
           true

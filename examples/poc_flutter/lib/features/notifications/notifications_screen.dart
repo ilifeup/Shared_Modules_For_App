@@ -55,14 +55,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(notificationsProvider.future),
         child: page.when(
-          loading: () => const Center(child: Text('【載入中】')),
+          loading: () => const LoadingView(),
           error: (error, _) => ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ErrorBox(error: error),
-              OutlinedButton(
-                onPressed: () => ref.invalidate(notificationsProvider),
-                child: const Text('重試'),
+              ErrorRetry(
+                error: ErrorBox(error: error),
+                onRetry: () => ref.invalidate(notificationsProvider),
               ),
             ],
           ),

@@ -104,6 +104,13 @@ packages:
       relative: true
     source: path
     version: "0.0.1"
+  eachcore_shared_ui:
+    dependency: "direct main"
+    description:
+      path: "../../packages/flutter/shared_ui"
+      relative: true
+    source: path
+    version: "0.0.1"
   fake_async:
     dependency: transitive
     description:

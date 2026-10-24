@@ -10,6 +10,8 @@ dependencies:
   dio: ^5.11.1
   eachcore_shared_core:
     path: ../../packages/flutter/shared_core
+  eachcore_shared_ui:
+    path: ../../packages/flutter/shared_ui
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3

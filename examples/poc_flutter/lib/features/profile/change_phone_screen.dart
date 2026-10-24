@@ -74,7 +74,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       final profile = await ref
           .read(profileApiProvider)
           .confirmPhoneChange(_phone.text, _code.text);
-      messenger.showSnackBar(const SnackBar(content: Text('手機號碼已驗證並更新')));
+      showFeedback(messenger, '手機號碼已驗證並更新');
       // Leave this screen before publishing the new profile: the session change
       // refreshes the router, which would otherwise restore this route.
       if (profile.verificationSatisfied) {

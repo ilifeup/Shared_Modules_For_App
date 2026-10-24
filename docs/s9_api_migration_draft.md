@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.2｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.3｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -260,3 +260,48 @@
 5. 完整 migration up/down、測試資料集、併發壓力測試及部署回退驗證。
 
 **本節是 v0.2 候選資料字典與 JSON 範例，不是已核准 API/Migration，更不是開發授權。**
+
+## 12. v0.3 S5／S6 原始碼核對與安全遷移提案（2026-10-25）
+
+### 12.1 已從 Shared main 原始碼確認
+
+| 檔案 | 現況 | 對 S9 的影響 |
+|---|---|---|
+| `examples/poc_backend/database/migrations/2026_10_29_000100_s5_calendar_events.php` | `calendar_events.id`、nullable `location`、UTC 起訖、draft/published/cancelled；取消保留原列與穩定 ID | 不得刪掉重建活動而造成舊預約失聯；floor/studio 只能增量新增 |
+| `examples/poc_backend/database/migrations/2026_10_30_000100_s6_event_bookings.php` | `event_bookings.calendar_event_id` FK restrictOnDelete、`user_id` cascadeOnDelete、`active` 1/NULL、unique(event,user,active) | 不能直接把 FK 改指新場次；舊唯一索引保留，須兼顧舊會員單人預約 |
+| `examples/poc_backend/app/Services/BookingService.php` | `book()` 鎖活動 row；`cancel()` 鎖 booking row；`confirmedCount()` 計 confirmed rows；稽核在 DB transaction 後 | S9 要統一鎖順序，容量按 attendee 席次，確保取消與候補遞補同一交易一致性 |
+
+### 12.2 兩種映射方案比較（均未核准）
+
+**方案 A（本輪建議，最小相容）**：保留 `calendar_events` 作為**每個實際場次的權威表**；新增 `event_series`（重複規則），對 `calendar_events` 增量 `series_id`、`original_start_at`（例外識別）、nullable `floor`、nullable `studio`、`revision` 等必要欄位。既有 `event_bookings.calendar_event_id` 完全不變；M08/M11 的新表同樣以 `calendar_event_id` 指向每次活動。這避免雙重場次權威及舊資料回填，但系列展開、未來場次生成與單次例外要以交易及唯一鍵防重複。
+
+**方案 B（v0.2 原先假設）**：新增 `event_occurrences` 為權威場次，建立 `calendar_events` 與 occurrence 一對一映射，逐步讓新 M08/M11 指向 occurrence。此法引入雙 ID、同步與 backfill，須額外維護舊 booking 對應、API 相容與雙表一致性，風險較高。
+
+**推薦 A 的理由**：既有 S5 註解已明確要求取消保留 ID 供 S6 關聯；保留舊 ID 可直接滿足 L01 歷史保護，降低 S9 一次整合時的 migration 風險。**但 A 尚未獲使用者核准，不能直接改程式。**
+
+### 12.3 若採方案 A，v0.2 草案須同步修正的地方
+
+- 第 1、8 節 `event_occurrences` 改成 `calendar_events` 增量；所有候選 `occurrence_id` FK 改為 `calendar_event_id`，對外可使用 `occurrence` 語意但需明確標示其 ID 即 `calendar_events.id`。
+- M09 場地的 `location` 沿用現有欄位，只新增 `floor`、`studio` nullable；不得建立第二套場地主檔。
+- `event_series` 需要週／月規則、時區、結束條件與可識別單次例外；展開場次的 `UNIQUE(series_id,original_start_at)` 是**候選**，避免重跑生成重複場次。
+- 既有單次活動的 `series_id` 維持 NULL，無須大量 backfill；舊 booking 原 FK 完全不動。
+- M08 新 group/attendee/waitlist 與舊 `event_bookings` 如何一對一或一對多對應，仍需設計，不得讓新舊預約流程各自計數造成超賣。
+- API 候選 `/occurrences/{id}` 可在 Laravel route 解析至 `calendar_events.id`；既有 `/events/{id}` 路徑不得破壞。
+- 不得在確認真實 DB、S8 合併狀態、回退策略前對任何 App 執行 Migration。
+
+### 12.4 針對方案 A 的資料驗證 Gate
+
+- [ ] S5 舊活動數與 S6 舊預約數在 migration 前後一致，原 FK 全數有效。
+- [ ] 舊預約可繼續透過原 API 查詢、取消，並沿用唯一索引保護。
+- [ ] 單次活動 `series_id=NULL`；週／月活動各場次 `calendar_events.id` 不變且生成不重複。
+- [ ] 同場次多人報名按實際 attendee 計席次，舊單人報名與新群組報名合計不超容量。
+- [ ] 同場次取消、遞補、活動取消與改期併發不超賣、不錯誤遞補。
+- [ ] 原 `location` 值保留；`floor`、`studio` 均可空且不影響原預約唯一索引。
+- [ ] 已開始／已結束場次與單次例外符合 L01 A，不因重新展開系列被覆寫。
+- [ ] 測試 rollback 不刪舊活動、舊預約或已發生的出席稽核。
+
+### 12.5 本輪待使用者決策
+
+**S9-L05（尚未核准）**：A＝沿用 `calendar_events` 作為實際場次權威，新增 `event_series` 與必要欄位；B＝另建 `event_occurrences` 並處理雙 ID/backfill。建議 A。
+
+本輪僅修改規劃文件；不修改 Laravel、Migration、OpenAPI、CI、PR 或部署。

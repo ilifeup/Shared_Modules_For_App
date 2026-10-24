@@ -203,7 +203,9 @@ class FakeAvatars implements AvatarRepository {
   Future<Uint8List?> fetch() async => null;
 
   @override
-  Future<void> delete() async => backend.hasAvatar = false;
+  Future<void> delete() async {
+    backend.hasAvatar = false;
+  }
 }
 
 Future<void> pumpApp(
@@ -561,7 +563,10 @@ void main() {
     expect(backend.calls, contains('POST /api/v1/me/phone/send-otp'));
     expect(backend.phone, isNull);
 
-    await tester.enterText(find.byKey(const Key('change-phone-code')), '123456');
+    await tester.enterText(
+      find.byKey(const Key('change-phone-code')),
+      '123456',
+    );
     await tester.tap(find.byKey(const Key('change-phone-confirm')));
     await tester.pumpAndSettle();
 

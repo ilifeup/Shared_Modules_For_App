@@ -103,7 +103,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           backgroundImage: bytes.value != null
               ? MemoryImage(bytes.value!)
               : null,
-          child: bytes.value == null ? const Icon(Icons.person, size: 36) : null,
+          child: bytes.value == null
+              ? const Icon(Icons.person, size: 36)
+              : null,
         ),
         const SizedBox(width: 16),
         Expanded(

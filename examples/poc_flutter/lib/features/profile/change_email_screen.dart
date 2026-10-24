@@ -48,9 +48,9 @@ class _ChangeEmailScreenState extends ConsumerState<ChangeEmailScreen> {
           .changeEmail(_email.text, _password.text);
       ref.read(authControllerProvider.notifier).updateProfile(profile);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email 已更新，請到信箱點擊驗證連結')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email 已更新，請到信箱點擊驗證連結')));
       // Still blocked by the verification policy: show the gate; otherwise go back.
       if (!profile.verificationSatisfied) {
         context.go('/verify-account');

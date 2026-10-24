@@ -234,6 +234,21 @@ Future<void> pumpApp(
   await tester.pumpAndSettle();
 }
 
+/// Scrolls the page's main ListView until [key] is built and visible.
+Future<void> scrollTo(WidgetTester tester, String key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(Key(key)),
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> scrollToTop(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView).first, const Offset(0, 2000));
+  await tester.pumpAndSettle();
+}
+
 Future<void> login(WidgetTester tester) async {
   await tester.enterText(
     find.byKey(const Key('login-identifier')),
@@ -312,20 +327,23 @@ void main() {
     await tester.tap(find.byKey(const Key('open-profile')));
     await tester.pumpAndSettle();
 
+    await scrollTo(tester, 'profile-save');
     await tester.enterText(find.byKey(const Key('profile-display-name')), '  ');
-    await tester.ensureVisible(find.byKey(const Key('profile-save')));
     await tester.tap(find.byKey(const Key('profile-save')));
     await tester.pumpAndSettle();
+    await scrollToTop(tester);
     expect(find.textContaining('【請修正】'), findsOneWidget);
     expect(backend.calls, isNot(contains('PATCH /api/v1/me/profile')));
 
+    await scrollTo(tester, 'profile-save');
     await tester.enterText(
       find.byKey(const Key('profile-display-name')),
       '新名字',
     );
-    await tester.ensureVisible(find.byKey(const Key('profile-save')));
     await tester.tap(find.byKey(const Key('profile-save')));
     await tester.pumpAndSettle();
+    await scrollToTop(tester);
+    expect(find.textContaining('【錯誤】'), findsNothing);
     expect(find.textContaining('【已儲存】'), findsOneWidget);
     expect(backend.displayName, '新名字');
   });
@@ -339,7 +357,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-profile')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('logout')));
+    await scrollTo(tester, 'logout');
     await tester.tap(find.byKey(const Key('logout')));
     await tester.pumpAndSettle();
 
@@ -571,6 +589,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(backend.phone, '+886922333444');
+    expect(find.textContaining('【錯誤】'), findsNothing);
+    expect(find.text('手機號碼設定'), findsNothing, reason: 'back on profile');
+    expect(find.text('個人資料'), findsOneWidget);
     expect(find.text('手機：+886922333444'), findsOneWidget);
     expect(find.text('【請補齊資料】'), findsNothing);
   });

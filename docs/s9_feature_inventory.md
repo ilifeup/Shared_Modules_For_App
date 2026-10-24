@@ -105,3 +105,43 @@
 ---
 
 本檔是**持續更新的工作對照表**，不是開發完成證明或部署授權。
+
+## 9. 第二輪實碼核對：M08/M09 與 S8 資料模型（2026-10-25）
+
+### 9.1 M08/M09：已有實作與 S9 差距
+
+| 功能 | 現有實碼證據（Shared main） | S9 決策／缺口 |
+|---|---|---|
+| 活動基本狀態 | `CalendarEvent.php` 定義 `draft/published/cancelled`；取消活動保留紀錄；公開查詢只列 published/cancelled | S9 M09 擴充仍須逐條對照；不能重新建立另一張活動主表 |
+| 活動時間 | `CalendarEvent.php` 使用 UTC 儲存 `starts_at/ends_at`，查詢以半開區間判定重疊；最大 62 天、200 筆 | 新日曆查詢與時區／跨日規格須保留相容性 |
+| 活動與預約關聯 | `CalendarEvent::bookings()`；`EventBooking.calendar_event_id` 與 `user_id` | M11 報到應重用活動／預約 ID，避免重複報名資料 |
+| 名額與重複報名 | `BookingService::book()` 使用 DB transaction、`lockForUpdate()`；檢查重複確認預約；程式註解指出 active 唯一索引 | 現有「每會員每活動一筆有效預約」不等於 S9 M08-D05/D06/D07 的多人／訪客／代報名 |
+| 預約狀態 | `EventBooking.php` 僅 `confirmed/cancelled`；取消後 `active=null`，保留歷史 | **確定的功能差距：** S9 M08-D03/D08/D09 已決定候補及自動遞補，但現有模型無 `waitlisted` 狀態 |
+| 資格與可見性 | `BookingController.php` 與 `routes/api.php` 使用 Sanctum／驗證會員與可見活動檢查 | **確定的介面差距：** S9 M08-D06 支援訪客報名，但現有報名 API 在 `auth:sanctum` + `member.verified` 群組內 |
+| 取消 | `BookingService::cancel()` 在 transaction 中更新狀態，寫入 `AuditEvent` | S9 候補遞補必須掛接取消後的安全事件／服務邊界；不能破壞現有審計 |
+
+**設計含意（待核准，尚非實作）：** S9 M08 應以既有 `calendar_events`／`event_bookings` 進行向後相容擴充，將候補、訪客與多參加者視為增量能力。實際 Migration 欄位與索引須核對既有 Migration 後才能定稿。
+
+### 9.2 S8 M05：對 M14/M15/M16/M19 的實際重用證據
+
+已讀取 Shared 未合併分支 `feat/s8-m05-articles` 的 `examples/poc_backend/database/migrations/2026_10_31_000100_s8_articles.php`，確認包含：
+
+| 已存在於 S8 PR 的資料結構 | S9 相關模組 | 整合風險／建議 |
+|---|---|---|
+| `articles`：`slug`、`status`、`published_at`、`unpublish_at`、`visibility`、`is_featured`、`featured_order` | M14、M15、M19 | 文章路由與精選欄位已存在於 PR；M15 不應直接把 `is_featured` 當成完整行銷排程引擎；M14 應重用文章 slug／權限判斷 |
+| `article_categories` + `article_article_category` | M16、M19 | 已有最多三層文章分類；**分類不等於 Tag Intelligence**，不得另建重複的文章分類系統 |
+| `article_access_rules`（level/role）與文章 `visibility` | M14、M15、M19 | 搜尋結果、分享連結、行銷點擊都須再次套用內容可見性／權限，不得因入口公開而繞過 |
+| `article_likes`、`article_comments`、`comment_reports`、`comment_moderation_cases` | M17、M19 | 按讚、留言、檢舉不是 URL 點擊事件；不可將既有互動數誤作 M17 統計 |
+| `users.nickname`、`users.show_in_like_list` | M03、M19 | S8 新增公開暱稱／隱私設定，S9 不應重複加欄位 |
+| `articles.view_count`、`like_count` | M17 | 文章檢視數與 M17 來源歸因／連結點擊不同；需要清楚事件來源與去重界線 |
+
+**分支界線：** 上述 S8 Schema 只在未合併 PR 中確認，不得標示為 main 已上線。若 S8 先合併，必須重新比對合併後 HEAD。
+
+### 9.3 尚未完成
+
+- 尚未核對 M08/M09 **Migration 全欄位、索引及回滾**；不能宣稱 Schema 完整相容。
+- 尚未逐行審查 S8 文章 Controller、Policy、Flutter 路由、實際權限測試。
+- 尚未完成全部 GitHub Actions workflow、分支保護、Secrets／部署目標盤點；目前不能證明自動合併部署已就緒。
+- 尚未執行測試或修改功能程式。
+
+**第二輪結論：** 目前至少有兩項可定位的 S9 功能差距：M08 候補／自動遞補與 M08 訪客報名；另有一項高風險重疊：S8 文章精選／分類／分享／計數與 M14/M15/M16/M17/M19 的界線。這些屬技術整合工作，**不需重新詢問已決定的業務規則**。

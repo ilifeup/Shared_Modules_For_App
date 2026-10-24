@@ -41,7 +41,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@0ca7a949e71ae44c8e688a51c5e7e93b2c87e295 # v2.22.0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.x
@@ -82,6 +82,12 @@ jobs:
             [ -s "$RUNNER_TEMP/$f.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 150
           done
           true
+
+      - name: Free runner disk space for the Android build (NDK, Gradle)
+        run: |
+          df -h / | tail -n 1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL
+          df -h / | tail -n 1
 
       - name: Build debug APK
         run: flutter build apk --debug --dart-define-from-file=env/dev.json 2>&1 | tee "$RUNNER_TEMP/build.log"
@@ -153,7 +159,7 @@ jobs:
           nohup php artisan serve --host=127.0.0.1 --port=8000 > "$RUNNER_TEMP/serve.log" 2>&1 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/api/v1/health && break; sleep 1; done
 
-      - uses: subosito/flutter-action@0ca7a949e71ae44c8e688a51c5e7e93b2c87e295 # v2.22.0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.x

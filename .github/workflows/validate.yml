@@ -7,9 +7,9 @@ permissions:
   contents: read
 jobs:
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Verify required files and module IDs
         shell: bash
         run: |
@@ -22,3 +22,12 @@ jobs:
           done
           grep -q 'AGENTS.md' CLAUDE.md
           echo "S0 documentation structure: PASS"
+      - name: Actions pinned to commit SHAs
+        shell: bash
+        run: bash .github/scripts/check_action_pins.sh
+      - name: OpenAPI document is valid
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet openapi-spec-validator==0.7.1
+          "$RUNNER_TEMP/venv/bin/openapi-spec-validator" contracts/openapi.yaml

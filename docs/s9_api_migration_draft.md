@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v1.0｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v1.1｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -623,3 +623,70 @@ Tiandi `shared/SHARED_VERSION` 明載來源 Shared commit `0e16f591ce17e2fc23ac8
 4. 若 CI／實機／部署 Gate 未達標，停止，提供失敗證據與最小修正；不得聲稱已完成九模組。
 
 **本輪為加速開發準備的跨模組文件審查，不代表完整逐檔安全稽核、實機測試或可立即部署。未修改功能程式、Migration、OpenAPI、PR 或部署。**
+
+## 20. v1.1 九模組一次開發技術契約：API／資料表／權限／測試（2026-10-25）
+
+> **狀態：待一次性核准的設計提案，不是已開發。** 以 L05 A 的 `calendar_events` 與 L06 A 的 `event_bookings` 相容錨點為權威；舊版草案衝突處一律以已核准決策為準。API 路徑與表名以下均為候選，核准前不得宣稱已存在。
+
+### 20.1 共通規則
+- 每個 App 各自資料庫、Sanctum token、部署 Secrets；所有路徑以 `/api/v1` 為前綴。成功 `{data,meta?}`；失敗 `{error:{code,message,fields?,request_id}}`。
+- 時間資料以 UTC ISO 8601 輸出；週／月重複活動需保存活動時區與 DST 規則；所有 ID 回應字串。列表預設 20/page；既有 Calendar 62 天／200 筆例外保留。
+- 讀寫權限在 Laravel Policy/Service 檢查，Filament/Flutter 不可作唯一權限防線。每個重要變更沿用 AuditEvent；外部通知／Google／分析失敗不得反向破壞已提交的預約交易。
+- 冪等鍵候選 `Idempotency-Key`（僅會重試的新增／遞補／簽到／點擊入口需要）；作用域為 App＋actor＋operation＋key，持久化請求摘要及結果，期限待核准。不能以僅記憶體快取作併發保證。
+
+### 20.2 API 路徑／權限／核心 JSON（候選）
+
+| 模組 | 路徑與方法（均 /api/v1） | 主體／權限 | 最小 JSON 契約 |
+|---|---|---|---|
+| M03 | `GET /verification/types`; `POST /me/verification-requests`; `GET /me/verification-requests`; `POST /me/verification-requests/{id}/evidence`; `PATCH /me/verification-badges/{id}` | verified member；私有證據只本人與授權審核員 | request `{type_id,evidence_ids?}`; response `{id,status,required_approvals,approved_count,expires_at?}` |
+| M08 | **保留**舊 `GET /events/{id}/booking`、`POST /events/{id}/bookings`、`GET /me/bookings`、`POST /me/bookings/{id}/cancel`; **新增** `POST /events/{id}/booking-groups`、`GET /me/booking-groups`、`POST /me/booking-groups/{id}/cancel` | 舊 API verified member；新 group 登入會員／訪客走不同驗證入口 | create `{attendees:[{name,member_user_id?}],contact:{name,email?,phone?}}`；response `{id,event_id,status,seat_count,attendees,queue_position?}` |
+| M08 訪客 | `POST /public/events/{id}/guest-booking-groups`; `POST /me/booking-groups/claim` | public 限流、聯絡方式驗證；claim 需已登入且驗證原聯絡方式 | `{contact:{name,email?,phone?},attendees:[...]}`；claim `{claim_token,verified_contact_proof}`（token/驗證憑據規格待安全審查） |
+| M09 | **保留**既有 `GET /events`、`GET /public/events`、`GET /events/{id}`；新增 `GET /me/calendar`、`GET /me/google-calendar/status`、`POST /me/google-calendar/connect` | public/member/授權 VIP；Google OAuth 回呼必須驗證 state | event `{id,starts_at,ends_at,location?,floor?,studio?,event_series_id?,status}`；Google `{connected,sync_status,last_sync_at?}` |
+| M11 | `POST /events/{id}/check-ins`; `POST /events/{id}/check-outs`; `GET /events/{id}/check-in-status` | 受授權工作人員／合資格參加者；後端驗 QR 時效 | `{attendee_id,qr_token}`；response `{attendee_id,event_id,status,checked_in_at?,checked_out_at?}` |
+| M14 | `GET /links/{code}` | public resolver，但內容權限在目的端重驗 | `{target_type,target_id,action,requires_auth}`；不回傳受限內容本體 |
+| M15 | `GET /marketing/placements`; `POST /marketing/{id}/impressions` | 前者依版位可見性；後者限流／防重複 | `{id,placement,content_type,content_id,cta_link_id?,starts_at,ends_at}` |
+| M16 | `GET /tags`; `GET /content/{type}/{id}/tags` | 依內容可見性；管理操作由 Filament/Policy | `{id,name,color}`，單內容 <=10 |
+| M17 | `POST /links/{code}/clicks`; `GET /admin/analytics/link-clicks` | 前者限流及最小化資料；後者管理權限 | click `{source?,campaign_id?}`；stats `{link_id,date,clicks,unique_estimate?}` |
+| M19 | `GET /search?q=&types=&tags=&page=`; `GET /me/bookmarks`; `POST /me/bookmarks`; `DELETE /me/bookmarks/{id}` | 後端各類內容 Policy；收藏限本人 | search `{data:[{type,id,title,visible}],meta:{page,per_page,total}}`；bookmark `{content_type,content_id}` |
+
+**限制**：M03 審核、M09 series 管理、M11 管理員修正、M15 版位管理、M16 標籤編輯、M17 報表可優先用既有 Filament 後端 Service，不強制建立額外管理 HTTP API；上表是跨 App 需要的候選對外契約，不是完整 OpenAPI YAML。不得把尚未規劃完的端點當成已具備部署條件。
+
+### 20.3 Migration 主責與外鍵／唯一性（候選）
+
+| 模組 | 新增／擴充 | 重要約束 |
+|---|---|---|
+| M03 | `verification_types,verification_requests,verification_evidence,verification_reviews,verified_badges` | `UNIQUE(request_id,reviewer_user_id)`；證據私有、撤銷保留稽核 |
+| M08 | `event_booking_groups,event_booking_attendees,event_waitlist_entries`；舊 `event_bookings` 不破壞 | `UNIQUE(legacy_booking_id)`（nullable）；`UNIQUE(calendar_event_id,queue_sequence)`；會員有效席次需 DB 唯一性保護；每人一席 |
+| M09 | `event_series`；擴充 `calendar_events.event_series_id,series_original_start_at,floor,studio,revision` | `UNIQUE(event_series_id,series_original_start_at)` 候選；原 event.id/FK 不變；三個場地欄位可空 |
+| M11 | `event_attendances,checkin_qr_tokens`（token 也可無狀態簽章，需比較） | `UNIQUE(calendar_event_id,attendee_id)`；簽退／更正保留 AuditEvent |
+| M14 | `deep_links` | `UNIQUE(code)`；target type allowlist，解析不繞過內容 Policy |
+| M15 | `marketing_placements,marketing_campaigns` | 同一版位排序／有效時間約束；關聯 deep_links，不重造短網址 |
+| M16 | `tags,content_tags` | `UNIQUE(name)` 或 normalized_name 依 App 定義；`UNIQUE(content_type,content_id,tag_id)` |
+| M17 | `link_click_events,link_click_daily` | 聚合鍵 `UNIQUE(link_id,day,source)`；重試防重複、留存匿名化 |
+| M19 | `bookmarks` | `UNIQUE(user_id,content_type,content_id)`；保留已刪內容 placeholder；<=1000/user/App |
+
+**Migration 順序**：先不破壞的 additive tables/columns → FK/index → legacy booking 對應與驗證 → 統一 Service → 新 API／Flutter → Feature flags/切換（若必要）→ 每 App 獨立執行。任何 rollback 不得刪除仍被舊 S6 FK 引用的活動或預約。刪除資料／回退前須備份及在測試 DB 演練。
+
+### 20.4 端到端 Gate：一次開發、模組分界驗收
+
+| Gate | 測試證據 |
+|---|---|
+| G01 Legacy | S5/S6 既有 API JSON、HTTP code、Dart DTO、62 天/200 筆、20/page 回歸 |
+| G02 Booking | 100 並行搶最後一席、legacy+group 不重複、整組 FIFO 不跳號、取消原子遞補 |
+| G03 Calendar | 週/月跨時區及 DST、single/future/all、改期 L02、取消保留 ID |
+| G04 Identity | 多人審核、防自審、私有文件、到期/撤銷、訪客 claim 防冒領 |
+| G05 Check-in | 每 attendee 每 occurrence 唯一、QR 60 秒＋10 秒、越權/重放、稽核 |
+| G06 Links/Marketing/Analytics | 無權限內容不能經分享繞過、click 防重複、個資最小化、行銷版位 |
+| G07 Tags/Search/Bookmarks | AND 搜尋、20/page、最多 10 tags、1000 bookmarks、失效 placeholder |
+| G08 Integration | Shared/Tiandi 對應版本、OpenAPI route lint、PHP/Pest、Dart analyzer/test、Filament 權限 |
+| G09 Delivery | CI 全綠、真實部署目標與 Secrets 核對、rollback 演練、失敗停止；實機 Gate 獨立記錄 |
+
+### 20.5 最小未決清單（統一送一次技術審查）
+1. 訪客聯絡方式驗證與 claim 的憑據有效期、限流、未註冊時的個資保存期限。
+2. 有效 attendee 的 DB 唯一性策略與 legacy-only → mapped group 回填時機；防雙計數及回退。
+3. L02 相對截止 `deadline_mode` 與 offset 的預設值及資料遷移；不得猜測既有非 NULL 固定截止。
+4. Google OAuth／同步重試的 App 設定、密鑰與部署目標是否具備。
+5. 內容 polymorphic FK 無法天然跨表保證時的刪除、失效 placeholder 與後端權限策略。
+6. Shared/Tiandi 真實部署與自動合併權限、安全 Gate、回退機制；**CI success 不等於自動部署 ready**。
+
+**規劃完成判準**：以上技術契約需轉成可機器驗證的 OpenAPI 3.1 與 migration up/down 設計並由使用者一次核准；若要立即開發，需另有明確「開始 S9 功能開發」授權。本輪仍未修改功能程式、Migration、OpenAPI 或合併部署。

@@ -148,7 +148,7 @@ class AuthController extends Controller
         $user = User::query()->where('phone_e164', $phone)->first();
 
         if ($user !== null && ! $user->hasVerifiedPhone()) {
-            $this->otp->send($user);
+            $this->sendQuietly($user, PhoneOtp::PURPOSE_VERIFY);
         } else {
             $this->otp->throttleWithoutSending($phone, PhoneOtp::PURPOSE_VERIFY);
         }
@@ -169,13 +169,32 @@ class AuthController extends Controller
         $user = User::query()->where('phone_e164', $this->normalizePhone((string) $request->input('phone')))->first();
 
         if ($user === null || $user->hasVerifiedPhone()) {
-            throw new ApiException(422, 'OTP_INVALID', '驗證碼錯誤或已失效。');
+            throw PhoneOtpService::invalidCode();
         }
 
-        $this->otp->verify($user, (string) $request->input('code'));
+        // Public endpoint: expired / locked codes answer like unknown numbers.
+        $this->otp->verify($user, (string) $request->input('code'), detailed: false);
         AuditEvent::record('member.phone_verified', $user->id, $user);
 
         return new JsonResponse(['data' => ['verified' => true]]);
+    }
+
+    /**
+     * Public send: a provider failure answers like a successful send (and like an
+     * unknown number). The failure is reported and audited; the member can retry
+     * after the cooldown.
+     */
+    private function sendQuietly(User $user, string $purpose): void
+    {
+        try {
+            $this->otp->send($user, $purpose);
+        } catch (ApiException $e) {
+            if ($e->errorCode !== 'SMS_SEND_FAILED') {
+                throw $e;
+            }
+
+            AuditEvent::record('sms.send_failed', $user->id, $user, ['purpose' => $purpose], 'failure');
+        }
     }
 
     private function findByIdentifier(string $identifier): ?User

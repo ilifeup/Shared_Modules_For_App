@@ -43,6 +43,19 @@ class MemberApi {
     return envelope.data;
   }
 
+  Future<Notice> notice(String id) async {
+    final json = await transport.request(
+      'GET',
+      '/api/v1/notices/${Uri.encodeComponent(id)}',
+    );
+    return ApiEnvelope<Notice>.fromJson(json, (value) {
+      if (value is! Map<String, dynamic>) {
+        throw const FormatException('Invalid notice');
+      }
+      return NoticeDto.fromJson(value);
+    }).data;
+  }
+
   Future<List<Notice>> notices() async {
     final json = await transport.request('GET', '/api/v1/notices');
     return ApiEnvelope<List<Notice>>.fromJson(json, (value) {

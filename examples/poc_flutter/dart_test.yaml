@@ -1,0 +1,4 @@
+tags:
+  e2e:
+    # Runs only against a real disposable backend (see .github/workflows/s1-poc-mobile.yml).
+    timeout: 2x

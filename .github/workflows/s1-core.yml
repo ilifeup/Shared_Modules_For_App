@@ -39,9 +39,11 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
-      - name: Dart format
+      - name: Dart format (prints the diff on failure)
         working-directory: packages/flutter/shared_core
-        run: dart format --output=none --set-exit-if-changed lib test
+        run: |
+          dart format lib test
+          git diff --exit-code -- .
       - name: Dart analyze and smoke
         working-directory: packages/flutter/shared_core
         run: |
@@ -52,3 +54,4 @@ jobs:
           dart run test/member_api_smoke.dart
           dart run test/session_api_smoke.dart
           dart run test/login_identifier_smoke.dart
+          dart run test/registration_api_smoke.dart

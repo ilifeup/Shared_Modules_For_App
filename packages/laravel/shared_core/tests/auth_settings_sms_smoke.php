@@ -21,6 +21,10 @@ $result = (new FakeSmsProvider())->sendOtp('+886912345678', 'synthetic otp');
 if (!$result->accepted || $result->provider !== 'fake') {
     throw new RuntimeException('Fake provider failed');
 }
+$rejected = \EachCore\SharedCore\SmsSendResult::rejected('mitake', 'NOT_CONFIGURED');
+if ($rejected->accepted || $rejected->errorCode !== 'NOT_CONFIGURED') {
+    throw new RuntimeException('Rejected result mismatch');
+}
 try {
     new AuthSettings(adminIdleMinutes: 0);
     throw new RuntimeException('Invalid settings accepted');

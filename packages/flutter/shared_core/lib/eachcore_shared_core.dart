@@ -14,3 +14,4 @@ export 'src/membership.dart';
 export 'src/profile_api.dart';
 export 'src/notice_api.dart';
 export 'src/notification_api.dart';
+export 'src/event_api.dart';

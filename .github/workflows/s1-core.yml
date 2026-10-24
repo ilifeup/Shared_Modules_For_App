@@ -66,3 +66,4 @@ jobs:
           dart run test/profile_membership_smoke.dart
           dart run test/notice_api_smoke.dart
           dart run test/notification_api_smoke.dart
+          dart run test/event_api_smoke.dart

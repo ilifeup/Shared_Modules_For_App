@@ -21,7 +21,7 @@
 |---|---|---:|---|
 | M03 | Identity Verification 會員認證 | D01–D12 | 已確認業務規則；技術方案待核准 |
 | M08 | Booking 活動報名 | D01–D24 | v1.1 已確認業務規則；技術方案待核准 |
-| M09 | Calendar 日曆 | D01–D15 | 第三輪已確認；剩餘必要規則待討論 |
+| M09 | Calendar 日曆 | D01–D21 | 四輪業務決策已確認；技術規格待核准 |
 | M11 | Check-in 簽到 | 0 | 尚未逐項討論 |
 | M14 | Deep Link | 0 | 尚未逐項討論 |
 | M15 | Marketing | 0 | 尚未逐項討論 |
@@ -185,6 +185,98 @@
 - Google Calendar private visibility 不代表端對端加密或絕對保密；仍受 Google 日曆擁有者、授權和共享設定影響。
 - 待確認：Google OAuth 連線帳號數/日曆目標、VIP 到期後同步政策、重複活動修改與報名、提醒、跨時區、同步失敗介面與通知、資料保留。禁止自行將未決規則當作已核准。
 
+### M09 第四輪 D16–D21（2026-10-24，使用者明確確認）
+
+| ID | 項目 | 使用者確認 |
+|---|---|---|
+| M09-D16 | Google 帳號數 | 每位會員連結一個 Google 帳號 |
+| M09-D17 | Google 目標日曆 | 建立 App 專用 Google 日曆 |
+| M09-D18 | VIP 失效同步 | 停止私人行程後續同步，保留 Google 現有行程 |
+| M09-D19 | 重複活動修改 | 可選單次、此次及未來、全部場次 |
+| M09-D20 | 活動提醒 | 沿用 Google 日曆提醒設定；不另建 App 提醒引擎 |
+| M09-D21 | 時區 | 預設 Asia/Taipei，支援其他時區 |
+
+### M09 v1.0 最終技術規格草案（待正式核准，禁止開發）
+
+#### 資料模型（候選名稱，必須先檢查現有 Migration）
+
+| 候選資料表 | 用途及重要欄位 |
+|---|---|
+| 既有 `calendar_events` 或 M08 活動主檔 | 公開活動及單次場次權威；時間、時區、類別、容量、報名狀態 |
+| `calendar_recurrence_rules` | 每週/每月規則、起訖、時區、系列 ID；只在既有 Schema 不足時新增 |
+| `calendar_occurrence_exceptions` | 單次取消/改期/此次及未來切分的例外 |
+| `private_calendar_events` | 各會員 VIP 私人行程，owner_user_id、標題、開始/結束、時區、狀態 |
+| `google_calendar_connections` | 每會員每 App 一個 Google OAuth 連線、加密 token、專用 calendar_id、連線狀態 |
+| `google_calendar_event_mappings` | 本地活動/報名/私人行程與 Google event_id 對應、同步版本/狀態 |
+| 既有 queue/job infrastructure | 背景同步、失敗/重試、避免重複寫入；優先沿用既有 Queue，不先創建大型同步平台 |
+
+#### API 候選（沿用 /api/v1、Sanctum、既有 envelope/Policy）
+
+- `GET /calendar/events?from=&to=&view=`：依權限讀取公開活動、我的報名及 VIP 私人行程；查詢按時間範圍分頁/限量。
+- `GET /calendar/events/{id}`：活動詳情，指向 M08 同一活動/場次資料。
+- `POST /calendar/private-events`、`PATCH /calendar/private-events/{id}`、`DELETE /calendar/private-events/{id}`：僅有效高級 VIP 可寫入；VIP 到期後只能 GET。
+- `GET /calendar/google/connection`、`POST /calendar/google/connect`、`POST /calendar/google/disconnect`：Google OAuth 連線狀態、開始連線及解除；OAuth callback 依既有安全路由處理。
+- 重複活動管理端 Service：單次、此次及未來、全部三種作用範圍；與 M08 已報名/候補場次變更、取消通知一致。Filament 可直接呼叫 Service，不必為每個動作新增公開 API。
+- 不設 Google → App 事件匯入/覆寫 API；不實作雙向同步或 App 自建提醒引擎。
+
+#### Flutter
+
+- 月曆/週曆/列表三種檢視；公開活動、我的報名、VIP 私人行程顯示與適當篩選。
+- 活動顏色取自活動類別；活動詳情/報名導向 M08，不能重複建立報名流程。
+- VIP 有效：私人行程 CRUD；VIP 失效：既有私人行程唯讀、不可刪除，並提示資格限制。
+- Google 連線/解除、同步狀態與錯誤提示；僅一個 Google 帳號；明確提示解除連結不刪除 Google 已同步事件。
+
+#### Filament
+
+- 活動類別顏色；重複規則（每週/每月）與單次例外；管理員修改範圍選擇：單次/此次及未來/全部。
+- 活動變更沿用 M08 通知、報名/候補/容量服務，不可靜默取消已報名場次。
+- 可查看同步失敗統計/必要的操作紀錄，但不得展示 OAuth 明文 token 或未授權會員私人行程。
+
+#### Google OAuth 與背景同步
+
+- 每會員每 App 最多一個連線；使用 Google OAuth 最小必要 scope，token 在伺服器端加密保存，不存於 Flutter/日誌；連線後建立專用 App 日曆。
+- App → Google 單向；僅「我的報名」及有效 VIP 私人行程納入同步；私人行程寫入 Google 時明確設定 private visibility。
+- M08 報名變更、活動取消/異動時更新或移除對應 Google 事件；解除連結時保留 Google 既有事件並停止後續同步。
+- VIP 到期/降級：原私人行程在 App 唯讀，Google 既有事件保留，後續不再同步該私人行程；我的報名是否持續同步依既有 D07/D18 應維持（不因 VIP 到期停止會員報名同步）。
+- 使用穩定 mapping/冪等鍵、隊列及有限重試避免 Google 端重複事件；Google API 失敗不能回滾本地活動/報名/私人行程。
+- 使用 UTC 持久化、活動本地 IANA timezone 供每週/每月規則展開，避免 DST 漂移；UI 預設 Asia/Taipei，可顯示其他時區。
+
+#### M09 驗收 Gate（草案）
+
+| Gate | 必要證據 |
+|---|---|
+| G01 | 與 M08 共用活動主檔，不重複建表 |
+| G02 | 月/週/列表及公開/我的報名顯示正確 |
+| G03 | 活動類別顏色及權限隔離 |
+| G04 | 每週/每月重複展開、跨月/時區 |
+| G05 | 單次/此次及未來/全部修改與取消 |
+| G06 | 例外場次保留 M08 報名、候補、通知正確 |
+| G07 | 有效 VIP 私人行程 CRUD，非 VIP 拒絕 |
+| G08 | VIP 到期唯讀、不刪資料 |
+| G09 | OAuth 一會員一 Google 帳號，token 安全 |
+| G10 | 建立 App 專用 Google 日曆 |
+| G11 | 單向同步我的報名及 VIP 私人行程 |
+| G12 | 活動異動/取消更新或移除 Google 事件 |
+| G13 | VIP 到期停止私人行程同步、保留 Google 舊事件 |
+| G14 | 解除連結停止同步、保留 Google 事件 |
+| G15 | 背景重試、冪等、失敗可觀測，不影響 M08 |
+| G16 | Google 私人事件 visibility=private |
+| G17 | Asia/Taipei 及其他 IANA 時區/DST |
+| G18 | Flutter/Filament 權限與錯誤/離線 UI |
+| G19 | API/OpenAPI、Migration、CI、真實整合證據 |
+| G20 | Shared/Tiandi 分別 PR、審查後才可合併 |
+
+#### 尚未正式核准／待開發前確認
+
+1. 高級 VIP 在各 App 的 M02 具體等級代碼、升降級來源；不得自行假設 VIP level 數字。
+2. Google OAuth 所需 scopes、Google Cloud 專案與同意畫面配置、回呼網域、Google API 配額與實際可用性，須於開發前驗證；不得聲稱已連線。
+3. 私人行程可否設定每週/月重複、活動提醒是否也要在未連 Google 時提供（D20 目前只核准沿用 Google 設定）。
+4. Google 首次連線是否回填過去活動、同步歷史範圍、保留多久；未確認不可無限回填。
+5. 同一活動多名參加者/代報名時 Google 每個會員建立幾筆事件；避免重複同步。
+6. Google OAuth token 撤銷、過期、會員停用與重連的實際錯誤處理。
+7. 同步日曆的共享/權限設定，避免把私人行程公開給其他人。
+8. 同步重試間隔、API 速率限制與資料保留天數為技術預設值，應依實際既有基礎設施與測試決定，不能視為已核准業務規則。
+
 ### 邊界與待確認（不是已核准決策）
 
 - 公開活動與 M08 使用同一權威活動主檔，避免第二套活動資料。私人行程需與公開活動分離並限制讀取權限。
@@ -218,3 +310,4 @@
 - 2026-10-24 v1.1：追加 M09 第一輪 D01–D05；Google 同步及 VIP 權限細節待確認。
 - 2026-10-24 v1.2：追加 M09 第二輪 D06–D10；Google 單向同步、同步範圍、VIP 到期唯讀、重複活動單次例外及活動類別顏色。
 - 2026-10-24 v1.3：追加 M09 第三輪 D11–D15；背景同步、取消/異動傳播、解除連結保留、VIP 完全唯讀、Google 私人可見性。
+- 2026-10-24 v1.4：追加 M09 第四輪 D16–D21，並整理 v1.0 待核准 Schema/API/Flutter/Filament/Google OAuth/同步/Gate。

@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.7｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.8｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -501,3 +501,42 @@ S9-L06 A 已正式核准：`event_bookings` 作為既有會員報名錨點，新
 4. 再核對現有 AuditEvent、通知與測試架構，避免重複造輪子。
 
 **本節為實際程式碼核對與待核准契約，未修改任何程式、Migration、OpenAPI、PR 或部署。**
+
+## 17. v0.8 S8 未合併 OpenAPI 契約核對與 DTO 相容矩陣（2026-10-25）
+
+### 17.1 實際核對來源與限制
+- 已讀取 Shared `feat/s8-m05-articles:contracts/openapi.yaml`，OpenAPI 3.1.0，`info.version=0.7.0`。此分支尚未視為已合併正式主線。
+- 舊 S6 四條路徑仍存在：`GET /events/{id}/booking`、`POST /events/{id}/bookings`、`GET /me/bookings`、`POST /me/bookings/{id}/cancel`。
+- OpenAPI `x-dart` 明確標示 `BookingApi.info/book/cancel -> BookingInfo`、`BookingApi.mine -> List<Booking>`、`BookingInfo.fromJson`。**這是契約標記，不等於已核對 Flutter DTO 實際檔案**；本輪未定位到 DTO 原始碼，不能聲稱完成 Flutter 實作核對。
+- S8 OpenAPI `POST /events/{id}/bookings` 沒有 `requestBody`；成功 201；四條預約 API 均標 `x-verification: required`。
+- `GET /me/bookings` 保留 20/page、包含 confirmed/cancelled，meta `current_page,last_page,total`。
+
+### 17.2 BookingInfo OpenAPI 既有 JSON 契約
+
+| 欄位 | 目前 Schema | S9 保護要求 |
+|---|---|---|
+| `event_id` | required string | 保留；實際場次 ID 仍是 `calendar_events.id` |
+| `enabled` | required boolean | 保留 |
+| `booked_count` | required integer | 目前單人時為 confirmed booking 列數；S9 必須統一實際席次並核對 DTO |
+| `unavailable_reason` | required nullable enum | 保留 `already_booked,event_not_published,event_cancelled,disabled,not_open,closed,full,null`；新狀態不得無審查直接加到舊 enum |
+| `my_booking` | required Booking 或 null | 保留舊單會員預約型別；群組資料可另設 DTO |
+| `capacity`、`remaining` | nullable integer | 保留 nullable 型別 |
+| `opens_at`、`closes_at` | nullable date-time string | 保留 UTC 日期格式；close 預設 event start |
+| `Booking.status` | `confirmed|cancelled` | 不把 `waitlisted` 直接塞入舊 enum；候補另用新 DTO |
+
+### 17.3 兼容性裁決（本輪技術建議，非核准）
+1. **舊 API 不擴張狀態 enum**：原 `Booking.status` 僅 confirmed/cancelled；S9 候補使用新 `BookingGroup`/`WaitlistEntry` DTO，避免舊 Flutter switch/fromJson 不識別。
+2. **舊 POST 不改 request**：`POST /events/{id}/bookings` 保持空 body 單人報名；新群組另走候選 endpoint，避免無意改變舊行為。
+3. **數量語意**：`booked_count` 與 `remaining` 應統一使用實際 confirmed seats；對舊純單人資料數值完全不變。需要明確回歸測試以判定是否構成既有客戶端行為變更。
+4. **期限欄位**：舊 `closes_at` 保留；S9 新增管理端候選 `deadline_mode=event_start|relative_offset|fixed` 與 `offset_minutes`，不得在舊 BookingInfo 強加 required 欄位。
+5. **公開／訪客**：S8 預約仍在 verified member middleware；M08 訪客報名使用獨立驗證流程，不能將舊 API 移出 middleware。
+6. **身份與權限**：M03 業務驗證不等於可以繞過 S6 `member.verified`；如需其他認證狀態，另設 Policy。
+
+### 17.4 下一輪必查原始碼與 Gate
+- [ ] 定位並讀取 Flutter `BookingInfo`、`Booking`、`BookingApi` 原始碼（Shared/Tiandi 兩 Repo），驗證 `fromJson` 對未知欄位／enum 的處理。
+- [ ] 讀取 Shared S8 分支與 Tiandi S8 分支的實際 HEAD、API／Flutter 客戶端相容測試。
+- [ ] 明確審查 `booked_count` 轉席次語意的相容性與新群組 API 入口。
+- [ ] 在完整 OpenAPI 3.1 Schema 中寫入 `deadline_mode`、group、attendee、waitlist 的欄位、錯誤碼與權限。
+- [ ] 用測試驗證 legacy 單人 booking 原 JSON 不變、群組另用 DTO、訪客不能繞過驗證。
+
+**注意**：本節只確認 S8 OpenAPI 契約，不代表 Flutter DTO 原始碼或 Tiandi 整合已審完；不修改功能程式、OpenAPI、Migration、PR 或部署。

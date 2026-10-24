@@ -23,6 +23,8 @@ final dioProvider = Provider<Dio>((ref) {
     tokenStorage: ref.watch(tokenStorageProvider),
     onUnauthorized: () =>
         ref.read(authControllerProvider.notifier).handleUnauthorized(),
+    onVerificationRequired: () =>
+        ref.read(authControllerProvider.notifier).refreshProfile(),
   );
   ref.onDispose(dio.close);
   return dio;
@@ -42,4 +44,8 @@ final memberApiProvider = Provider<MemberApi>(
 
 final registrationApiProvider = Provider<RegistrationApi>(
   (ref) => RegistrationApi(ref.watch(apiTransportProvider)),
+);
+
+final passwordResetApiProvider = Provider<PasswordResetApi>(
+  (ref) => PasswordResetApi(ref.watch(apiTransportProvider)),
 );

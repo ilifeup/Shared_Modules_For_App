@@ -28,6 +28,10 @@ void main() {
 
     final profile = await members.myProfile();
     expect(profile.email, 'e2e@example.com');
+    expect(profile.verificationSatisfied, isTrue);
+
+    final policy = await RegistrationApi(transport).policy();
+    expect(policy.verificationPolicy, AuthPolicy.emailRequired);
 
     final updated = await members.updateDisplayName('E2E 會員');
     expect(updated.displayName, 'E2E 會員');

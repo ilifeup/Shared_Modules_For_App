@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\EnsureMemberVerified;
 use App\Support\Api\ApiError;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(AssignRequestId::class);
+        $middleware->alias(['member.verified' => EnsureMemberVerified::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         ApiError::register($exceptions);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\AuditEvent;
 use App\Support\Settings;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -11,6 +12,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
+use UnitEnum;
 
 /**
  * 系統設定 — every value is stored in app_settings and enforced by the backend
@@ -18,9 +20,11 @@ use Filament\Schemas\Schema;
  */
 class SystemSettings extends Page
 {
-    protected static ?string $navigationLabel = '系統設定';
+    protected static string|UnitEnum|null $navigationGroup = '系統設定';
 
-    protected static ?string $title = '系統設定（登入與驗證）';
+    protected static ?string $navigationLabel = '登入與簡訊設定';
+
+    protected static ?string $title = '系統設定 › 登入與簡訊設定';
 
     protected static ?string $slug = 'system-settings';
 
@@ -31,9 +35,21 @@ class SystemSettings extends Page
     /** @var array<string, mixed>|null */
     public ?array $data = [];
 
+    /** Keys edited on this page (the verification policy has its own page). */
+    private const KEYS = [
+        'member_long_login', 'member_idle_minutes', 'admin_idle_minutes',
+        'sms_test_mode', 'sms_provider', 'sms_global_hourly_limit', 'sms_phone_hourly_limit',
+        'sms_resend_cooldown_minutes', 'otp_ttl_minutes', 'otp_max_attempts',
+    ];
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->can('settings.manage') ?? false;
+    }
+
     public function mount(): void
     {
-        $this->form->fill(app(Settings::class)->all());
+        $this->form->fill(array_intersect_key(app(Settings::class)->all(), array_flip(self::KEYS)));
     }
 
     public function form(Schema $schema): Schema
@@ -50,12 +66,6 @@ class SystemSettings extends Page
                         TextInput::make('admin_idle_minutes')
                             ->label('Admin 閒置登出期限（分鐘，預設 10080＝7 天）')
                             ->numeric()->integer()->minValue(5)->required(),
-                    ]),
-                    Tab::make('註冊與驗證')->schema([
-                        Toggle::make('registration_email_enabled')->label('開放 Email 註冊'),
-                        Toggle::make('email_verification_required')->label('Email 登入前必須完成 Email 驗證'),
-                        Toggle::make('registration_phone_enabled')->label('開放手機註冊'),
-                        Toggle::make('phone_verification_required')->label('手機登入前必須完成手機 OTP 驗證'),
                     ]),
                     Tab::make('SMS OTP')->schema([
                         Toggle::make('sms_test_mode')
@@ -87,7 +97,21 @@ class SystemSettings extends Page
 
     public function save(): void
     {
-        app(Settings::class)->put($this->form->getState());
+        abort_unless(static::canAccess(), 403);
+
+        $settings = app(Settings::class);
+        $before = $settings->all();
+        $new = array_intersect_key($this->form->getState(), array_flip(self::KEYS));
+        $settings->put($new);
+        $after = $settings->all();
+
+        $changes = [];
+        foreach (array_keys($new) as $key) {
+            if ($before[$key] !== $after[$key]) {
+                $changes[$key] = ['old' => $before[$key], 'new' => $after[$key]];
+            }
+        }
+        AuditEvent::record('settings.updated', auth()->id(), null, ['changes' => $changes]);
 
         Notification::make()->title('設定已儲存並立即生效')->success()->send();
     }

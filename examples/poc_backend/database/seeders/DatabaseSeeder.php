@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Notice;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 /**
  * Local / test data only. Never run against a production database.
@@ -14,6 +15,10 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        if (app()->isProduction()) {
+            throw new RuntimeException('DatabaseSeeder creates demo data and must never run in production.');
+        }
+
         User::factory()->create([
             'name' => 'Demo Member',
             'display_name' => '示範會員',

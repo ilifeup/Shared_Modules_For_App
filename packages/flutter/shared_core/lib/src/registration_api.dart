@@ -3,8 +3,8 @@ import 'member_api.dart';
 
 /// Result of a self-registration: which verifications were started.
 ///
-/// Values are `sent`, `verified`, `send_failed:<CODE>` or `null` when the
-/// identifier was not provided.
+/// Values are `sent`, `send_failed:<CODE>` or `null` when nothing was sent
+/// (the phone code is sent only under the `phone_required` policy).
 class RegistrationResult {
   const RegistrationResult({this.email, this.phone});
 
@@ -17,6 +17,19 @@ class RegistrationResult {
       phone == 'sent' || (phone?.startsWith('send_failed') ?? false);
 }
 
+/// Server verification policy (`GET /api/v1/auth/policy`).
+class AuthPolicy {
+  const AuthPolicy({required this.verificationPolicy, this.requiredFields});
+
+  static const emailRequired = 'email_required';
+  static const phoneRequired = 'phone_required';
+
+  final String verificationPolicy;
+  final List<String>? requiredFields;
+
+  bool get requiresPhone => verificationPolicy == phoneRequired;
+}
+
 /// Self-registration and email / SMS OTP verification endpoints.
 /// Each App runs its own backend; nothing here is shared between Apps.
 class RegistrationApi {
@@ -26,22 +39,21 @@ class RegistrationApi {
 
   Future<RegistrationResult> register({
     required String name,
-    String? email,
-    String? phone,
+    required String email,
+    required String phone,
     required String password,
     required String passwordConfirmation,
   }) async {
-    final normalizedEmail = email?.trim();
-    final normalizedPhone = phone?.trim();
+    if (name.trim().isEmpty || email.trim().isEmpty || phone.trim().isEmpty) {
+      throw ArgumentError('Name, email and phone are required');
+    }
     final json = await transport.request(
       'POST',
       '/api/v1/auth/register',
       body: {
         'name': name.trim(),
-        if (normalizedEmail != null && normalizedEmail.isNotEmpty)
-          'email': normalizedEmail,
-        if (normalizedPhone != null && normalizedPhone.isNotEmpty)
-          'phone': normalizedPhone,
+        'email': email.trim(),
+        'phone': phone.trim(),
         'password': password,
         'password_confirmation': passwordConfirmation,
       },
@@ -59,6 +71,26 @@ class RegistrationApi {
       return RegistrationResult(
         email: emailState is String ? emailState : null,
         phone: phoneState is String ? phoneState : null,
+      );
+    }).data;
+  }
+
+  Future<AuthPolicy> policy() async {
+    final json = await transport.request('GET', '/api/v1/auth/policy');
+    return ApiEnvelope<AuthPolicy>.fromJson(json, (data) {
+      if (data is! Map<String, dynamic>) {
+        throw const FormatException('Invalid policy response');
+      }
+      final policy = data['verification_policy'];
+      final fields = data['required_fields'];
+      if (policy is! String) {
+        throw const FormatException('Missing verification policy');
+      }
+      return AuthPolicy(
+        verificationPolicy: policy,
+        requiredFields: fields is List
+            ? fields.map((field) => field.toString()).toList()
+            : null,
       );
     }).data;
   }

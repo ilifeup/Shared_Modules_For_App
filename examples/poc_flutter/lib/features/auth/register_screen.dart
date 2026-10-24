@@ -37,8 +37,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (!DisplayName.isValid(_name.text)) {
       return '請輸入姓名（1–80 字）。';
     }
-    if (_email.text.trim().isEmpty && _phone.text.trim().isEmpty) {
-      return '請輸入 Email 或手機號碼（Email 優先）。';
+    if (_email.text.trim().isEmpty || !_email.text.contains('@')) {
+      return '請輸入 Email。';
+    }
+    if (_phone.text.trim().isEmpty) {
+      return '請輸入手機號碼。';
     }
     if (_password.text.length < 8) {
       return '密碼至少 8 個字元。';
@@ -68,12 +71,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         passwordConfirmation: _confirmation.text,
       );
       if (!mounted) return;
-      if (result.needsEmailVerification) {
-        final email = Uri.encodeQueryComponent(_email.text.trim());
-        context.go('/email-sent?email=$email');
-      } else if (result.needsPhoneVerification) {
+      // Under phone_required the SMS code is the step that unlocks the App.
+      if (result.needsPhoneVerification) {
         final phone = Uri.encodeQueryComponent(_phone.text.trim());
         context.go('/verify-phone?phone=$phone');
+      } else if (result.needsEmailVerification) {
+        final email = Uri.encodeQueryComponent(_email.text.trim());
+        context.go('/email-sent?email=$email');
       } else {
         context.go('/login');
       }
@@ -116,17 +120,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           if (_localError != null)
             StatusBox(label: '【請修正】', detail: _localError!),
           if (_error != null) ErrorBox(error: _error!),
-          _field('register-name', _name, '姓名'),
+          _field('register-name', _name, '姓名（必填）'),
           _field(
             'register-email',
             _email,
-            'Email（優先，需完成驗證）',
+            'Email（必填）',
             keyboard: TextInputType.emailAddress,
           ),
           _field(
             'register-phone',
             _phone,
-            '手機號碼（選填，例如 0912345678）',
+            '手機號碼（必填，例如 0912345678）',
             keyboard: TextInputType.phone,
           ),
           _field('register-password', _password, '密碼（至少 8 字元）', obscure: true),

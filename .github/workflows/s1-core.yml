@@ -55,3 +55,4 @@ jobs:
           dart run test/session_api_smoke.dart
           dart run test/login_identifier_smoke.dart
           dart run test/registration_api_smoke.dart
+          dart run test/password_reset_api_smoke.dart

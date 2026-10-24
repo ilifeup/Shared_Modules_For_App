@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import 'features/auth/auth_controller.dart';
 import 'features/auth/email_sent_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
+import 'features/auth/verify_account_screen.dart';
 import 'features/auth/verify_phone_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
@@ -15,6 +17,15 @@ import 'features/profile/profile_screen.dart';
 const _publicPaths = {
   '/login',
   '/register',
+  '/verify-phone',
+  '/email-sent',
+  '/forgot-password',
+  '/health',
+};
+
+/// Screens an unverified member may still open (verification gate).
+const _verificationPaths = {
+  '/verify-account',
   '/verify-phone',
   '/email-sent',
   '/health',
@@ -37,8 +48,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (status == AuthStatus.signedOut) {
         return isPublic ? null : '/login';
       }
-      // Signed in: leave the splash / auth screens for the notice list.
-      if (path == '/splash' || path == '/login' || path == '/register') {
+      // Signed in but the verification policy is not satisfied yet.
+      final profile = ref.read(authControllerProvider).profile;
+      if (profile != null && !profile.verificationSatisfied) {
+        return _verificationPaths.contains(path) ? null : '/verify-account';
+      }
+      // Signed in: leave the splash / auth / gate screens for the notice list.
+      if (path == '/splash' ||
+          path == '/login' ||
+          path == '/register' ||
+          path == '/forgot-password' ||
+          path == '/verify-account') {
         return '/';
       }
       return null;
@@ -73,6 +93,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/email-sent',
         builder: (context, state) =>
             EmailSentScreen(email: state.uri.queryParameters['email'] ?? ''),
+      ),
+      GoRoute(
+        path: '/verify-account',
+        builder: (context, state) => const VerifyAccountScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
       ),
       GoRoute(
         path: '/health',

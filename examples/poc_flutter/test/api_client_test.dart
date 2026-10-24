@@ -70,6 +70,39 @@ void main() {
     }
   });
 
+  test('keeps the token and reports 403 VERIFICATION_REQUIRED', () async {
+    final storage = MemoryTokenStorage('valid');
+    var gated = 0;
+    var unauthorized = 0;
+    final dio = createApiClient(
+      baseUrl: baseUrl,
+      tokenStorage: storage,
+      onUnauthorized: () => unauthorized++,
+      onVerificationRequired: () => gated++,
+      adapter: FakeAdapter(
+        statusCode: 403,
+        body: {
+          'error': {
+            'code': 'VERIFICATION_REQUIRED',
+            'message': '請先完成驗證。',
+            'fields': {
+              'verification': ['phone'],
+            },
+            'request_id': 'req-403',
+          },
+        },
+      ),
+    );
+
+    await expectLater(
+      dio.get<Map<String, dynamic>>('/notices'),
+      throwsA(isA<DioException>()),
+    );
+    expect(await storage.read(), 'valid');
+    expect(gated, 1);
+    expect(unauthorized, 0);
+  });
+
   test('clears the stored token on 401', () async {
     final storage = MemoryTokenStorage('expired');
     final dio = createApiClient(

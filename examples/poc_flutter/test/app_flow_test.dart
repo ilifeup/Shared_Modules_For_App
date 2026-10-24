@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
@@ -46,6 +47,9 @@ class FakeBackend implements ApiTransport {
     },
   };
   bool bookingRaceFull = false;
+
+  /// When set, booking requests wait for it (simulates a slow network).
+  Completer<void>? bookingGate;
 
   Map<String, dynamic> _bookingInfo(String eventId) {
     final b = bookings[eventId];
@@ -319,6 +323,7 @@ class FakeBackend implements ApiTransport {
     if (bookingMatch != null) {
       final eventId = bookingMatch.group(1)!;
       if (method == 'POST') {
+        await bookingGate?.future;
         if (bookingRaceFull) {
           throw const ApiException(
             code: 'BOOKING_FULL',
@@ -1101,9 +1106,16 @@ void main() {
 
     expect(find.text('名額 2，已預約 1，剩餘 1'), findsOneWidget);
 
-    // A double tap sends a single request.
+    // A second tap while the request is in flight sends nothing.
+    backend.bookingGate = Completer<void>();
     await tester.tap(find.byKey(const Key('booking-book')));
-    await tester.tap(find.byKey(const Key('booking-book')));
+    await tester.pump();
+    expect(find.text('處理中…'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('booking-book')),
+      warnIfMissed: false,
+    );
+    backend.bookingGate!.complete();
     await tester.pumpAndSettle();
 
     expect(

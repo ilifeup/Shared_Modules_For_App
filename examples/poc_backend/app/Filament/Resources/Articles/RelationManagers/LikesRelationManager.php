@@ -4,9 +4,9 @@ namespace App\Filament\Resources\Articles\RelationManagers;
 
 use App\Filament\Resources\CalendarEvents\CalendarEventResource;
 use Filament\Resources\RelationManagers\RelationManager;
-use Illuminate\Database\Eloquent\Model;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * S8 M05-B03 admin view of who liked an article: member ID and the real name kept

@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.5｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.6｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -394,3 +394,61 @@ M08 legacy booking 與 group/attendee 的唯一表示方案、場次生成上限
 **S9-L06：舊／新報名資料模型**。A＝保留 `event_bookings` 為既有會員報名錨點，新增 group＋attendee＋waitlist，以單一交易／席次引擎統一；B＝直接擴充 `event_bookings` 為所有報名訂單；C＝全量改為新 group。**建議 A**，但需先完成上述五項不變量的技術契約。使用者未確認前不得將 A 視為正式決策。
 
 本輪只更新文件，未開發、合併或部署。
+
+## 15. v0.6 L06 A 核准後：單一席次帳本與遷移相容規格（2026-10-25）
+
+### 15.1 核准事項與待核准技術細節
+S9-L06 A 已正式核准：`event_bookings` 作為既有會員報名錨點，新增 group／attendee／waitlist，且所有預約入口共用交易、席次與 FIFO 引擎。第 14.2 節 B/C 方案僅保留歷史比較，不得再當作同等候選方案。以下資料表結構、服務實作與索引仍為**技術候選**，尚待 L04 一次整合審查。
+
+### 15.2 單一席次計算規則（候選）
+
+在同一 `calendar_events.id` 下，所有有效席次只能屬於一種計數來源：
+
+- **Legacy-only**：尚未建立 group/attendee 映射的既有 `event_bookings` confirmed 且 active=1，一筆占一席。
+- **Mapped group**：已建立 group/attendee 映射的會員預約，以 confirmed attendees 計席次；對應 legacy booking **不再額外計一席**。
+- **Group-only**：訪客／多人 group 未對應 legacy booking，按 confirmed attendees 計席次。
+- **Waitlist**：尚未轉正的候補 group/attendee 不占席次。
+- 不得將已取消、已候補、已撤銷或已失效的報名列入已確認席次。
+- 計算與寫入在鎖定同一 `calendar_events` row 的 transaction 中進行；`confirmed_seats + requested_seats <= booking_capacity`（容量 nullable 的既有語意須先核對 `CalendarEvent` Model）。
+
+### 15.3 重要候選欄位與完整性約束
+
+| 資料 | 候選欄位／索引 | 目的 |
+|---|---|---|
+| `event_booking_groups` | `calendar_event_id FK`、`legacy_booking_id BIGINT NULL UNIQUE`、`booker_user_id BIGINT NULL`、`guest_contact_id BIGINT NULL`、`status`、`seat_count` | legacy booking 最多對應一組 group；多人／訪客共用主體 |
+| `event_booking_attendees` | `group_id FK`、`calendar_event_id FK`、`member_user_id BIGINT NULL`、`status`、`display_name` | 一人一列、每場次獨立；跨 group 同會員重複有效席次需額外交易檢查／唯一約束 |
+| `event_waitlist_entries` | `group_id FK`、`calendar_event_id FK`、`sequence BIGINT`、`status`、`UNIQUE(calendar_event_id,sequence)` | FIFO 排序穩定；不得跳過首組 |
+| `event_attendances` | `calendar_event_id FK`、`attendee_id FK`、`UNIQUE(calendar_event_id,attendee_id)` | M11 每實際參加者唯一簽到紀錄 |
+
+**資料庫限制注意**：`UNIQUE(calendar_event_id,member_user_id)` 若套在所有 attendee 歷史列，會阻止取消後重新報名；若允許多筆取消歷史，應採 active nullable 標記＋唯一索引或獨立有效會員佔位表，並對匿名／訪客重複驗證另訂規則。不可僅靠應用程式查詢來保證併發唯一性。
+
+### 15.4 新舊 API 統一寫入路徑（候選）
+
+1. 以 `calendar_event_id` 載入並鎖定 `calendar_events`。
+2. 驗證活動狀態、開放時間、會員／訪客資格與重複報名；同時確認 FIFO 首組是否阻擋直接插隊。
+3. 以同一席次帳本計算 legacy-only 與新 group confirmed attendees。
+4. 全組可確認則原子建立／更新 group 與 attendees；不足則依已核准 M08 候補規則整組入隊。
+5. 取消時先鎖場次，再鎖 group/booking/waitlist，釋放席次並同交易遞補首組；取消整場活動則**不遞補**。
+6. 提交後以 outbox 或具冪等性的背景工作發通知與 Google 同步；失敗不回滾已成功預約。
+7. 既有 S6 API request/response 應維持原有語意與狀態碼；新群組 API 的 JSON Schema 待審。
+
+### 15.5 防止資料重複／不一致的驗收條件
+
+- [ ] legacy booking 建立 group 映射前後，席次數完全相同。
+- [ ] 同會員透過 legacy API 和新 group API 同時預約，最多一筆有效邏輯報名。
+- [ ] 同一 group 重試不新增第二組／第二批 attendees；可用 request-id 冪等鍵，實際保存方式待審。
+- [ ] 同一場次兩個並發 group 搶最後席次，confirmed 總席次不超容量。
+- [ ] FIFO 首組不足席時後組不得遞補；候補順序不因 retry 改變。
+- [ ] 取消單人 booking 與 group 取消不會雙重釋放同一席次。
+- [ ] 取消整場活動後，不會遞補任何候補組。
+- [ ] 訪客認領會員後，若同場次已有有效 booking，必須阻止重複占位並保留稽核。
+- [ ] S6 `UNIQUE(calendar_event_id,user_id,active)`、原 FK、舊路徑回歸測試全部通過。
+
+### 15.6 下一輪應核對的實際程式
+- `CalendarEvent`、`EventBooking` Eloquent models 的 capacity、booking close time、關聯與 cast。
+- S6 controller/routes/OpenAPI 的完整回傳狀態與錯誤碼。
+- S8 Shared/Tiandi 的 HEAD 與未合併差異，避免在錯誤基線設計 API。
+- Laravel 的現有審計／通知機制，避免新建第二套。
+- 然後完成九模組 OpenAPI 3.1 完整 JSON Schema 與各表 up/down 草案，提交 L04 一次技術審查。
+
+**本輪僅更新 GitHub 規劃文件，沒有開發、修改 Migration／OpenAPI、合併 PR 或部署。**

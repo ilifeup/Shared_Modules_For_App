@@ -1,0 +1,94 @@
+import 'package:eachcore_shared_core/eachcore_shared_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/network/api_exception.dart';
+import '../../core/providers.dart';
+
+enum AuthStatus { unknown, signedOut, signedIn }
+
+class AuthState {
+  const AuthState._(this.status, this.profile);
+
+  const AuthState.unknown() : this._(AuthStatus.unknown, null);
+
+  const AuthState.signedOut() : this._(AuthStatus.signedOut, null);
+
+  const AuthState.signedIn(MemberProfile profile)
+    : this._(AuthStatus.signedIn, profile);
+
+  final AuthStatus status;
+  final MemberProfile? profile;
+}
+
+final authControllerProvider = NotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);
+
+/// Owns the member session: restore on start, login, logout, 401 handling.
+///
+/// The token lives only in secure storage; it is never logged or kept in
+/// widget state.
+class AuthController extends Notifier<AuthState> {
+  @override
+  AuthState build() {
+    Future.microtask(restore);
+    return const AuthState.unknown();
+  }
+
+  /// Long-lived login: a stored token is reused until the server rejects it.
+  Future<void> restore() async {
+    final storage = ref.read(tokenStorageProvider);
+    final token = await storage.read();
+    if (token == null || token.isEmpty) {
+      state = const AuthState.signedOut();
+      return;
+    }
+    try {
+      final profile = await ref.read(memberApiProvider).myProfile();
+      state = AuthState.signedIn(profile);
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        await storage.clear();
+        state = const AuthState.signedOut();
+      } else {
+        // Offline or server error: keep the token, let the member retry.
+        state = const AuthState.signedOut();
+      }
+    }
+  }
+
+  Future<void> login(String identifier, String password) async {
+    final session = ref.read(sessionApiProvider);
+    final token = await session.login(identifier, password);
+    final storage = ref.read(tokenStorageProvider);
+    await storage.write(token);
+    try {
+      final profile = await ref.read(memberApiProvider).myProfile();
+      state = AuthState.signedIn(profile);
+    } catch (_) {
+      await storage.clear();
+      rethrow;
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await ref.read(sessionApiProvider).logout();
+    } on ApiException {
+      // The local credential is cleared even if the server is unreachable.
+    } finally {
+      await ref.read(tokenStorageProvider).clear();
+      state = const AuthState.signedOut();
+    }
+  }
+
+  void updateProfile(MemberProfile profile) {
+    state = AuthState.signedIn(profile);
+  }
+
+  void handleUnauthorized() {
+    if (state.status == AuthStatus.signedIn) {
+      state = const AuthState.signedOut();
+    }
+  }
+}

@@ -1,0 +1,144 @@
+name: S1 PoC Backend
+
+# Laravel 13 + Sanctum + Filament 5 + Spatie on PHP 8.4 / MySQL 8.4.
+# Test only: no deployment, no secrets, synthetic data, disposable database.
+on:
+  pull_request:
+    paths:
+      - 'examples/poc_backend/**'
+      - 'packages/laravel/**'
+      - '.github/workflows/s1-poc-backend.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'examples/poc_backend/**'
+      - 'packages/laravel/**'
+      - '.github/workflows/s1-poc-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: s1-poc-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: examples/poc_backend
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: s1_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: s1_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, pdo_mysql, bcmath, gd, zip, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Verify PHP 8.4
+        id: php
+        run: |
+          php -v
+          php -r 'exit(PHP_VERSION_ID >= 80400 && PHP_VERSION_ID < 80500 ? 0 : 1);'
+
+      - name: Composer validate
+        id: validate
+        run: composer validate --strict --no-check-publish
+
+      - name: Composer install
+        id: install
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Composer audit (diagnostic, checked by Gate)
+        id: audit
+        continue-on-error: true
+        run: composer audit
+
+      - name: Prepare environment
+        run: bash scripts/ci_env.sh
+
+      - name: Verify MySQL 8.4
+        id: mysql
+        run: |
+          php -r '$v = (new PDO("mysql:host=127.0.0.1;port=3306", "root", "root"))->query("select version()")->fetchColumn(); echo "MySQL $v\n"; exit(str_starts_with($v, "8.4.") ? 0 : 1);'
+
+      - name: Migrate (MySQL)
+        id: migrate
+        run: php artisan migrate --force --no-interaction
+
+      - name: Pint (diagnostic, checked by Gate)
+        id: pint
+        continue-on-error: true
+        run: vendor/bin/pint --test -v
+
+      - name: Pest (MySQL)
+        id: pest
+        run: php artisan test
+
+      - name: HTTP end-to-end smoke (php artisan serve + curl)
+        id: e2e
+        run: bash scripts/e2e_api_smoke.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## S1 PoC backend"
+            echo "- commit: \`$GITHUB_SHA\`（ref: $GITHUB_REF_NAME）, run $GITHUB_RUN_NUMBER/$GITHUB_RUN_ATTEMPT"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| PHP 8.4 | ${{ steps.php.outcome }} |"
+            echo "| composer validate | ${{ steps.validate.outcome }} |"
+            echo "| composer install | ${{ steps.install.outcome }} |"
+            echo "| composer audit | ${{ steps.audit.outcome }} |"
+            echo "| MySQL 8.4 | ${{ steps.mysql.outcome }} |"
+            echo "| migrate | ${{ steps.migrate.outcome }} |"
+            echo "| Pint | ${{ steps.pint.outcome }} |"
+            echo "| Pest | ${{ steps.pest.outcome }} |"
+            echo "| HTTP E2E | ${{ steps.e2e.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gate (fail unless every check succeeded)
+        if: always()
+        env:
+          OUTCOMES: >-
+            php=${{ steps.php.outcome }}
+            validate=${{ steps.validate.outcome }}
+            install=${{ steps.install.outcome }}
+            audit=${{ steps.audit.outcome }}
+            mysql=${{ steps.mysql.outcome }}
+            migrate=${{ steps.migrate.outcome }}
+            pint=${{ steps.pint.outcome }}
+            pest=${{ steps.pest.outcome }}
+            e2e=${{ steps.e2e.outcome }}
+        run: |
+          failed=0
+          for item in $OUTCOMES; do
+            echo "$item"
+            [ "${item#*=}" = "success" ] || failed=1
+          done
+          exit "$failed"

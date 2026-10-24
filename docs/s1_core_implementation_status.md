@@ -1,15 +1,12 @@
-# S1 First Code Slice — Domain Core
+# S1 Implementation Status
 
-Status: IN PROGRESS. This first code PR is **not** the full Flutter + Laravel + Filament PoC.
+Status: S1 PoC implemented (2026-10-24, branch `feat/s1-poc-full`). Evidence = CI runs linked from the PR; anything not covered there is NOT TESTED.
 
-Implemented: framework-independent PHP domain rules for notice visibility and display-name validation, and equivalent pure Dart models/validation, plus smoke tests. These packages intentionally do not touch users, tokens, persistence, migrations, admin permissions or production deployments.
+Scope follows ADR-006 (user-approved 2026-10-24), which supersedes the earlier S1-A defaults in `s1_decision_register.md` (admin-created accounts only, fixed token lifetime).
 
-Not implemented: Laravel Sanctum login/logout, member creation, profile persistence, Filament notice CRUD, real REST API, Flutter UI, device integration, Android APK and actual end-to-end tests. All remain NOT TESTED.
+Implemented:
+- `examples/poc_backend`: Laravel 13 + Sanctum + Filament 5 + Spatie on MySQL; self-registration, email verification, phone SMS OTP (hashed, single use, attempt cap, hourly/phone limits, cooldown, cache lock), email/phone + password login, long-lived member tokens with optional idle expiry, revoke-on-logout, admin 7-day sliding idle logout, Filament members / notices / three-tab settings, Mitake / EVERY8D / SMSGO / fake adapters, minimal audit events, Pest tests, HTTP E2E smoke.
+- `examples/poc_flutter`: Riverpod + Dio + go_router app; register, email-sent, phone OTP, login, session restore, logout, profile edit, notice list/detail; widget tests and a real Flutter→API→MySQL E2E test in CI.
+- `packages/*/shared_core`: used by both PoC hosts (path dependency); registration API and notice detail added to the Dart contract; SMS result carries an error code.
 
-Why this slice: establish portable, non-App-specific logic with tests before selecting sensitive schema and auth rules. Do not claim this meets S1 acceptance gates.
-
-Run when available:
-- `php packages/laravel/shared_core/tests/smoke.php`
-- `cd packages/flutter/shared_core && dart pub get && dart run test/smoke.dart`
-
-Security note: These rules are supplemental. Server-side Laravel Policies and query-level publication filters are required before exposing any endpoint.
+Not done / NOT TESTED: real SMS sending (no provider accounts), Mitake success codes against the official PDF, SMSGO BIG5 body encoding, real email delivery, Android physical device, iOS, password reset, Tiandi integration (S2), multi-App isolation beyond separate deployments.

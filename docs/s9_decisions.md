@@ -23,7 +23,7 @@
 | M08 | Booking 活動報名 | D01–D24 | v1.1 已確認業務規則；技術方案待核准 |
 | M09 | Calendar 日曆 | D01–D25 | v1.1 業務規格定稿；待正式開發核准 |
 | M11 | Check-in 簽到 | D01–D30 | v1.0 業務規格定稿；技術方案待核准 |
-| M14 | Deep Link | D01–D18 | 前三輪業務決策已確認；後續待討論 |
+| M14 | Deep Link | D01–D24 | 前四輪業務決策已確認；v0.4 技術草案待核准 |
 | M15 | Marketing | 0 | 尚未逐項討論 |
 | M16 | Tag Intelligence | 0 | 尚未逐項討論 |
 | M17 | URL Clicks & Analytics | 0 | 尚未逐項討論 |
@@ -849,6 +849,84 @@
 - 待討論：登入回跳的安全與有效期、跨 App 連結拒絕、URL/QR 測試、Web fallback、驗收 Gate。
 - 本輪僅記錄決策；未授權程式開發、功能 PR、合併或部署。
 
+### M14 第四輪 D19–D24（2026-10-25，使用者明確確認）
+
+| ID | 主題 | 使用者確認 |
+|---|---|---|
+| M14-D19 | 登入回跳 | 只保存本 App 安全路由，登入後重新驗證內容權限，不接受任意外部網址回跳 |
+| M14-D20 | 跨 App 連結 | 每個 App 只處理自己的網域及內容，不在目前 App 直接開啟其他 App 的內容 |
+| M14-D21 | 網頁備援 | App 無法開啟時，仍可使用 HTTPS 網頁查看有權限的內容，而非只顯示安裝頁 |
+| M14-D22 | 特殊連結 | 邀請、驗證、重設密碼等特殊連結依用途獨立設定期限，不適用一般內容永久連結規則 |
+| M14-D23 | 分享權限 | 只有允許分享的內容顯示分享與 QR Code 按鈕 |
+| M14-D24 | 驗收範圍 | Android 與 iOS 實機、LINE、瀏覽器、QR Code、App 冷啟動與熱啟動測試 |
+
+### M14 v0.4 技術規格草案（D01–D24 已確認；技術細節尚待核准）
+
+#### 目標與邊界
+- Shared 提供通用 HTTPS Deep Link 解析、App 內路由導向、去重、登入後安全回跳、錯誤與 Web fallback 能力；各 App 自有網域、路由、內容類型、權限及部署。
+- 同一標準 HTTPS URL 支援網頁、Android App Links、iOS Universal Links、QR Code 與原生分享；內容 ID 固定，修改標題不改變 URL。
+- 各 App 設定哪些文章、公告、活動、場所、會員公開頁等內容類型可建立分享連結；只有允許分享者顯示分享及 QR Code 按鈕。
+- 公開內容的分享預覽可含標題、摘要、圖片；非公開內容不得經 HTML/OG metadata、crawler、圖片 URL 或 API 洩漏。
+- 一般內容連結不設統一到期日；特殊邀請/驗證/密碼重設連結依用途各自設定有效期限，必須使用安全的既有驗證機制，不能共用一般公開內容解析邏輯當作憑證。
+
+#### Flutter 路由候選
+- 共用 Deep Link coordinator 接收 cold start、warm start、背景恢復及登入完成後的待處理連結；依 App 內允許的 route registry 導航。
+- URL 僅接受目前 App 專屬 HTTPS host、已定義 path/參數；拒絕任意 redirect、外部 host 與跨 App 內容。登入回跳只保存安全內部目標，登入後重新向後端確認內容可見性。
+- 同一連結短時間重複觸發時避免多次 push；導航失敗顯示不洩漏敏感資訊的錯誤、重試與返回首頁。
+- Flutter 使用原生分享功能；QR Code 直接編碼相同 HTTPS URL。具體 Flutter package、route parser 與導航棧策略待實際 HEAD 稽核後決定。
+
+#### Laravel / HTTPS Web 候選
+- 使用各 App 既有內容 Policy/發布狀態檢查公開分享、Web fallback、登入後查看及 metadata；Deep Link 不得繞過授權。
+- 各 App HTTPS Web route 解析固定內容 ID；App 未安裝或無法開啟時，顯示對應網頁，公開內容可瀏覽，受保護內容須登入及授權；頁面提供 App 安裝入口。
+- 無效/刪除/無權限內容顯示適當提示與回首頁；對私人內容避免暴露存在與否。
+- 優先使用既有 Laravel route、controller、view、settings；不預設新增短網址服務、跨 App 解析中心或新資料庫。
+- 分享 preview 的 Open Graph metadata 僅在內容確實可公開時輸出；私有內容使用不洩漏資訊的通用 metadata 或不輸出。
+- 分享權限由後端檢查，不以隱藏 Flutter 按鈕作為唯一安全控制。
+
+#### Android / iOS 平台關聯與部署候選
+- Android：各 App HTTPS host 提供 `/.well-known/assetlinks.json`，對應正式 package name 與正確簽署憑證 SHA-256；Android manifest App Links 設定需實機驗證。
+- iOS：各 App HTTPS host 提供 `/.well-known/apple-app-site-association`（AASA），與正式 Team ID / Bundle ID / Associated Domains 相符，並以實機驗證。
+- 兩平台關聯檔案須可由 HTTPS 公開存取、格式正確、無不當重導；每個 App 各自驗證，不假設模擬器測試足以驗收。
+- LINE 內建瀏覽器及不同裝置對 App Links/Universal Links 的開啟行為可能受平台與使用者設定影響；不能承諾所有點擊一定直接喚起 App，必須驗證 Web fallback。
+
+#### API/設定候選（命名需依現有 Shared/Tiandi HEAD 稽核）
+| 候選能力 | 責任與權限 |
+|---|---|
+| Deep Link route registry | Shared 提供解析介面，各 App 註冊可處理內容類型、路徑與頁面 |
+| HTTPS 內容網頁 route | 各 App 後端查內容、驗證 Policy，輸出公開頁/登入引導/安全錯誤 |
+| 分享 metadata | 只有公開且允許分享的內容提供 OG title/description/image |
+| App 內容分享開關 | 使用既有 App settings/內容 Policy，不先創造新管理後台 |
+| 特殊安全連結 | 沿用各 App 既有邀請/驗證/重設密碼流程與期限，與一般內容連結隔離 |
+
+#### M14 v0.4 驗收 Gate 草案（G01–G18，待正式核准）
+| Gate | 驗收內容 |
+|---|---|
+| G01 | 各 App HTTPS 網域、內容與路由獨立，拒絕跨 App host |
+| G02 | Android App Links 實機驗證，assetlinks.json 與正式簽章匹配 |
+| G03 | iOS Universal Links 實機驗證，AASA 與正式 App ID 匹配 |
+| G04 | App 冷啟動後導向指定內容 |
+| G05 | App 熱啟動/背景恢復時正確導向 |
+| G06 | 短時間同 URL 重複點擊不重複堆疊頁面 |
+| G07 | 登入後安全回跳原內容並重新檢查權限 |
+| G08 | 未安裝或不能喚起 App 時 HTTPS 網頁備援與安裝入口 |
+| G09 | 公開分享內容可產生相同 HTTPS URL 與 QR Code |
+| G10 | 手機原生分享及 LINE/瀏覽器/QR Code 實測 |
+| G11 | 公開內容 OG 預覽正確，私人內容 metadata 不洩漏 |
+| G12 | 固定內容 ID，修改標題不影響連結 |
+| G13 | URL host、path、query allowlist 與 open redirect 防護 |
+| G14 | 一般內容連結長期有效；內容刪除/失權正確處理 |
+| G15 | 特殊邀請/驗證/重設密碼連結獨立期限與驗證 |
+| G16 | 只有可分享內容顯示分享/QR 按鈕；後端仍驗證 |
+| G17 | 錯誤、無權限、網路失敗提供安全提示/重試/首頁 |
+| G18 | Android/iOS 真機與 CI 證據；Shared/各 App PR 分開審查，未核准不得合併或部署 |
+
+#### 待後續確認的技術細節
+- 真實 App 網域、Android package、簽章指紋、iOS Team ID/Bundle ID 與正式部署方式。
+- Shared/Tiandi 現有 Flutter router、Laravel route、內容模型/Policy、Web fallback 及設定模組，避免重複造輪。
+- 多個連結接續開啟的導航棧策略、登入回跳暫存時間、QR Code 輸出樣式與分享預覽圖片規格。
+- LINE 等內建瀏覽器限制、不同 Android/iOS 版本與實機驗收矩陣。
+- **本節為技術草案，不構成實作授權；不得改應用程式碼、建立功能 PR、合併或部署。**
+
 ### M14 第一輪架構界線（技術建議，非額外已核准業務決策）
 - Shared 提供 Deep Link 解析與導航共用能力；各 App 保持獨立網域、路由、登入、內容資料與後端權限。
 - HTTPS 網址與 Android App Links／iOS Universal Links 對應，具體 URL pattern、Android assetlinks.json、iOS AASA、App ID 與實際網域待第二輪討論及後續實機驗證。
@@ -906,3 +984,5 @@
 - 2026-10-25 v2.7：記錄 M14 第二輪 D07–D12，確認 HTTPS URL、QR Code、公開分享預覽、固定內容 ID、安全參數及原生分享；未授權開發。
 
 - 2026-10-25 v2.8：記錄 M14 第三輪 D13–D18，確認冷/熱啟動、重複導航去重、一般內容連結長期有效、assetlinks.json/AASA 實機驗證及失敗重試/返回首頁；未授權開發。
+
+- 2026-10-25 v2.9：記錄 M14 第四輪 D19–D24，新增 M14 v0.4 Flutter/Laravel/HTTPS/Android/iOS 技術草案及 G01–G18 Gate；未授權開發。

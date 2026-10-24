@@ -58,7 +58,19 @@ final class PasswordResetService
             return;
         }
 
-        $this->otp->send($user, PhoneOtp::PURPOSE_PASSWORD_RESET);
+        try {
+            $this->otp->send($user, PhoneOtp::PURPOSE_PASSWORD_RESET);
+        } catch (ApiException $e) {
+            // A provider failure answers like a successful send (and like an unknown number).
+            if ($e->errorCode !== 'SMS_SEND_FAILED') {
+                throw $e;
+            }
+
+            AuditEvent::record('password.reset_requested', $user->id, $user, ['channel' => 'phone'], 'failure');
+
+            return;
+        }
+
         AuditEvent::record('password.reset_requested', $user->id, $user, ['channel' => 'phone']);
     }
 
@@ -67,26 +79,46 @@ final class PasswordResetService
         $user = User::query()->where('phone_e164', $phoneE164)->first();
 
         if ($user === null) {
-            throw new ApiException(422, 'OTP_INVALID', '驗證碼錯誤或已失效。');
+            throw PhoneOtpService::invalidCode();
         }
 
         // Must be a code issued for this password reset; a registration code is rejected.
-        $this->otp->verify($user, $code, PhoneOtp::PURPOSE_PASSWORD_RESET);
+        // The password change runs in the same transaction that consumes the code (row
+        // locked FOR UPDATE): if it fails, the code is not consumed and no token is revoked.
+        $this->otp->verify(
+            $user,
+            $code,
+            PhoneOtp::PURPOSE_PASSWORD_RESET,
+            detailed: false,
+            onVerified: fn () => $this->writePassword($user, $password),
+        );
 
-        $this->apply($user, $password, 'phone');
+        $this->completed($user, 'phone');
     }
 
     private function apply(User $user, string $password, string $channel): void
     {
-        DB::transaction(function () use ($user, $password): void {
-            $user->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
-            $user->tokens()->delete();
+        DB::transaction(fn () => $this->writePassword($user, $password));
 
-            if ($user->email !== null) {
-                Password::broker()->deleteToken($user);
-            }
-        });
+        $this->completed($user, $channel);
+    }
 
+    /**
+     * New password, new remember token and revocation of every Sanctum token.
+     * Must run inside a transaction.
+     */
+    private function writePassword(User $user, string $password): void
+    {
+        $user->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
+        $user->tokens()->delete();
+
+        if ($user->email !== null) {
+            Password::broker()->deleteToken($user);
+        }
+    }
+
+    private function completed(User $user, string $channel): void
+    {
         event(new PasswordReset($user));
         AuditEvent::record('password.reset_completed', $user->id, $user, ['channel' => $channel, 'tokens_revoked' => true]);
     }

@@ -357,3 +357,39 @@ S6 在 `calendar_events` 增加 `booking_enabled`、`booking_capacity`、`bookin
 - [ ] M19 各內容類型（活動、文章、場所）的共通搜尋契約及 Policy 介面。
 
 本輪只記錄技術審查，不修改功能程式、合併 PR 或部署。
+
+## 15. 第八輪：OpenAPI 基線、Migration 相依與自動交付阻擋條件（2026-10-25）
+
+### 15.1 已核對 API 契約
+- 已讀 Shared S8 未合併分支 `contracts/openapi.yaml`：OpenAPI **3.1.0**、`info.version=0.7.0`，`paths` 下共有 **49 個路徑**（路徑不等於 HTTP operation 數）。
+- 現有路徑涵蓋 auth、會員、公告、活動、基本預約、文章及互動；**不能將此等同 S9 九模組 API 已完成**。
+- 現有預約路徑：`/events/{id}/booking`、`/events/{id}/bookings`、`/me/bookings`、`/me/bookings/{id}/cancel`。
+- 現有活動路徑：`/events`、`/events/{id}`、`/public/events`、`/public/events/{id}`。
+- 現有文章路徑：`/articles`、`/articles/featured`、`/articles/{id}`、`/articles/{id}/cover`、`/articles/{id}/likes`、`/articles/{id}/comments`、`/articles/{id}/like`、`/article-comments/{id}/reports`、`/article-categories`、`/article-report-reasons`。
+- 以上路徑列表未涵蓋 S9 專用的候補／實際場次簽到／通用 Deep Link／標籤管理／通用搜尋收藏／連結點擊分析等正式 API；**具體新增路徑名稱尚未核准，不在此虛構**。
+
+### 15.2 Schema／Migration 相依順序（技術建議，非實作核准）
+1. **基線**：先解決 S8 PR #20（Shared）與 #17（Tiandi）的基線狀態；現有 S5 `calendar_events`、S6 `event_bookings` 不可重建覆寫。
+2. **M09**：活動重複系列／實際場次／單一場次的 nullable `location`、`floor`、`studio`；現有 `calendar_events.location` 不得重複建立。
+3. **M08**：在實際場次基礎上新增報名群組、參加者、候補及訪客驗證等增量資料；保留既有單會員預約保護。
+4. **M11**：以實際參加者 × 實際場次作簽到／簽退及稽核；候補未轉正不可簽到。
+5. **M03、M14、M16、M19、M15、M17**：各自維持資料所有權與獨立 App DB；其具體 Migration 可依介面相依關係排程，不以九模組數字順序作為 SQL 執行順序。
+6. **INT-D10/D12**：既有 API 優先相容；Shared 提供方案但各 App 獨立審查與執行 Migration。
+
+### 15.3 自動合併／部署前必須解決的阻擋條件
+- **B01：S8 未合併**。S8 PR CI 綠燈是必要證據之一，並非已合併。
+- **B02：S9 正式 API/Schema 未完成核准**。不能直接對現有 S6 預約索引進行破壞性替換。
+- **B03：目前已核對 CI 只有測試／Debug APK**。未驗證完整自動合併／正式部署 workflow。
+- **B04：先前 Repo 設定 `allow_auto_merge=false`**。需另查可行的受控合併策略與權限，不可直接假設自動合併可用。
+- **B05：正式部署環境、Secrets、備份／回退及各 App 目標未核實**。各 App 獨立部署，不得共用管理員密碼。
+- **B06：S8 Queue／Mail／AI／持久化封面等真實服務尚未驗收**。需與正式部署核對，不可將 fake 測試視為真實整合成功。
+- **B07：全模組整合測試仍未建立**。須包含權限、跨模組相依、候補併發、場次名額、簽到、Deep Link、搜尋失權與分析失敗不阻斷核心流程。
+- **授權邊界**：使用者已選未來「九模組一次開發並自動合併部署」，但目前明確要求暫不開發；上述均為規劃，不代表已取得實作／合併／部署授權。
+
+### 15.4 待續
+- [ ] 為九模組建立「現有路徑／建議新契約／主責模組／授權／測試」矩陣。
+- [ ] 核對 `openapi.yaml` 的 request/response schemas 與 Laravel routes 是否存在破壞性風險。
+- [ ] 逐項審查 S9 新增 Migration 的 FK、索引、資料保留及 rollback 策略。
+- [ ] 查驗自動合併與部署環境的真實前置條件，不讀取 Secrets 值。
+
+本輪未更改功能程式、OpenAPI、Migration、PR 狀態或部署。

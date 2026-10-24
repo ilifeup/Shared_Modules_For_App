@@ -43,6 +43,9 @@ final class PhoneOtpService
             throw new ApiException(422, 'PHONE_MISSING', '此帳號沒有手機號碼。');
         }
 
+        // Same per-number answers as throttleWithoutSending(), whatever the account state.
+        $this->throttlePerNumber($phone);
+
         // Ensure the mutex row exists *outside* the transaction: an INSERT IGNORE on an
         // existing row takes a shared lock, and two transactions holding it would
         // deadlock when both upgrade to FOR UPDATE.
@@ -91,11 +94,25 @@ final class PhoneOtpService
      * Only purpose "verify" marks the member's phone as verified; other purposes
      * leave the follow-up action (password reset, phone change) to the caller.
      */
-    public function verify(User $user, string $code, string $purpose = PhoneOtp::PURPOSE_VERIFY, ?string $phone = null): PhoneOtp
-    {
+    /**
+     * @param  bool  $detailed  false for unauthenticated endpoints: expired and locked codes
+     *                          answer OTP_INVALID like unknown numbers, so the error code does
+     *                          not reveal that a code (and thus an account) exists.
+     * @param  (callable(PhoneOtp): void)|null  $onVerified  runs inside the same transaction
+     *                                                       after the code is consumed; if it
+     *                                                       fails, the code stays unused.
+     */
+    public function verify(
+        User $user,
+        string $code,
+        string $purpose = PhoneOtp::PURPOSE_VERIFY,
+        ?string $phone = null,
+        bool $detailed = true,
+        ?callable $onVerified = null,
+    ): PhoneOtp {
         $used = null;
 
-        $outcome = DB::transaction(function () use ($user, $code, $purpose, $phone, &$used): string {
+        $outcome = DB::transaction(function () use ($user, $code, $purpose, $phone, $onVerified, &$used): string {
             /** @var PhoneOtp|null $otp */
             $otp = PhoneOtp::query()
                 ->where('user_id', $user->id)
@@ -136,29 +153,61 @@ final class PhoneOtpService
                 $user->forceFill(['phone_verified_at' => now()])->save();
             }
 
+            if ($onVerified !== null) {
+                $onVerified($otp);
+            }
+
             $used = $otp;
 
             return 'ok';
         });
 
-        match ($outcome) {
-            'ok' => null,
-            'expired' => throw new ApiException(422, 'OTP_EXPIRED', '驗證碼已過期，請重新取得。'),
-            'locked' => throw new ApiException(422, 'OTP_LOCKED', '錯誤次數過多，請重新取得驗證碼。'),
-            default => throw new ApiException(422, 'OTP_INVALID', '驗證碼錯誤或已失效。'),
+        match (true) {
+            $outcome === 'ok' => null,
+            ! $detailed => throw self::invalidCode(),
+            $outcome === 'expired' => throw new ApiException(422, 'OTP_EXPIRED', '驗證碼已過期，請重新取得。'),
+            $outcome === 'locked' => throw new ApiException(422, 'OTP_LOCKED', '錯誤次數過多，請重新取得驗證碼。'),
+            default => throw self::invalidCode(),
         };
 
         return $used;
     }
 
     /**
-     * Same cooldown / hourly answers for numbers that will not receive a code
-     * (unknown or already verified), so responses do not reveal whether an account
-     * exists. Counted in the cache only; nothing is sent.
+     * The generic error for a wrong, unknown, expired or locked code (public endpoints).
+     */
+    public static function invalidCode(): ApiException
+    {
+        return new ApiException(422, 'OTP_INVALID', '驗證碼錯誤或已失效，請重新取得。');
+    }
+
+    /**
+     * For numbers that will not receive a code (unknown, or already verified): the same
+     * per-number cooldown / hourly answers as send(), and the same global-limit answer,
+     * so the response does not reveal whether an account exists. Nothing is sent.
      */
     public function throttleWithoutSending(string $phone, string $purpose): void
     {
-        $key = 'otp-shadow:'.$purpose.':'.hash('sha256', $phone);
+        $this->throttlePerNumber($phone);
+
+        $globalCount = PhoneOtp::query()
+            ->whereIn('status', PhoneOtp::COUNTED_STATUSES)
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
+
+        if ($globalCount >= $this->settings->int('sms_global_hourly_limit')) {
+            throw new ApiException(429, 'SMS_GLOBAL_LIMIT', '系統本小時的簡訊發送量已達上限，請稍後再試。');
+        }
+    }
+
+    /**
+     * Per-number cooldown and hourly limit shared by every send path (all purposes,
+     * registered or not). Counted in the cache; the MySQL-locked checks in issue()
+     * remain the authority for numbers that really receive an SMS.
+     */
+    private function throttlePerNumber(string $phone): void
+    {
+        $key = 'otp-number:'.hash('sha256', $phone);
         $cooldownSeconds = $this->settings->int('sms_resend_cooldown_minutes') * 60;
 
         if (RateLimiter::tooManyAttempts($key.':cooldown', 1)) {

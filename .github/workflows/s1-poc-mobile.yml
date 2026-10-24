@@ -84,7 +84,13 @@ jobs:
           true
 
       - name: Build debug APK
-        run: flutter build apk --debug --dart-define-from-file=env/dev.json
+        run: flutter build apk --debug --dart-define-from-file=env/dev.json 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Publish build failure details as annotations
+        if: failure()
+        run: |
+          [ -s "$RUNNER_TEMP/build.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/build.log" "build" 200
+          true
 
       - name: Verify application ID and targetSdk 36
         run: |

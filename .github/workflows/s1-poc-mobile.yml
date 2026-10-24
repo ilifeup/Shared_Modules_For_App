@@ -34,14 +34,14 @@ jobs:
         shell: bash
         working-directory: examples/poc_flutter
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@0ca7a949e71ae44c8e688a51c5e7e93b2c87e295 # v2.22.0
         with:
           channel: stable
           flutter-version: 3.47.x
@@ -94,7 +94,7 @@ jobs:
           grep -q "package: name='com.eachcore.s1poc.dev'" <<< "$BADGING"
           grep -q "targetSdkVersion:'36'" <<< "$BADGING"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: s1-poc-debug-apk
           path: examples/poc_flutter/build/app/outputs/flutter-apk/app-debug.apk
@@ -126,9 +126,9 @@ jobs:
       DB_USERNAME: root
       DB_PASSWORD: root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.4'
           extensions: mbstring, intl, pdo_mysql, bcmath, gd, zip, sodium
@@ -147,7 +147,7 @@ jobs:
           nohup php artisan serve --host=127.0.0.1 --port=8000 > "$RUNNER_TEMP/serve.log" 2>&1 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/api/v1/health && break; sleep 1; done
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@0ca7a949e71ae44c8e688a51c5e7e93b2c87e295 # v2.22.0
         with:
           channel: stable
           flutter-version: 3.47.x

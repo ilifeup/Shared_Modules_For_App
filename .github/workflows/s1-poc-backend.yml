@@ -7,12 +7,16 @@ on:
     paths:
       - 'examples/poc_backend/**'
       - 'packages/laravel/**'
+      - 'contracts/**'
+      - '.github/scripts/**'
       - '.github/workflows/s1-poc-backend.yml'
   push:
     branches: [main]
     paths:
       - 'examples/poc_backend/**'
       - 'packages/laravel/**'
+      - 'contracts/**'
+      - '.github/scripts/**'
       - '.github/workflows/s1-poc-backend.yml'
   workflow_dispatch:
 
@@ -51,9 +55,9 @@ jobs:
       DB_USERNAME: root
       DB_PASSWORD: root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.4'
           extensions: mbstring, intl, pdo_mysql, bcmath, gd, zip, sodium
@@ -90,6 +94,13 @@ jobs:
       - name: Migrate (MySQL)
         id: migrate
         run: php artisan migrate --force --no-interaction
+
+      - name: OpenAPI contract matches the real routes
+        id: openapi
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install --quiet pyyaml==6.0.2
+          php artisan route:list --path=api --json > "$RUNNER_TEMP/routes.json"
+          "$RUNNER_TEMP/venv/bin/python" ../../.github/scripts/check_openapi_routes.py ../../contracts/openapi.yaml "$RUNNER_TEMP/routes.json"
 
       - name: Pint (diagnostic, checked by Gate)
         id: pint
@@ -135,6 +146,7 @@ jobs:
             echo "| composer audit | ${{ steps.audit.outcome }} |"
             echo "| MySQL 8.4 | ${{ steps.mysql.outcome }} |"
             echo "| migrate | ${{ steps.migrate.outcome }} |"
+            echo "| OpenAPI = routes | ${{ steps.openapi.outcome }} |"
             echo "| Pint | ${{ steps.pint.outcome }} |"
             echo "| Pest | ${{ steps.pest.outcome }} |"
             echo "| HTTP E2E | ${{ steps.e2e.outcome }} |"
@@ -151,6 +163,7 @@ jobs:
             audit=${{ steps.audit.outcome }}
             mysql=${{ steps.mysql.outcome }}
             migrate=${{ steps.migrate.outcome }}
+            openapi=${{ steps.openapi.outcome }}
             pint=${{ steps.pint.outcome }}
             pest=${{ steps.pest.outcome }}
             e2e=${{ steps.e2e.outcome }}

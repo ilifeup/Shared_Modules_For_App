@@ -1,0 +1,788 @@
+openapi: 3.1.0
+info:
+  title: EachCore shared member API (per-App backend)
+  version: 0.3.0
+  description: |
+    Contract of the API implemented by examples/poc_backend (S1–S3) and integrated by each App
+    (tiandi-app first). Every App runs its own backend, database and tokens; nothing here is a
+    shared production service and there is no SSO.
+
+    Conventions
+    - Prefix `/api/v1`. Success `{ "data": ..., "meta"?: ... }`.
+    - Errors `{ "error": { "code", "message", "fields"?, "request_id" } }`; every response carries `X-Request-Id`.
+    - Authentication: Sanctum personal access token, `Authorization: Bearer <token>`.
+    - `x-verification: required` marks endpoints behind `member.verified`: when the current
+      verification policy is not satisfied they answer 403 `VERIFICATION_REQUIRED` with
+      `fields.verification = ["email"|"phone"]`.
+    - `x-dart` names the shared Dart client method / DTO (packages/flutter/shared_core).
+    - Request endpoints for codes and reset links answer identically whether or not the account exists.
+
+    Verified against the routes by `.github/scripts/check_openapi_routes.py` in CI.
+servers:
+  - url: /api/v1
+tags:
+  - name: system
+  - name: auth
+  - name: password
+  - name: profile
+  - name: membership
+  - name: notices
+security:
+  - bearer: []
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: API and database reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [ok] }
+                      database: { type: string, enum: [ok] }
+                      server_time: { type: string, format: date-time }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /auth/policy:
+    get:
+      tags: [auth]
+      operationId: authPolicy
+      security: []
+      x-dart: RegistrationApi.policy -> AuthPolicy
+      responses:
+        '200':
+          description: Current member verification policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [verification_policy, required_fields]
+                    properties:
+                      verification_policy: { $ref: '#/components/schemas/VerificationPolicy' }
+                      required_fields:
+                        type: array
+                        items: { type: string, enum: [name, email, phone, password] }
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      x-dart: RegistrationApi.register -> RegistrationResult
+      x-rate-limit: 10/min per IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone, password, password_confirmation]
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email, maxLength: 255 }
+                phone: { type: string, description: 'Taiwan mobile, e.g. 0912345678', maxLength: 30 }
+                password: { type: string, minLength: 8, maxLength: 255 }
+                password_confirmation: { type: string }
+      responses:
+        '201':
+          description: Account created; email verification always sent, phone code only under phone_required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user: { $ref: '#/components/schemas/Member' }
+                      verification:
+                        type: object
+                        properties:
+                          email: { type: [string, 'null'], examples: [sent] }
+                          phone: { type: [string, 'null'], description: 'sent | send_failed:<CODE> | null' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      x-dart: SessionApi.login -> String (token)
+      x-rate-limit: 10/min per IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: Email or Taiwan mobile number }
+                password: { type: string }
+                device_name: { type: string }
+      responses:
+        '200':
+          description: Token issued (also for unverified members; see data.user.verification)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [token, token_type, user]
+                    properties:
+                      token: { type: string }
+                      token_type: { type: string, enum: [Bearer] }
+                      user: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      x-dart: SessionApi.logout
+      description: Revokes only the token used for this request.
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { logged_out: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/email/resend:
+    post:
+      tags: [auth]
+      operationId: resendEmailVerification
+      security: []
+      x-dart: RegistrationApi.resendEmailVerification
+      x-rate-limit: 3/min per IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/phone/send-otp:
+    post:
+      tags: [auth]
+      operationId: sendPhoneOtp
+      security: []
+      x-dart: RegistrationApi.sendPhoneOtp
+      x-rate-limit: 5/min per IP; resend cooldown and hourly limits per number and globally
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [phone], properties: { phone: { type: string } } }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Error' }
+
+  /auth/phone/verify:
+    post:
+      tags: [auth]
+      operationId: verifyPhone
+      security: []
+      x-dart: RegistrationApi.verifyPhoneOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string, pattern: '^\d{6}$' }
+      responses:
+        '200':
+          description: Phone verified
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { verified: { type: boolean } } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/password/forgot:
+    post:
+      tags: [password]
+      operationId: forgotPassword
+      security: []
+      x-dart: PasswordResetApi.requestEmailLink
+      x-rate-limit: 3/min per IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/password/reset:
+    post:
+      tags: [password]
+      operationId: resetPasswordWithEmailToken
+      security: []
+      x-dart: PasswordResetApi.resetWithEmailToken
+      description: Token from the reset email (60 minutes, single use). Revokes every token of the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, token, password, password_confirmation]
+              properties:
+                email: { type: string, format: email }
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Reset' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/password/phone/send-otp:
+    post:
+      tags: [password]
+      operationId: sendPasswordResetCode
+      security: []
+      x-dart: PasswordResetApi.requestPhoneCode
+      x-rate-limit: 5/min per IP; shares the SMS cooldown and hourly limits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [phone], properties: { phone: { type: string } } }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Error' }
+
+  /auth/password/phone/reset:
+    post:
+      tags: [password]
+      operationId: resetPasswordWithPhoneCode
+      security: []
+      x-dart: PasswordResetApi.resetWithPhoneCode
+      description: Needs a password-reset code (registration or phone-change codes are rejected). Revokes every token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code, password, password_confirmation]
+              properties:
+                phone: { type: string }
+                code: { type: string, pattern: '^\d{6}$' }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Reset' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me:
+    get:
+      tags: [profile]
+      operationId: me
+      x-dart: MemberApi.myProfile -> MemberProfile
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/profile:
+    get:
+      tags: [profile]
+      operationId: myProfile
+      x-dart: MemberApi.myProfile -> MemberProfile
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [profile]
+      operationId: updateProfile
+      x-verification: required
+      x-dart: ProfileApi.update / MemberApi.updateDisplayName -> MemberProfile
+      description: Only name and display_name; other fields are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 255 }
+                display_name: { type: string, maxLength: 80 }
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/email:
+    post:
+      tags: [profile]
+      operationId: changeEmail
+      x-dart: ProfileApi.changeEmail -> MemberProfile
+      description: Adds or changes the email (current password required); saved as unverified and a link is sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/phone/send-otp:
+    post:
+      tags: [profile]
+      operationId: sendPhoneChangeCode
+      x-dart: ProfileApi.sendPhoneChangeCode
+      description: Sends a phone-change code to the NEW number (current password required).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone: { type: string }
+                password: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Error' }
+
+  /me/phone/verify:
+    post:
+      tags: [profile]
+      operationId: confirmPhoneChange
+      x-dart: ProfileApi.confirmPhoneChange -> MemberProfile
+      description: The number is saved (verified) only after this succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string, pattern: '^\d{6}$' }
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/avatar:
+    get:
+      tags: [profile]
+      operationId: getAvatar
+      x-verification: required
+      x-dart: App AvatarRepository.fetch (binary; not in the JSON transport)
+      responses:
+        '200':
+          description: The owner's avatar (512x512 JPEG)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [profile]
+      operationId: uploadAvatar
+      x-verification: required
+      x-dart: App AvatarRepository.upload (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar: { type: string, format: binary, description: 'JPEG, PNG or WebP, max 5 MB; re-encoded server side' }
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [profile]
+      operationId: deleteAvatar
+      x-verification: required
+      x-dart: App AvatarRepository.delete
+      responses:
+        '200': { $ref: '#/components/responses/MemberResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/membership:
+    get:
+      tags: [membership]
+      operationId: myMembership
+      x-verification: required
+      x-dart: MembershipApi.mine -> Membership
+      responses:
+        '200':
+          description: Current level; an expired period falls back to the default level
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [level]
+                    properties:
+                      level: { $ref: '#/components/schemas/MembershipLevel' }
+                      starts_at: { type: [string, 'null'], format: date-time }
+                      ends_at: { type: [string, 'null'], format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /membership-levels:
+    get:
+      tags: [membership]
+      operationId: membershipLevels
+      security: []
+      x-dart: MembershipApi.levels -> List<MembershipLevel>
+      responses:
+        '200':
+          description: Levels and their benefits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/MembershipLevel' } }
+
+  /notices:
+    get:
+      tags: [notices]
+      operationId: memberNotices
+      x-verification: required
+      x-dart: NoticeApi.memberNotices -> NoticePage (MemberApi.notices -> List<Notice>)
+      description: Visible public and member notices; pinned first, then newest. 20 per page.
+      parameters:
+        - { name: category, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Notice page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Notice' } }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      unread_count: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /notices/{id}:
+    get:
+      tags: [notices]
+      operationId: memberNotice
+      x-verification: required
+      x-dart: MemberApi.notice -> Notice
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/NoticeResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /notices/{id}/read:
+    post:
+      tags: [notices]
+      operationId: markNoticeRead
+      x-verification: required
+      x-dart: NoticeApi.markRead
+      description: Idempotent; repeated calls keep a single read record.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { id: { type: string }, is_read: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /public/notices:
+    get:
+      tags: [notices]
+      operationId: publicNotices
+      security: []
+      x-dart: NoticeApi.publicNotices -> List<Notice>
+      x-rate-limit: 60/min per IP
+      parameters:
+        - { name: category, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Public-audience notices (no is_read)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Notice' } }
+                  meta: { type: object }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /public/notices/{id}:
+    get:
+      tags: [notices]
+      operationId: publicNotice
+      security: []
+      x-dart: NoticeApi.publicNotice -> Notice
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/NoticeResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /notice-categories:
+    get:
+      tags: [notices]
+      operationId: noticeCategories
+      security: []
+      x-dart: NoticeApi.categories -> List<NoticeCategory>
+      responses:
+        '200':
+          description: Active categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Sanctum personal access token
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+  schemas:
+    VerificationPolicy:
+      type: string
+      enum: [email_required, phone_required]
+    Member:
+      x-dart: MemberProfile
+      type: object
+      required: [id, display_name, email_verified, phone_verified, verification]
+      properties:
+        id: { type: string }
+        name: { type: string, x-dart: MemberProfile.name }
+        display_name: { type: string, x-dart: MemberProfile.displayName }
+        email: { type: [string, 'null'] }
+        phone: { type: [string, 'null'], description: E.164, x-dart: MemberProfile.phone }
+        email_verified: { type: boolean, x-dart: MemberProfile.emailVerified }
+        phone_verified: { type: boolean, x-dart: MemberProfile.phoneVerified }
+        verification:
+          type: object
+          required: [policy, satisfied, missing]
+          properties:
+            policy: { $ref: '#/components/schemas/VerificationPolicy' }
+            satisfied: { type: boolean, x-dart: MemberProfile.verificationSatisfied }
+            missing: { type: [string, 'null'], enum: [email, phone, null], x-dart: MemberProfile.verificationMissing }
+        has_avatar: { type: boolean, x-dart: MemberProfile.hasAvatar }
+        profile:
+          type: object
+          properties:
+            complete: { type: boolean, x-dart: MemberProfile.profileComplete }
+            missing:
+              type: array
+              items: { type: string, enum: [name, email, phone] }
+              x-dart: MemberProfile.missingFields
+        created_at: { type: [string, 'null'], format: date-time }
+    MembershipLevel:
+      x-dart: MembershipLevel
+      type: object
+      required: [code, name, is_default]
+      properties:
+        code: { type: string, examples: [general, vip] }
+        name: { type: string }
+        benefits: { type: [string, 'null'] }
+        is_default: { type: boolean, x-dart: MembershipLevel.isDefault }
+    Notice:
+      x-dart: Notice (NoticeDto.fromJson)
+      type: object
+      required: [id, title, body, status, published_at]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [published] }
+        published_at: { type: [string, 'null'], format: date-time, x-dart: Notice.publishedAt }
+        publish_ends_at: { type: [string, 'null'], format: date-time, x-dart: Notice.publishEndsAt }
+        is_pinned: { type: boolean, x-dart: Notice.isPinned }
+        audience: { type: string, enum: [public, members] }
+        category:
+          type: [object, 'null']
+          properties:
+            id: { type: string, x-dart: Notice.categoryId }
+            name: { type: string, x-dart: Notice.categoryName }
+        is_read: { type: boolean, description: Member endpoints only, x-dart: Notice.isRead }
+    Error:
+      x-dart: App ApiException (code, message, fields, requestId, statusCode)
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            fields:
+              type: object
+              additionalProperties: { type: array, items: { type: string } }
+            request_id: { type: string }
+  headers:
+    RequestId:
+      schema: { type: string }
+    RetryAfter:
+      schema: { type: integer }
+  responses:
+    MemberResponse:
+      description: Member profile
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/Member' }
+    NoticeResponse:
+      description: One notice
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/Notice' }
+    Message:
+      description: Generic answer (does not reveal whether an account exists)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { message: { type: string } } }
+    Reset:
+      description: Password reset; every token of the account was revoked
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: object, properties: { reset: { type: boolean } } }
+    Error:
+      description: 'Error (e.g. 502 SMS_SEND_FAILED, 503 DATABASE_UNAVAILABLE / AVATAR_UNAVAILABLE)'
+      headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: '401 UNAUTHENTICATED (missing, revoked, idle-expired token or disabled account) / INVALID_CREDENTIALS (login)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: '403 ACCOUNT_DISABLED / FORBIDDEN'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    VerificationRequired:
+      description: '403 VERIFICATION_REQUIRED — fields.verification = ["email"] or ["phone"]; the token stays valid'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: '404 NOT_FOUND (also for drafts, withdrawn, scheduled and ended notices)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: '422 VALIDATION_FAILED (fields per input) / OTP_INVALID / OTP_EXPIRED / OTP_LOCKED / RESET_TOKEN_INVALID / PHONE_MISSING'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: '429 RATE_LIMITED / SMS_COOLDOWN (Retry-After) / SMS_PHONE_LIMIT / SMS_GLOBAL_LIMIT'
+      headers: { Retry-After: { $ref: '#/components/headers/RetryAfter' } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

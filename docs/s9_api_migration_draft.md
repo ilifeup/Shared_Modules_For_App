@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.6｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.7｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -452,3 +452,52 @@ S9-L06 A 已正式核准：`event_bookings` 作為既有會員報名錨點，新
 - 然後完成九模組 OpenAPI 3.1 完整 JSON Schema 與各表 up/down 草案，提交 L04 一次技術審查。
 
 **本輪僅更新 GitHub 規劃文件，沒有開發、修改 Migration／OpenAPI、合併 PR 或部署。**
+
+## 16. v0.7 S5／S6 Laravel Model、Controller、Routes 相容性核對（2026-10-25）
+
+### 16.1 已核對實際來源（Shared main）
+
+- `examples/poc_backend/app/Models/CalendarEvent.php`：`MAX_RANGE_DAYS=62`、`MAX_RESULTS=200`；`bookingClosesAt()` 為自訂截止或 `starts_at`；booking_enabled 時 capacity 至少 1；`listed()` 包含 published/cancelled；`cancel()` 保留 ID 與取消歷史。
+- `examples/poc_backend/app/Models/EventBooking.php`：僅 confirmed/cancelled，`isConfirmed()`、`event()`、`user()`；沒有現成群組／候補語意。
+- `examples/poc_backend/routes/api.php`：`/api/v1` 由 bootstrap 設定；會員事件及 S6 預約位於 `auth:sanctum` + `member.verified`；公開事件另外位於 `/public/events`。
+- `examples/poc_backend/app/Http/Controllers/Api/CalendarEventController.php`：from/to 必填，ISO 8601 帶 offset 或日期，日期視 UTC 00:00；區間 `[from,to)`；最多 62 天，200 筆，超出以 `meta.truncated` 提示；公開查詢僅 public audience。
+- `examples/poc_backend/app/Http/Controllers/Api/BookingController.php`：原 POST /events/{id}/bookings 無請求 body，201 回傳 booking info；GET /events/{id}/booking 同格式；GET /me/bookings 每頁 20；取消自己的 booking，非本人 404；info 中 `booked_count` 目前等於 confirmed booking row 數。
+
+### 16.2 S9 API 相容契約（待完整 OpenAPI 定稿）
+
+| 舊路徑 | 不得破壞的語意 | S9 擴充候選 |
+|---|---|---|
+| `GET /events/{id}/booking` | `data.event_id,enabled,capacity,booked_count,remaining,opens_at,closes_at,unavailable_reason,my_booking` | `booked_count` 將代表**實際確認席次**，以符合容量語意；此變更對既有客戶端是否視為行為變更須核對測試 |
+| `POST /events/{id}/bookings` | 無 body 單會員預約、201、相同 booking info | 維持 legacy request；新多人流程另設 URI 或明確可選 body，待 OpenAPI 一次核准 |
+| `GET /me/bookings` | 含 confirmed/cancelled 歷史，依 booked_at/id 倒序，每頁 20，meta pagination | 多人與候補是否另提供列表，不能默默改變舊 DTO |
+| `POST /me/bookings/{id}/cancel` | 只允許本人，其他 404，成功回傳 booking info | 群組代報名取消另設權限規則；內部共用場次鎖與遞補 |
+| `GET /events`、`GET /public/events` | from/to 必填、62 天、最多 200、meta.truncated、公開權限過濾 | 週／月重複活動應先 materialize 場次，再以既有區間查詢，不能無限制展開 |
+| `GET /events/{id}`、`GET /public/events/{id}` | drafts 不可見，cancelled 可見；public 僅 public audience | VIP/private 規則須後端過濾，不得讓既有 public 查詢外洩 |
+
+### 16.3 發現的兩項設計陷阱
+
+**陷阱 1：`booked_count` 從筆數轉為席次**。S6 目前 `BookingController::info()` 以 `confirmedCount()` 的 booking row 數當 `booked_count`。S9 多人上線後，若保留筆數語意，`remaining` 會錯；若改為席次語意，原 DTO 欄位名稱不變但數值可能不同。建議明定 `booked_count` 是「已確認實際參加者席次」，並以回歸測試驗證舊單人活動數值不變；新欄位如 `booking_group_count` 應另行定義，不可混用。
+
+**陷阱 2：L02 改期期限**。目前沒有「截止時間是相對／自訂」的明確旗標：`booking_closes_at=NULL` 表示跟隨 `starts_at`；非 NULL 為明確截止。若 S9 要支援「活動前 N 小時」相對期限，必須新增可識別的 deadline mode/offset；不能僅用時間差猜測管理員是否自訂。
+
+### 16.4 建議驗收案例
+
+- [ ] 舊無 body 預約 POST 仍回 201 與既有欄位。
+- [ ] 舊單人活動 `booked_count` 與 `remaining` 值不變；多人活動則按實際席次一致計算。
+- [ ] `/me/bookings` 舊 20 筆分頁、排序、取消歷史不變。
+- [ ] 其他會員取消路徑仍為 404，不洩漏是否存在該 booking。
+- [ ] 會員驗證不足時仍被 `member.verified` 拒絕；訪客另走受限驗證路徑。
+- [ ] `/public/events` 不能取得 members/VIP/private 資料。
+- [ ] 重複活動場次查詢 62 天／200 筆與 `meta.truncated` 保持一致。
+- [ ] `booking_closes_at=NULL` 改期後自動跟隨新 `starts_at`；非 NULL 自訂截止保留並提醒。
+- [ ] 若新增相對 offset 截止，改期後正確重算，與明確自訂期限分離。
+- [ ] 活動取消保留原 `calendar_events.id`，不刪除已存在的 booking FK。
+
+### 16.5 下一輪需要完成的契約審查
+
+1. 對照 S8 尚未合併分支的 OpenAPI 與 Flutter DTO，避免只以 Shared main v0.6.0 為最終契約。
+2. 明確定義 `booked_count` 席次語意及 `deadline_mode` 的 Schema。
+3. 實作前核准新群組／訪客／候補 API 的完整 JSON Schema、Policy、錯誤碼與冪等性。
+4. 再核對現有 AuditEvent、通知與測試架構，避免重複造輪子。
+
+**本節為實際程式碼核對與待核准契約，未修改任何程式、Migration、OpenAPI、PR 或部署。**

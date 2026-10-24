@@ -2,6 +2,7 @@ import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 
 class FakeTransport implements ApiTransport {
   final List<String> calls = [];
+  Map<String, dynamic>? readAllResponse;
 
   Map<String, dynamic> _item(String id, {bool read = false}) => {
     'id': id,
@@ -39,6 +40,8 @@ class FakeTransport implements ApiTransport {
       };
     }
     if (path == '/api/v1/me/notifications/read-all') {
+      final custom = readAllResponse;
+      if (custom != null) return custom;
       return {
         'data': {'updated': 2, 'unread_count': 0},
       };
@@ -71,6 +74,24 @@ Future<void> main() async {
   check((await api.markRead('1')).isRead);
   check(fake.calls.last == 'POST /api/v1/me/notifications/1/read');
   check(await api.markAllRead() == 2);
+
+  // A missing or non-integer `updated` is a contract error, not 0.
+  for (final bad in <Map<String, dynamic>>[
+    {'data': <String, dynamic>{}},
+    {
+      'data': {'updated': '2'},
+    },
+  ]) {
+    fake.readAllResponse = bad;
+    var rejected = false;
+    try {
+      await api.markAllRead();
+    } on FormatException {
+      rejected = true;
+    }
+    check(rejected);
+  }
+  fake.readAllResponse = null;
 
   final minimal = MemberNotificationDto.fromJson({
     'id': 'x',

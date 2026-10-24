@@ -151,6 +151,9 @@ class NotificationApi {
     );
     final data = json['data'];
     final updated = data is Map ? data['updated'] : null;
-    return updated is int ? updated : 0;
+    if (updated is! int) {
+      throw const FormatException('Invalid mark-all-read response');
+    }
+    return updated;
   }
 }

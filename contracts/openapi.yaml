@@ -722,7 +722,7 @@ paths:
       tags: [notifications]
       operationId: markNotificationRead
       x-verification: required
-      x-dart: NotificationApi.markRead -> NotificationReadResult
+      x-dart: NotificationApi.markRead -> MemberNotification
       description: Idempotent; the first read time is kept.
       parameters: [{ $ref: '#/components/parameters/Uuid' }]
       responses:

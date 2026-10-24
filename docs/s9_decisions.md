@@ -23,7 +23,7 @@
 | M08 | Booking 活動報名 | D01–D24 | v1.1 已確認業務規則；技術方案待核准 |
 | M09 | Calendar 日曆 | D01–D25 | v1.1 業務規格定稿；待正式開發核准 |
 | M11 | Check-in 簽到 | D01–D30 | v1.0 業務規格定稿；技術方案待核准 |
-| M14 | Deep Link | D01–D06 | 第一輪業務決策已確認；後續待討論 |
+| M14 | Deep Link | D01–D12 | 前兩輪業務決策已確認；後續待討論 |
 | M15 | Marketing | 0 | 尚未逐項討論 |
 | M16 | Tag Intelligence | 0 | 尚未逐項討論 |
 | M17 | URL Clicks & Analytics | 0 | 尚未逐項討論 |
@@ -808,6 +808,26 @@
 | M14-D05 | 無效或無權限連結 | 顯示適當的連結失效／無權限提示，提供返回首頁 |
 | M14-D06 | 網域策略 | 各 App 使用自己的網域及連結設定；不要求所有 App 共用單一網址網域 |
 
+### M14 第二輪 D07–D12（2026-10-25，使用者明確確認）
+
+| ID | 主題 | 使用者確認 |
+|---|---|---|
+| M14-D07 | 網址格式 | 使用各 App 網域的標準 HTTPS 網址，例如 `https://app.example.com/events/123`；不以自訂 App Scheme 為主要公開連結 |
+| M14-D08 | QR Code | 每個可分享內容都可以產生 QR Code |
+| M14-D09 | 社群分享預覽 | 公開內容可顯示標題、摘要與圖片；私人內容不得洩漏 |
+| M14-D10 | 連結永久性 | 使用固定內容 ID，修改標題不改變網址 |
+| M14-D11 | 網址參數 | 只接受預先定義的安全參數，不允許任意跳轉網址參數 |
+| M14-D12 | 分享方式 | 使用手機原生分享功能，不另外開發完整社群平台整合 |
+
+#### M14 第二輪整合界線（技術建議，非新增業務決策）
+
+- 同一個 HTTPS URL 可用於網頁、App Links/Universal Links、QR Code 與手機原生分享；QR Code 直接編碼標準網址，避免另造 QR 專用連結系統。
+- 內容類型/ID 路由需由各 App 註冊；固定 ID 避免改標題造成連結變動，但內容被刪除或權限變更仍應套用第一輪失效提示/權限驗證。
+- 社群預覽由對應 HTTPS 網頁提供 Open Graph 等公開 metadata；不可讓非公開內容透過 HTML、metadata、圖片 URL 或 crawler bypass 洩漏。
+- 分享連結的參數使用 allowlist 並驗證格式，避免 open redirect、跨 App 跳轉與任意頁面注入。
+- 第二輪未決：冷/熱啟動導航、重複點擊、連結有效期限、平台 domain association 檔案與真機驗收。
+- 本輪只更新文件；不得開發、建立功能 PR、合併或部署。
+
 ### M14 第一輪架構界線（技術建議，非額外已核准業務決策）
 - Shared 提供 Deep Link 解析與導航共用能力；各 App 保持獨立網域、路由、登入、內容資料與後端權限。
 - HTTPS 網址與 Android App Links／iOS Universal Links 對應，具體 URL pattern、Android assetlinks.json、iOS AASA、App ID 與實際網域待第二輪討論及後續實機驗證。
@@ -861,3 +881,5 @@
 - 2026-10-25 v2.5：記錄 M19 第五輪 D25–D30，整理 M19 v1.0 最終待核准規格、Schema/API/Flutter/Filament/安全及 G01–G20 Gate；未授權開發。
 
 - 2026-10-25 v2.6：記錄 M14 Deep Link 第一輪 D01–D06，涵蓋雙平台、App 自訂內容類型、未安裝網頁引導、登入回跳、失效提示與 App 獨立網域；未授權開發。
+
+- 2026-10-25 v2.7：記錄 M14 第二輪 D07–D12，確認 HTTPS URL、QR Code、公開分享預覽、固定內容 ID、安全參數及原生分享；未授權開發。

@@ -47,11 +47,15 @@ TOKEN="$(php -r 'echo json_decode(file_get_contents("/tmp/s1-body.json"), true)[
 
 expect 200 "$(call GET /api/v1/me/profile '' "$TOKEN")" "read own profile"
 expect 200 "$(call PATCH /api/v1/me/profile '{"display_name":"E2E 改名"}' "$TOKEN")" "update display name"
-grep -q 'E2E 改名' /tmp/s1-body.json || { echo "FAIL: display name not persisted"; exit 1; }
+json_get() { php -r '$d = json_decode(file_get_contents("/tmp/s1-body.json"), true); echo $d["data"]["display_name"] ?? "";'; }
+[ "$(json_get)" = "E2E 改名" ] || { echo "::error title=e2e smoke::display name not persisted"; exit 1; }
+expect 200 "$(call GET /api/v1/me/profile '' "$TOKEN")" "re-read profile"
+[ "$(json_get)" = "E2E 改名" ] || { echo "::error title=e2e smoke::display name not persisted after re-read"; exit 1; }
+echo "PASS: display name persisted"
 
 php artisan tinker --execute='App\Models\Notice::query()->create(["title" => "E2E smoke notice", "body" => "x", "status" => "published"]);' > /dev/null
 expect 200 "$(call GET /api/v1/notices '' "$TOKEN")" "list notices"
-grep -q 'E2E smoke notice' /tmp/s1-body.json || { echo "FAIL: published notice missing"; exit 1; }
+grep -q 'E2E smoke notice' /tmp/s1-body.json || { echo "::error title=e2e smoke::published notice missing"; exit 1; }
 
 expect 200 "$(call POST /api/v1/auth/logout '' "$TOKEN")" "logout"
 expect 401 "$(call GET /api/v1/me/profile '' "$TOKEN")" "token revoked after logout"

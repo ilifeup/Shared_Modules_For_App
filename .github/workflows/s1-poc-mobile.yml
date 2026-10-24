@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
+        shell: bash
         working-directory: examples/poc_flutter
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +96,9 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     services:
       mysql:
         image: mysql:8.4

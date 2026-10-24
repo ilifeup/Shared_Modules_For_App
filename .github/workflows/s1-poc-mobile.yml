@@ -55,13 +55,25 @@ jobs:
       - name: Format check (prints the diff on failure)
         run: |
           dart format lib test
-          git diff --exit-code -- .
+          git diff -- . > "$RUNNER_TEMP/format.diff"
+          if [ -s "$RUNNER_TEMP/format.diff" ]; then
+            bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 400
+            exit 1
+          fi
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze 2>&1 | tee "$RUNNER_TEMP/analyze.log"
 
       - name: Widget and unit tests
-        run: flutter test --exclude-tags e2e
+        run: flutter test --exclude-tags e2e 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      - name: Publish failure details as annotations
+        if: failure()
+        run: |
+          for f in analyze test; do
+            [ -s "$RUNNER_TEMP/$f.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 150
+          done
+          true
 
       - name: Build debug APK
         run: flutter build apk --debug --dart-define-from-file=env/dev.json
@@ -134,7 +146,10 @@ jobs:
         working-directory: examples/poc_flutter
         run: |
           flutter pub get --enforce-lockfile
-          flutter test --tags e2e --dart-define=E2E_API_BASE_URL=http://127.0.0.1:8000 --dart-define=E2E_MEMBER_PASSWORD=e2e-synthetic-password
+          flutter test --tags e2e --reporter expanded --dart-define=E2E_API_BASE_URL=http://127.0.0.1:8000 --dart-define=E2E_MEMBER_PASSWORD=e2e-synthetic-password 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+          # The test must have actually run (not skipped).
+          grep -qE '\+1: All tests passed' "$RUNNER_TEMP/e2e.log"
+          if grep -qE '~[1-9]' "$RUNNER_TEMP/e2e.log"; then echo "::error::E2E test was skipped"; exit 1; fi
 
       - name: Server log on failure
         if: failure()

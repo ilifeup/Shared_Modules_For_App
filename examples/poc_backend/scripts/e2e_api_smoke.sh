@@ -55,5 +55,5 @@ grep -q 'E2E smoke notice' /tmp/s1-body.json || { echo "FAIL: published notice m
 expect 200 "$(call POST /api/v1/auth/logout '' "$TOKEN")" "logout"
 expect 401 "$(call GET /api/v1/me/profile '' "$TOKEN")" "token revoked after logout"
 
-grep -q "X-Request-Id" <(curl -sSI "$BASE/api/v1/health") && echo "PASS: X-Request-Id header" || { echo "FAIL: X-Request-Id"; exit 1; }
+grep -qi "X-Request-Id" <(curl -sSI "$BASE/api/v1/health") && echo "PASS: X-Request-Id header" || { echo "FAIL: X-Request-Id"; exit 1; }
 echo "HTTP E2E smoke: all checks passed"

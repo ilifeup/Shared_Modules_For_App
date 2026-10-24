@@ -65,8 +65,14 @@ Future<void> main() async {
   check(first.occursOn(localStart));
   check(first.occursOn(localEnd));
   // UTC-constructed date labels must preserve their year/month/day fields.
-  check(first.occursOn(DateTime.utc(localStart.year, localStart.month, localStart.day)));
-  check(first.occursOn(DateTime.utc(localEnd.year, localEnd.month, localEnd.day)));
+  check(
+    first.occursOn(
+      DateTime.utc(localStart.year, localStart.month, localStart.day),
+    ),
+  );
+  check(
+    first.occursOn(DateTime.utc(localEnd.year, localEnd.month, localEnd.day)),
+  );
   check(!first.occursOn(first.endsAt.add(const Duration(days: 2))));
 
   final month = localMonthRange(DateTime(2026, 12, 15));
@@ -75,7 +81,11 @@ Future<void> main() async {
   check(utcMonth.from == DateTime(2027, 1) && utcMonth.to == DateTime(2027, 2));
   final localEndDay = DateTime(localEnd.year, localEnd.month, localEnd.day);
   check(first.occursOn(localEndDay));
-  check(!first.occursOn(DateTime(localEndDay.year, localEndDay.month, localEndDay.day + 2)));
+  check(
+    !first.occursOn(
+      DateTime(localEndDay.year, localEndDay.month, localEndDay.day + 2),
+    ),
+  );
 
   var rejected = false;
   try {

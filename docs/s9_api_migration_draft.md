@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.8｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.9｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -540,3 +540,41 @@ S9-L06 A 已正式核准：`event_bookings` 作為既有會員報名錨點，新
 - [ ] 用測試驗證 legacy 單人 booking 原 JSON 不變、群組另用 DTO、訪客不能繞過驗證。
 
 **注意**：本節只確認 S8 OpenAPI 契約，不代表 Flutter DTO 原始碼或 Tiandi 整合已審完；不修改功能程式、OpenAPI、Migration、PR 或部署。
+
+## 18. v0.9 Flutter Booking DTO 實碼與 Tiandi S8 釘版核對（2026-10-25）
+
+### 18.1 本輪已直接讀取的原始碼
+- Shared `feat/s8-m05-articles:packages/flutter/shared_core/lib/src/booking_api.dart`
+- Tiandi `feat/s8-m05-articles:shared/flutter/shared_core/lib/src/booking_api.dart`
+- Tiandi `feat/s8-m05-articles:shared/SHARED_VERSION`
+- Shared `feat/s8-m05-articles:contracts/openapi.yaml` 與 Tiandi `feat/s8-m05-articles:shared/contracts/openapi.yaml`
+- PR 說明：Shared #20、Tiandi #17（PR 說明要求先合併 Shared 再合併 Tiandi；本輪未合併）
+
+### 18.2 實際 Dart 行為與 S9 影響
+
+| 原始碼 | 已核實行為 | S9 相容限制 |
+|---|---|---|
+| `BookingDto.fromJson` | `id,event_id,status` 必須 String；`booked_at` 必須可解析時間，否則 FormatException | 不可改舊 Booking 欄位型別；不可把 group DTO 塞入舊 Booking |
+| `BookingInfo.fromJson` | `event_id` 必須 String、`booked_count` 必須 int；`enabled` 以 `==true`；`capacity/remaining` 僅接 int | 新席次計數須整數，欄位名稱／型別不可改 |
+| `BookingInfo.fromJson` | `my_booking` 為 Map 時解析 Booking；`unavailable_reason` 接任意 String，`canBook` 僅判斷 null | **新增未知 unavailable_reason 不會解析失敗，但會令 canBook=false**；需確認 UI 文案 fallback |
+| `BookingDto.fromJson` | `status` 接任意 String，`isConfirmed` 僅等於 confirmed | 雖不直接拋錯，舊 UI 未必能理解 waitlisted，仍建議新候補 DTO |
+| `BookingApi.book` | POST `/api/v1/events/{id}/bookings`，不傳 body | 舊單人入口保持無 body；新 group 使用獨立入口 |
+| `BookingApi.mine` | GET `/api/v1/me/bookings`，回傳 `List<Booking>`，沒有 page 參數 | 保持預設第一頁 20 筆；新群組／候補列表另規劃，不默默改成另一種資料 |
+| `BookingApi.cancel` | POST `/api/v1/me/bookings/{id}/cancel` | 保留原本人取消行為與 response |
+| Dart `BookingInfo` | 有 `bookedCount,remaining,capacity,closesAt`，無 group/attendee/waitlist 欄位 | 擴充需新增 DTO，不假設現有 UI 已支援 |
+
+### 18.3 S8 Shared／Tiandi 釘版與合併順序
+Tiandi `shared/SHARED_VERSION` 明載來源 Shared commit `0e16f591ce17e2fc23ac8ff61061c012c4d15299`，列有 `shared/flutter/shared_core/lib/src/booking_api.dart` SHA-256。Shared #20 與 Tiandi #17 PR 說明要求 Shared 先合併、Tiandi 後合併，且不得自行合併。
+
+**核對結論**：S9 新 DTO／API 必須基於 S8 的 `BookingInfo`、`BookingApi` 行為做相容設計；不能把 Tiandi 釘版當成自動跟隨 Shared 的依賴。實際 PR 即時合併狀態、兩分支完整 HEAD 與 CI 結果仍須在開始實作前重新查證。
+
+### 18.4 對第 17 節未完成事項的更新
+- [x] 定位並讀取 Shared／Tiandi Flutter Booking DTO 與 BookingApi 原始碼。
+- [x] 確認 Tiandi S8 `shared/SHARED_VERSION` 的來源 commit。
+- [x] 確認 S8 OpenAPI 與 Dart BookingInfo 主要欄位型別相容。
+- [ ] 逐頁檢查 Tiandi Booking UI 對未知狀態／unavailable_reason 的顯示 fallback。
+- [ ] 核實 S8 PR 即時合併狀態與 CI，正式確定 S9 基線。
+- [ ] 完成 S9 新 Group/Attendee/Waitlist DTO 與 API JSON Schema（規劃，不寫程式）。
+- [ ] 對 L02 deadline_mode、L03 Google 同步及九模組的錯誤碼做全域相容審查。
+
+**本輪僅規劃文件更新，未修改 Dart、Laravel、Migration、OpenAPI、PR 或部署。**

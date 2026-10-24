@@ -1,12 +1,12 @@
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 
 void main() {
-  if (classifyLoginIdentifier(' user@example.invalid ') !=
-      LoginIdentifierKind.email) {
+  final emailKind = classifyLoginIdentifier(' user@example.invalid ');
+  if (emailKind != LoginIdentifierKind.email) {
     throw StateError('Email classification failed');
   }
-  if (classifyLoginIdentifier(' +886912345678 ') !=
-      LoginIdentifierKind.phone) {
+  final phoneKind = classifyLoginIdentifier(' +886912345678 ');
+  if (phoneKind != LoginIdentifierKind.phone) {
     throw StateError('Phone classification failed');
   }
   var rejected = false;

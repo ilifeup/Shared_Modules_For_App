@@ -379,7 +379,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('forgot-phone')), '0912345678');
     await tester.tap(find.byKey(const Key('forgot-send-code')));
     await tester.pumpAndSettle();
-    expect(backend.calls, contains('POST /api/v1/auth/password/phone/send-otp'));
+    expect(
+      backend.calls,
+      contains('POST /api/v1/auth/password/phone/send-otp'),
+    );
     expect(find.text('若此手機已註冊，密碼重設驗證碼已發送。'), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('forgot-code')), '123456');

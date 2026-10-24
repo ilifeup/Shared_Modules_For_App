@@ -430,3 +430,39 @@ S6 在 `calendar_events` 增加 `booking_enabled`、`booking_capacity`、`bookin
 - **尚未核准**：以上擬議 API 的確切 URI、DB 表名、跨模組 service interface 名稱；不得視為已完成實作。
 
 本輪只更新 GitHub 技術審查文件，沒有修改功能程式、合併 PR 或部署。
+
+## 17. 第十輪：S5/S6 Migration、預約 API 與交易併發風險（2026-10-25）
+
+### 17.1 實際讀取的基線
+- Shared main `examples/poc_backend/database/migrations/2026_10_29_000100_s5_calendar_events.php`：`calendar_events` 有 nullable `location`、`starts_at/ends_at`（UTC）、`status`、`audience`，尚無 `floor/studio`。
+- Shared main `examples/poc_backend/database/migrations/2026_10_30_000100_s6_event_bookings.php`：`calendar_events` 增 `booking_enabled/capacity/opens_at/closes_at`；`event_bookings` 有 `calendar_event_id/user_id/status/active/booked_at/cancelled_at/cancelled_by`。
+- Shared main `examples/poc_backend/app/Services/BookingService.php`：報名以 `CalendarEvent::lockForUpdate` 交易保護最後名額；取消以 `EventBooking::lockForUpdate` 保護取消狀態；兩者目前未共用同一把活動場次鎖。
+- Shared S8 未合併分支 `contracts/openapi.yaml`：現有 `GET /events/{id}/booking`、`POST /events/{id}/bookings`、`GET /me/bookings`、`POST /me/bookings/{id}/cancel`；驗證要求 `x-verification: required`；預約成功 201，衝突 409，個人清單 20 筆/頁。
+
+### 17.2 已確認的整合風險
+
+| 風險 | 既有程式證據 | S9 增量設計要求（技術建議） |
+|---|---|---|
+| 多人代報名超賣 | `confirmedCount()` 使用 confirmed **booking rows count** | M08 應以實際占用名額（參加者席次）計算，避免一筆多人報名只占一席 |
+| 取消與候補遞補競爭 | `book()` 鎖 `calendar_events`，`cancel()` 鎖 `event_bookings` | 設計單一、固定的場次／預約鎖定順序；名額釋放與 FIFO 遞補在一致交易邊界內執行 |
+| 舊唯一索引無法表達多人參加者 | `unique(calendar_event_id,user_id,active)` | 保留防止單會員重複有效報名的保護意圖；另建立參加者與候補模型，不將 location/floor/studio 納入索引 |
+| 既有預約 API 不接受訪客或參加者資料 | `POST /events/{id}/bookings` 目前描述建立單會員 confirmed booking | 另規劃相容的訪客／多人／候補 request/response，不擅自破壞舊 Flutter client 契約 |
+| S5 只有一個活動表 | `calendar_events` 的單筆時間欄位 | M09 每週／每月重複活動需區分系列與**實際場次**，M08/M11 應對實際場次關聯 |
+| 場地資訊與預約資料所有權 | S5 已有 `calendar_events.location` | 單一實際場次 nullable `location/floor/studio`；M09 為權威，M08/M11 讀取，不重複建 `location` |
+
+### 17.3 必備測試案例（待實作）
+1. 同場次只剩 2 席時，兩筆各 2 人的併發報名，最多成功一組。
+2. 已額滿且 FIFO 候補首組 3 人時，即使後組 1 人可填補剩餘 1 席，也**不得跳號**。
+3. 取消與新報名同時發生時，不可繞過既有候補隊列；不可超賣、重複遞補或重複取消。
+4. 同會員重複送出、網路重試及同時兩裝置報名，不得重複產生有效預約。
+5. 訪客報名不能未驗證聯絡方式就綁定會員並自行管理。
+6. M11 對每位實際參加者獨立簽到；尚未轉正的候補不可簽到。
+7. 每週／每月重複活動中，同一會員於不同實際場次可分別預約；場地 nullable 且每場次僅一組。
+8. 舊單會員 API 與 Flutter 呼叫保持相容；若須破壞性修改，先另行核准。
+
+### 17.4 待確定而不可自行視為已核准
+- 實際場次、預約群組、參加者、候補隊列的具體表名／FK／索引／交易實作。
+- 既有 S6 單筆 booking 對 S9 多人群組的轉換或相容策略。
+- 新增 API 的路徑、payload、錯誤碼及 migration rollback 行為。
+
+本輪僅核對現有程式及更新審查文件，**未修改功能程式、Migration、OpenAPI、合併 PR 或部署**。

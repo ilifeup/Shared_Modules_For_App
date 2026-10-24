@@ -265,9 +265,7 @@ class FakeBackend implements ApiTransport {
     }
     final eventMatch = RegExp(r'^/api/v1/events/(\d+)$').firstMatch(path);
     if (eventMatch != null) {
-      return {
-        'data': events.firstWhere((e) => e['id'] == eventMatch.group(1)),
-      };
+      return {'data': events.firstWhere((e) => e['id'] == eventMatch.group(1))};
     }
     final match = RegExp(
       r'^/api/v1/me/notifications/([\w-]+)(/read)?$',

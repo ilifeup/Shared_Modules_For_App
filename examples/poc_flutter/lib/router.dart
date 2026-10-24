@@ -12,6 +12,8 @@ import 'features/auth/verify_phone_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
 import 'features/notices/notices_screen.dart';
+import 'features/profile/change_email_screen.dart';
+import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
 
 const _publicPaths = {
@@ -26,6 +28,8 @@ const _publicPaths = {
 /// Screens an unverified member may still open (verification gate).
 const _verificationPaths = {
   '/verify-account',
+  '/profile/email',
+  '/profile/phone',
   '/verify-phone',
   '/email-sent',
   '/health',
@@ -78,6 +82,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/profile/email',
+        builder: (context, state) => const ChangeEmailScreen(),
+      ),
+      GoRoute(
+        path: '/profile/phone',
+        builder: (context, state) => const ChangePhoneScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(

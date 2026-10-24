@@ -81,6 +81,10 @@ expect 200 "$(call GET /api/v1/me/profile '' "$TOKEN")" "re-read profile"
 [ "$(json data.display_name)" = "E2E 改名" ] || { echo "::error title=e2e smoke::display name not persisted after re-read"; exit 1; }
 echo "PASS: display name persisted"
 
+expect 200 "$(call GET /api/v1/me/membership '' "$TOKEN")" "read own membership"
+check data.level.code general "new member is at the general level"
+expect 200 "$(call GET /api/v1/membership-levels)" "list membership levels"
+
 php artisan tinker --execute='App\Models\Notice::query()->create(["title" => "E2E smoke notice", "body" => "x", "status" => "published"]);' > /dev/null
 expect 200 "$(call GET /api/v1/notices '' "$TOKEN")" "list notices"
 grep -q 'E2E smoke notice' /tmp/s1-body.json || { echo "::error title=e2e smoke::published notice missing"; exit 1; }

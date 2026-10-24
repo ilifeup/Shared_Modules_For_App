@@ -10,3 +10,5 @@ export 'src/session_api.dart';
 export 'src/login_identifier.dart';
 export 'src/registration_api.dart';
 export 'src/password_reset_api.dart';
+export 'src/membership.dart';
+export 'src/profile_api.dart';

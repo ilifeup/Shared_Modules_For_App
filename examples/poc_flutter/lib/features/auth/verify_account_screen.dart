@@ -41,6 +41,12 @@ class _VerifyAccountScreenState extends ConsumerState<VerifyAccountScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authControllerProvider).profile;
+    if (profile != null && profile.verificationSatisfied) {
+      // Reached again after verifying on another screen: continue into the App.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/');
+      });
+    }
     final missingPhone = profile?.verificationMissing == 'phone';
     final email = profile?.email ?? '';
     final phone = profile?.phone ?? '';
@@ -53,12 +59,28 @@ class _VerifyAccountScreenState extends ConsumerState<VerifyAccountScreen> {
           StatusBox(
             label: missingPhone ? '【待驗證】請完成手機驗證' : '【待驗證】請完成 Email 驗證',
             detail: missingPhone
-                ? '目前規定須驗證手機才能使用會員功能。驗證碼將傳送至 $phone。'
-                : '目前規定須驗證 Email 才能使用會員功能。請到 $email 收信並點擊驗證連結。',
+                ? (phone.isEmpty
+                      ? '目前規定須驗證手機才能使用會員功能。您的帳號尚未設定手機號碼，請先新增。'
+                      : '目前規定須驗證手機才能使用會員功能。驗證碼將傳送至 $phone。')
+                : (email.isEmpty
+                      ? '目前規定須驗證 Email 才能使用會員功能。您的帳號尚未設定 Email，請先新增。'
+                      : '目前規定須驗證 Email 才能使用會員功能。請到 $email 收信並點擊驗證連結。'),
           ),
           if (_notice != null) StatusBox(label: '【已送出】', detail: _notice!),
           if (_error != null) ErrorBox(error: _error!),
-          if (missingPhone)
+          if (missingPhone && phone.isEmpty)
+            FilledButton(
+              key: const Key('gate-add-phone'),
+              onPressed: _busy ? null : () => context.push('/profile/phone'),
+              child: const Text('新增手機號碼並驗證'),
+            )
+          else if (!missingPhone && email.isEmpty)
+            FilledButton(
+              key: const Key('gate-add-email'),
+              onPressed: _busy ? null : () => context.push('/profile/email'),
+              child: const Text('新增 Email'),
+            )
+          else if (missingPhone)
             FilledButton(
               key: const Key('gate-phone'),
               onPressed: _busy

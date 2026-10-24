@@ -28,6 +28,13 @@ class MemberResource extends JsonResource
             'phone_verified' => $this->phone_verified_at !== null,
             // S3 A02: whether the current verification policy grants full member access.
             'verification' => app(VerificationPolicy::class)->describe($this->resource),
+            // S3 A03: avatar is fetched from GET /api/v1/me/avatar (owner only).
+            'has_avatar' => $this->avatar_path !== null,
+            // S3 A03: old members may lack required fields; the App guides them to complete them.
+            'profile' => [
+                'complete' => $this->resource->missingProfileFields() === [],
+                'missing' => $this->resource->missingProfileFields(),
+            ],
             'created_at' => $this->created_at?->toIso8601ZuluString(),
         ];
     }

@@ -15,7 +15,10 @@ info:
       verification policy is not satisfied they answer 403 `VERIFICATION_REQUIRED` with
       `fields.verification = ["email"|"phone"]`.
     - `x-dart` names the shared Dart client method / DTO (packages/flutter/shared_core).
-    - Request endpoints for codes and reset links answer identically whether or not the account exists.
+    - Request endpoints for codes and reset links answer identically whether or not the account exists:
+      same status, error code and Retry-After for registered, verified and unknown numbers; a provider
+      failure on a public send answers 200; public verify / reset endpoints answer OTP_INVALID for
+      wrong, expired and locked codes (OTP_EXPIRED / OTP_LOCKED only on the authenticated phone change).
 
     Verified against the routes by `.github/scripts/check_openapi_routes.py` in CI.
 servers:
@@ -203,7 +206,7 @@ paths:
         '200': { $ref: '#/components/responses/Message' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
-        '502': { $ref: '#/components/responses/Error' }
+
 
   /auth/phone/verify:
     post:
@@ -287,7 +290,7 @@ paths:
         '200': { $ref: '#/components/responses/Message' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
-        '502': { $ref: '#/components/responses/Error' }
+
 
   /auth/password/phone/reset:
     post:
@@ -750,7 +753,7 @@ components:
             properties:
               data: { type: object, properties: { reset: { type: boolean } } }
     Error:
-      description: 'Error (e.g. 502 SMS_SEND_FAILED, 503 DATABASE_UNAVAILABLE / AVATAR_UNAVAILABLE)'
+      description: 'Error (e.g. 502 SMS_SEND_FAILED on /me/phone/send-otp, 503 DATABASE_UNAVAILABLE / AVATAR_UNAVAILABLE)'
       headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
       content:
         application/json:
@@ -776,7 +779,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     ValidationError:
-      description: '422 VALIDATION_FAILED (fields per input) / OTP_INVALID / OTP_EXPIRED / OTP_LOCKED / RESET_TOKEN_INVALID / PHONE_MISSING'
+      description: '422 VALIDATION_FAILED (fields per input) / OTP_INVALID / RESET_TOKEN_INVALID / PHONE_MISSING; OTP_EXPIRED / OTP_LOCKED only from /me/phone/verify'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

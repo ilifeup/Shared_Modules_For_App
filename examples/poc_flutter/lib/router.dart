@@ -9,6 +9,8 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/auth/verify_account_screen.dart';
 import 'features/auth/verify_phone_screen.dart';
+import 'features/calendar/calendar_screen.dart';
+import 'features/calendar/event_detail_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
 import 'features/notices/notices_screen.dart';
@@ -82,6 +84,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/notices/:id',
         builder: (context, state) =>
             NoticeDetailScreen(id: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/calendar',
+        builder: (context, state) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: '/events/:id',
+        builder: (context, state) =>
+            EventDetailScreen(id: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/notifications',

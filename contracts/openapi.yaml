@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: EachCore shared member API (per-App backend)
-  version: 0.4.0
+  version: 0.5.0
   description: |
-    Contract of the API implemented by examples/poc_backend (S1–S4) and integrated by each App
+    Contract of the API implemented by examples/poc_backend (S1–S5) and integrated by each App
     (tiandi-app first). Every App runs its own backend, database and tokens; nothing here is a
     shared production service and there is no SSO.
 
@@ -31,6 +31,7 @@ tags:
   - name: membership
   - name: notices
   - name: notifications
+  - name: calendar
 security:
   - bearer: []
 paths:
@@ -739,6 +740,66 @@ paths:
         '403': { $ref: '#/components/responses/VerificationRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /events:
+    get:
+      tags: [calendar]
+      operationId: memberEvents
+      x-verification: required
+      x-dart: EventApi.memberEvents -> EventRange
+      description: |
+        Published and cancelled events (public and member-only) overlapping [from, to).
+        Drafts are never returned. At most 62 days per query and 200 events (meta.truncated).
+      parameters:
+        - { $ref: '#/components/parameters/RangeFrom' }
+        - { $ref: '#/components/parameters/RangeTo' }
+      responses:
+        '200': { $ref: '#/components/responses/EventRange' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /events/{id}:
+    get:
+      tags: [calendar]
+      operationId: memberEvent
+      x-verification: required
+      x-dart: EventApi.memberEvent -> CalendarEvent
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/EventResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /public/events:
+    get:
+      tags: [calendar]
+      operationId: publicEvents
+      security: []
+      x-dart: EventApi.publicEvents -> EventRange
+      x-rate-limit: 60/min per IP
+      description: Public-audience events only; same range rules as /events.
+      parameters:
+        - { $ref: '#/components/parameters/RangeFrom' }
+        - { $ref: '#/components/parameters/RangeTo' }
+      responses:
+        '200': { $ref: '#/components/responses/EventRange' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /public/events/{id}:
+    get:
+      tags: [calendar]
+      operationId: publicEvent
+      security: []
+      x-dart: EventApi.publicEvent -> CalendarEvent
+      x-rate-limit: 60/min per IP
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
 components:
   securitySchemes:
     bearer:
@@ -751,6 +812,18 @@ components:
       in: path
       required: true
       schema: { type: integer, minimum: 1 }
+    RangeFrom:
+      name: from
+      in: query
+      required: true
+      description: ISO 8601 date-time with offset (e.g. 2026-11-01T00:00:00+08:00) or a date (00:00 UTC)
+      schema: { type: string }
+    RangeTo:
+      name: to
+      in: query
+      required: true
+      description: Exclusive end; later than from and at most 62 days after it
+      schema: { type: string }
     Uuid:
       name: id
       in: path
@@ -817,6 +890,21 @@ components:
             id: { type: string, x-dart: Notice.categoryId }
             name: { type: string, x-dart: Notice.categoryName }
         is_read: { type: boolean, description: Member endpoints only, x-dart: Notice.isRead }
+    CalendarEvent:
+      x-dart: CalendarEvent (CalendarEventDto.fromJson)
+      type: object
+      required: [id, title, starts_at, ends_at, status, audience]
+      properties:
+        id: { type: string, description: Stable id (future bookings refer to it) }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        starts_at: { type: string, format: date-time, description: UTC, x-dart: CalendarEvent.startsAt }
+        ends_at: { type: string, format: date-time, description: UTC, x-dart: CalendarEvent.endsAt }
+        status: { type: string, enum: [published, cancelled], x-dart: CalendarEvent.isCancelled }
+        audience: { type: string, enum: [public, members] }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        cancel_reason: { type: [string, 'null'], x-dart: CalendarEvent.cancelReason }
     MemberNotification:
       x-dart: MemberNotification (MemberNotificationDto.fromJson)
       type: object
@@ -865,6 +953,29 @@ components:
             type: object
             properties:
               data: { $ref: '#/components/schemas/Member' }
+    EventRange:
+      description: Events overlapping the range, ordered by start time
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/CalendarEvent' } }
+              meta:
+                type: object
+                properties:
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  count: { type: integer }
+                  truncated: { type: boolean, description: More than 200 events; narrow the range }
+    EventResponse:
+      description: One event (drafts are not found)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/CalendarEvent' }
     NoticeResponse:
       description: One notice
       content:

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MembershipController;
@@ -16,6 +17,8 @@ Route::get('/membership-levels', [MembershipController::class, 'index']);
 Route::get('/notice-categories', [NoticeController::class, 'categories']);
 Route::get('/public/notices', [NoticeController::class, 'publicIndex'])->middleware('throttle:auth-60');
 Route::get('/public/notices/{id}', [NoticeController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
+Route::get('/public/events', [CalendarEventController::class, 'publicIndex'])->middleware('throttle:auth-60');
+Route::get('/public/events/{id}', [CalendarEventController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
 
 // Public: registration, verification and account recovery.
 // auth-N limiters count per route and client IP (see AppServiceProvider).
@@ -56,6 +59,10 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/notices', [NoticeController::class, 'index']);
     Route::get('/notices/{id}', [NoticeController::class, 'show'])->whereNumber('id');
     Route::post('/notices/{id}/read', [NoticeController::class, 'markRead'])->whereNumber('id');
+
+    // S5 M09 calendar (public and member events).
+    Route::get('/events', [CalendarEventController::class, 'index']);
+    Route::get('/events/{id}', [CalendarEventController::class, 'show'])->whereNumber('id');
 
     // S4 M04 in-app notifications (own notifications only).
     Route::get('/me/notifications', [NotificationController::class, 'index']);

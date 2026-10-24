@@ -67,6 +67,10 @@ return [
 
     'timezone' => 'UTC',
 
+    // Timezone used only to show and enter date-times in the Filament admin
+    // (values are always stored in UTC). S5 M09.
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'UTC'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration

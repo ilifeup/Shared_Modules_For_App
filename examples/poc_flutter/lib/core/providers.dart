@@ -70,3 +70,10 @@ final noticeApiProvider = Provider<NoticeApi>(
 final notificationApiProvider = Provider<NotificationApi>(
   (ref) => NotificationApi(ref.watch(apiTransportProvider)),
 );
+
+final eventApiProvider = Provider<EventApi>(
+  (ref) => EventApi(ref.watch(apiTransportProvider)),
+);
+
+/// Current time (overridden in tests).
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);

@@ -33,6 +33,37 @@ class FakeBackend implements ApiTransport {
     'n-3': true,
   };
   bool notificationsFail = false;
+  bool eventsFail = false;
+  final List<Map<String, dynamic>> events = [
+    _event('1', '社區講座', '2026-12-30T02:00:00Z', '2026-12-30T04:00:00Z'),
+    _event(
+      '2',
+      '戶外活動',
+      '2026-12-30T06:00:00Z',
+      '2026-12-30T08:00:00Z',
+      cancelled: true,
+    ),
+    _event('3', '跨年活動', '2026-12-31T22:00:00Z', '2027-01-01T01:00:00Z'),
+  ];
+
+  static Map<String, dynamic> _event(
+    String id,
+    String title,
+    String start,
+    String end, {
+    bool cancelled = false,
+  }) => {
+    'id': id,
+    'title': title,
+    'description': '$title 說明',
+    'location': '活動中心',
+    'starts_at': start,
+    'ends_at': end,
+    'status': cancelled ? 'cancelled' : 'published',
+    'audience': 'members',
+    'cancelled_at': cancelled ? '2026-12-01T00:00:00Z' : null,
+    'cancel_reason': cancelled ? '天候不佳' : null,
+  };
 
   @override
   Future<Map<String, dynamic>> request(
@@ -211,6 +242,31 @@ class FakeBackend implements ApiTransport {
           },
         };
     }
+    if (path.startsWith('/api/v1/events?')) {
+      if (eventsFail) {
+        throw const ApiException(
+          code: 'SERVER_ERROR',
+          message: '伺服器發生錯誤，請稍後再試。',
+          statusCode: 500,
+        );
+      }
+      final query = Uri.parse(path).queryParameters;
+      final from = DateTime.parse(query['from']!);
+      final to = DateTime.parse(query['to']!);
+      return {
+        'data': [
+          for (final event in events)
+            if (DateTime.parse(event['starts_at'] as String).isBefore(to) &&
+                DateTime.parse(event['ends_at'] as String).isAfter(from))
+              event,
+        ],
+        'meta': {'truncated': false},
+      };
+    }
+    final eventMatch = RegExp(r'^/api/v1/events/(\d+)$').firstMatch(path);
+    if (eventMatch != null) {
+      return {'data': events.firstWhere((e) => e['id'] == eventMatch.group(1))};
+    }
     final match = RegExp(
       r'^/api/v1/me/notifications/([\w-]+)(/read)?$',
     ).firstMatch(path);
@@ -312,6 +368,7 @@ Future<void> pumpApp(
         avatarRepositoryProvider.overrideWithValue(
           avatars ?? FakeAvatars(backend),
         ),
+        clockProvider.overrideWithValue(() => DateTime(2026, 12, 30, 10)),
         avatarPickerProvider.overrideWithValue(
           () async =>
               (bytes: Uint8List.fromList([1, 2, 3]), filename: 'me.jpg'),
@@ -857,6 +914,86 @@ void main() {
     await tester.tap(find.text('重試'));
     await tester.pumpAndSettle();
     expect(find.text('【目前沒有通知】'), findsOneWidget);
+  });
+
+  testWidgets('shows the month, the selected day and its events', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026 年 12 月'), findsOneWidget);
+    expect(find.text('2026-12-30（三）的活動'), findsOneWidget);
+    expect(find.text('社區講座'), findsOneWidget);
+    expect(find.text('【已取消】戶外活動'), findsOneWidget);
+    expect(
+      backend.calls.where((c) => c.startsWith('GET /api/v1/events?')),
+      hasLength(1),
+    );
+
+    await tester.tap(find.byKey(const Key('calendar-day-31')));
+    await tester.pumpAndSettle();
+    expect(find.text('跨年活動'), findsOneWidget);
+    expect(find.text('社區講座'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('calendar-day-5')));
+    await tester.pumpAndSettle();
+    expect(find.text('【這天沒有活動】'), findsOneWidget);
+  });
+
+  testWidgets('moves across the year and shows events spanning midnight', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('calendar-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2027 年 1 月'), findsOneWidget);
+    expect(find.text('2027-01-01（五）的活動'), findsOneWidget);
+    expect(find.text('跨年活動'), findsOneWidget);
+    expect(
+      backend.calls.last,
+      startsWith('GET /api/v1/events?from=2027-01-01T00'),
+    );
+
+    await tester.tap(find.byKey(const Key('calendar-prev')));
+    await tester.tap(find.byKey(const Key('calendar-prev')));
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 11 月'), findsOneWidget);
+  });
+
+  testWidgets('shows a cancelled event with its reason', (tester) async {
+    await pumpApp(tester, FakeBackend(), MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('【已取消】戶外活動'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('【已取消】此活動已取消'), findsOneWidget);
+    expect(find.text('天候不佳'), findsOneWidget);
+    expect(find.text('地點：活動中心'), findsOneWidget);
+  });
+
+  testWidgets('retries after a calendar loading error', (tester) async {
+    final backend = FakeBackend()..eventsFail = true;
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('SERVER_ERROR'), findsOneWidget);
+    backend.eventsFail = false;
+    await tester.ensureVisible(find.byKey(const Key('calendar-retry')));
+    await tester.tap(find.byKey(const Key('calendar-retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('社區講座'), findsOneWidget);
   });
 }
 

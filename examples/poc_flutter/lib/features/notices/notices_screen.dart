@@ -50,6 +50,12 @@ class NoticesScreen extends ConsumerWidget {
         title: Text(unread != null && unread > 0 ? '公告（未讀 $unread）' : '公告'),
         actions: [
           IconButton(
+            key: const Key('open-calendar'),
+            tooltip: '活動行事曆',
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () => context.push('/calendar'),
+          ),
+          IconButton(
             key: const Key('open-notifications'),
             tooltip: unreadNotifications > 0
                 ? '通知（未讀 $unreadNotifications）'

@@ -28,6 +28,7 @@ jobs:
           php packages/laravel/shared_core/tests/notice_read_smoke.php
           php packages/laravel/shared_core/tests/token_policy_smoke.php
           php packages/laravel/shared_core/tests/isolation_contract_smoke.php
+          php packages/laravel/shared_core/tests/auth_settings_sms_smoke.php
       - name: Composer package validation
         working-directory: packages/laravel/shared_core
         run: composer validate --strict

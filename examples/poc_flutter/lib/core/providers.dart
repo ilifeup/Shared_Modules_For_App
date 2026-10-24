@@ -77,3 +77,7 @@ final eventApiProvider = Provider<EventApi>(
 
 /// Current time (overridden in tests).
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+final bookingApiProvider = Provider<BookingApi>(
+  (ref) => BookingApi(ref.watch(apiTransportProvider)),
+);

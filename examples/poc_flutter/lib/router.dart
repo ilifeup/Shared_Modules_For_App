@@ -9,6 +9,7 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/auth/verify_account_screen.dart';
 import 'features/auth/verify_phone_screen.dart';
+import 'features/bookings/my_bookings_screen.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/calendar/event_detail_screen.dart';
 import 'features/health/health_screen.dart';
@@ -88,6 +89,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/calendar',
         builder: (context, state) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: '/me/bookings',
+        builder: (context, state) => const MyBookingsScreen(),
       ),
       GoRoute(
         path: '/events/:id',

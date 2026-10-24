@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/status_box.dart';
+import '../bookings/booking_section.dart';
 import 'calendar_providers.dart';
 
 class EventDetailScreen extends ConsumerWidget {
@@ -40,6 +41,8 @@ class EventDetailScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             Text('時間：${formatDate(item.startsAt)} ${formatEventTime(item)}'),
             if (item.location != null) Text('地點：${item.location}'),
+            const SizedBox(height: 12),
+            BookingSection(eventId: item.id),
             if (item.description != null) ...[
               const Divider(height: 24),
               SelectableText(item.description!),

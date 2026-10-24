@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\MeController;
@@ -63,6 +64,12 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     // S5 M09 calendar (public and member events).
     Route::get('/events', [CalendarEventController::class, 'index']);
     Route::get('/events/{id}', [CalendarEventController::class, 'show'])->whereNumber('id');
+
+    // S6 M08 bookings (own bookings only).
+    Route::get('/events/{id}/booking', [BookingController::class, 'show'])->whereNumber('id');
+    Route::post('/events/{id}/bookings', [BookingController::class, 'store'])->whereNumber('id');
+    Route::get('/me/bookings', [BookingController::class, 'mine']);
+    Route::post('/me/bookings/{id}/cancel', [BookingController::class, 'cancel'])->whereNumber('id');
 
     // S4 M04 in-app notifications (own notifications only).
     Route::get('/me/notifications', [NotificationController::class, 'index']);

@@ -20,7 +20,16 @@ class CalendarScreen extends ConsumerWidget {
     final month = selection.month;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('活動行事曆')),
+      appBar: AppBar(
+        title: const Text('活動行事曆'),
+        actions: [
+          TextButton(
+            key: const Key('open-my-bookings'),
+            onPressed: () => context.push('/me/bookings'),
+            child: const Text('我的預約'),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [

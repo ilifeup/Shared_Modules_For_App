@@ -67,3 +67,4 @@ jobs:
           dart run test/notice_api_smoke.dart
           dart run test/notification_api_smoke.dart
           dart run test/event_api_smoke.dart
+          dart run test/booking_api_smoke.dart

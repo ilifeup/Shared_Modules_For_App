@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
@@ -34,6 +35,59 @@ class FakeBackend implements ApiTransport {
   };
   bool notificationsFail = false;
   bool eventsFail = false;
+
+  /// Booking state per event id: capacity, other members' bookings, mine.
+  final Map<String, Map<String, dynamic>> bookings = {
+    '1': {'capacity': 2, 'others': 1, 'mine': false},
+    '2': {
+      'capacity': 5,
+      'others': 0,
+      'mine': false,
+      'reason': 'event_cancelled',
+    },
+  };
+  bool bookingRaceFull = false;
+
+  /// When set, booking requests wait for it (simulates a slow network).
+  Completer<void>? bookingGate;
+
+  Map<String, dynamic> _bookingInfo(String eventId) {
+    final b = bookings[eventId];
+    if (b == null) {
+      return {
+        'event_id': eventId,
+        'enabled': false,
+        'capacity': null,
+        'booked_count': 0,
+        'remaining': null,
+        'unavailable_reason': 'disabled',
+        'my_booking': null,
+      };
+    }
+    final mine = b['mine'] as bool;
+    final booked = (b['others'] as int) + (mine ? 1 : 0);
+    final capacity = b['capacity'] as int;
+    return {
+      'event_id': eventId,
+      'enabled': true,
+      'capacity': capacity,
+      'booked_count': booked,
+      'remaining': capacity - booked,
+      'unavailable_reason': mine
+          ? 'already_booked'
+          : (b['reason'] ?? (booked >= capacity ? 'full' : null)),
+      'my_booking': mine
+          ? {
+              'id': 'b$eventId',
+              'event_id': eventId,
+              'status': 'confirmed',
+              'booked_at': '2026-12-01T00:00:00Z',
+              'cancelled_at': null,
+            }
+          : null,
+    };
+  }
+
   final List<Map<String, dynamic>> events = [
     _event('1', '社區講座', '2026-12-30T02:00:00Z', '2026-12-30T04:00:00Z'),
     _event(
@@ -261,6 +315,52 @@ class FakeBackend implements ApiTransport {
               event,
         ],
         'meta': {'truncated': false},
+      };
+    }
+    final bookingMatch = RegExp(
+      r'^/api/v1/events/(\d+)/booking(s?)$',
+    ).firstMatch(path);
+    if (bookingMatch != null) {
+      final eventId = bookingMatch.group(1)!;
+      if (method == 'POST') {
+        await bookingGate?.future;
+        if (bookingRaceFull) {
+          throw const ApiException(
+            code: 'BOOKING_FULL',
+            message: '名額已滿。',
+            statusCode: 409,
+          );
+        }
+        bookings[eventId]!['mine'] = true;
+        return {'data': _bookingInfo(eventId)};
+      }
+      return {'data': _bookingInfo(eventId)};
+    }
+    final cancelMatch = RegExp(
+      r'^/api/v1/me/bookings/b(\d+)/cancel$',
+    ).firstMatch(path);
+    if (cancelMatch != null) {
+      bookings[cancelMatch.group(1)!]!['mine'] = false;
+      return {'data': _bookingInfo(cancelMatch.group(1)!)};
+    }
+    if (path == '/api/v1/me/bookings') {
+      return {
+        'data': [
+          for (final entry in bookings.entries)
+            if (entry.value['mine'] == true)
+              {
+                'id': 'b${entry.key}',
+                'event_id': entry.key,
+                'status': 'confirmed',
+                'booked_at': '2026-12-01T00:00:00Z',
+                'cancelled_at': null,
+                'event': {
+                  'id': entry.key,
+                  'title': '社區講座',
+                  'starts_at': '2026-12-30T02:00:00Z',
+                },
+              },
+        ],
       };
     }
     final eventMatch = RegExp(r'^/api/v1/events/(\d+)$').firstMatch(path);
@@ -994,6 +1094,80 @@ void main() {
     await tester.tap(find.byKey(const Key('calendar-retry')));
     await tester.pumpAndSettle();
     expect(find.text('社區講座'), findsOneWidget);
+  });
+
+  testWidgets('books an event once, then cancels the booking', (tester) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('社區講座'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('名額 2，已預約 1，剩餘 1'), findsOneWidget);
+
+    // A second tap while the request is in flight sends nothing.
+    backend.bookingGate = Completer<void>();
+    await tester.tap(find.byKey(const Key('booking-book')));
+    await tester.pump();
+    expect(find.text('處理中…'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('booking-book')),
+      warnIfMissed: false,
+    );
+    backend.bookingGate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      backend.calls.where((c) => c == 'POST /api/v1/events/1/bookings'),
+      hasLength(1),
+    );
+    expect(find.text('【預約成功】已為您保留名額。'), findsOneWidget);
+    expect(find.text('【已預約】'), findsOneWidget);
+    expect(find.text('名額 2，已預約 2，剩餘 0'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('booking-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('booking-cancel-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(backend.calls, contains('POST /api/v1/me/bookings/b1/cancel'));
+    expect(find.text('【已取消】預約已取消。'), findsOneWidget);
+    expect(find.byKey(const Key('booking-book')), findsOneWidget);
+  });
+
+  testWidgets('shows full and cancelled-event booking states', (tester) async {
+    final backend = FakeBackend()..bookingRaceFull = true;
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+
+    // The last seat was taken by someone else in the meantime.
+    await tester.tap(find.text('社區講座'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('booking-book')));
+    await tester.pumpAndSettle();
+    expect(find.text('【錯誤】名額已滿。'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('【已取消】戶外活動'));
+    await tester.pumpAndSettle();
+    expect(find.text('活動已取消，無法預約'), findsOneWidget);
+    expect(find.byKey(const Key('booking-book')), findsNothing);
+  });
+
+  testWidgets('lists my bookings', (tester) async {
+    final backend = FakeBackend();
+    backend.bookings['1']!['mine'] = true;
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-calendar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-my-bookings')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('社區講座'), findsOneWidget);
+    expect(find.textContaining('已預約'), findsOneWidget);
   });
 }
 

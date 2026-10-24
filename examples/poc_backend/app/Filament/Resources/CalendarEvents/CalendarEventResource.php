@@ -5,7 +5,9 @@ namespace App\Filament\Resources\CalendarEvents;
 use App\Filament\Resources\CalendarEvents\Pages\CreateCalendarEvent;
 use App\Filament\Resources\CalendarEvents\Pages\EditCalendarEvent;
 use App\Filament\Resources\CalendarEvents\Pages\ListCalendarEvents;
+use App\Filament\Resources\CalendarEvents\RelationManagers\BookingsRelationManager;
 use App\Models\CalendarEvent;
+use App\Models\EventBooking;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -13,8 +15,10 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -53,9 +57,19 @@ class CalendarEventResource extends Resource
         return auth()->user()?->can('events.manage') ?? false;
     }
 
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return static::canViewAny();
+    }
+
     public static function canDelete(Model $record): bool
     {
-        return $record instanceof CalendarEvent && $record->status === CalendarEvent::STATUS_DRAFT;
+        return static::canViewAny() && $record instanceof CalendarEvent && $record->status === CalendarEvent::STATUS_DRAFT;
     }
 
     public static function displayTimezone(): string
@@ -76,6 +90,18 @@ class CalendarEventResource extends Resource
             DateTimePicker::make('ends_at')->label('結束時間')->required()->seconds(false)
                 ->timezone(static::displayTimezone())
                 ->after('starts_at'),
+            // S6 M08 booking settings.
+            Toggle::make('booking_enabled')->label('開放預約')->live(),
+            TextInput::make('booking_capacity')->label('名額上限')->numeric()->minValue(1)->maxValue(100000)
+                ->required(fn (Get $get): bool => (bool) $get('booking_enabled'))
+                ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
+            DateTimePicker::make('booking_opens_at')->label('預約開放時間（空白＝立即）')->seconds(false)
+                ->timezone(static::displayTimezone())
+                ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
+            DateTimePicker::make('booking_closes_at')->label('預約截止時間（空白＝活動開始時）')->seconds(false)
+                ->timezone(static::displayTimezone())
+                ->after('booking_opens_at')
+                ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             Select::make('status')->label('狀態')
                 ->options([
                     CalendarEvent::STATUS_DRAFT => '草稿（會員看不到）',
@@ -101,6 +127,8 @@ class CalendarEventResource extends Resource
                 TextColumn::make('ends_at')->label('結束')->dateTime('Y-m-d H:i', $tz),
                 TextColumn::make('audience')->label('對象')
                     ->formatStateUsing(fn (string $state): string => self::AUDIENCE_LABELS[$state] ?? $state),
+                TextColumn::make('booking')->label('預約')
+                    ->state(fn (CalendarEvent $record): string => static::bookingSummary($record)),
                 TextColumn::make('status')->label('狀態')
                     ->formatStateUsing(fn (string $state): string => self::STATUS_LABELS[$state] ?? $state),
             ])
@@ -135,6 +163,28 @@ class CalendarEventResource extends Resource
                     }),
                 DeleteAction::make()->visible(fn (CalendarEvent $record): bool => $record->status === CalendarEvent::STATUS_DRAFT),
             ]);
+    }
+
+    /**
+     * "已預約 12 / 30（剩 18）" or "未開放".
+     */
+    public static function bookingSummary(CalendarEvent $record): string
+    {
+        if (! $record->booking_enabled) {
+            return '未開放';
+        }
+
+        $booked = $record->bookings()->where('status', EventBooking::STATUS_CONFIRMED)->count();
+        $capacity = (int) $record->booking_capacity;
+
+        return "已預約 {$booked} / {$capacity}（剩 ".max(0, $capacity - $booked).'）';
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            BookingsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

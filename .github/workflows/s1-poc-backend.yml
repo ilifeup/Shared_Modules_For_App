@@ -120,13 +120,18 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/otp_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/concurrency.log"
 
+      - name: Booking concurrency (parallel HTTP, last seat, MySQL row lock)
+        id: booking_concurrency
+        timeout-minutes: 5
+        run: bash scripts/booking_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/booking_concurrency.log"
+
       - name: Publish failure details as annotations
         if: failure() || steps.pint.outcome == 'failure'
         working-directory: .
         run: |
           set +e
           [ "${{ steps.pint.outcome }}" = failure ] && (cd examples/poc_backend && vendor/bin/pint --test -v > "$RUNNER_TEMP/pint.log" 2>&1; true)
-          for f in pint pest e2e concurrency; do
+          for f in pint pest e2e concurrency booking_concurrency; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 400
           done
           [ -f examples/poc_backend/storage/logs/laravel.log ] && bash .github/scripts/annotate_failure.sh examples/poc_backend/storage/logs/laravel.log laravel.log 60 1
@@ -151,6 +156,7 @@ jobs:
             echo "| Pest | ${{ steps.pest.outcome }} |"
             echo "| HTTP E2E | ${{ steps.e2e.outcome }} |"
             echo "| OTP concurrency | ${{ steps.concurrency.outcome }} |"
+            echo "| Booking concurrency | ${{ steps.booking_concurrency.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Gate (fail unless every check succeeded)
@@ -168,6 +174,7 @@ jobs:
             pest=${{ steps.pest.outcome }}
             e2e=${{ steps.e2e.outcome }}
             concurrency=${{ steps.concurrency.outcome }}
+            booking_concurrency=${{ steps.booking_concurrency.outcome }}
         run: |
           failed=0
           for item in $OUTCOMES; do

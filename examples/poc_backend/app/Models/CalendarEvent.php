@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -34,7 +35,10 @@ class CalendarEvent extends Model
 
     public const MAX_RESULTS = 200;
 
-    protected $fillable = ['title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status'];
+    protected $fillable = [
+        'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
+        'booking_enabled', 'booking_capacity', 'booking_opens_at', 'booking_closes_at',
+    ];
 
     protected function casts(): array
     {
@@ -42,6 +46,10 @@ class CalendarEvent extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'booking_enabled' => 'boolean',
+            'booking_capacity' => 'integer',
+            'booking_opens_at' => 'datetime',
+            'booking_closes_at' => 'datetime',
         ];
     }
 
@@ -51,6 +59,19 @@ class CalendarEvent extends Model
             if ($event->starts_at === null || $event->ends_at === null || ! $event->ends_at->greaterThan($event->starts_at)) {
                 throw ValidationException::withMessages([
                     'ends_at' => ['結束時間必須晚於開始時間。'],
+                ]);
+            }
+
+            // S6: bookable events need a capacity; the booking window must make sense.
+            if ($event->booking_enabled && ($event->booking_capacity === null || $event->booking_capacity < 1)) {
+                throw ValidationException::withMessages([
+                    'booking_capacity' => ['開放預約時，名額至少 1 人。'],
+                ]);
+            }
+
+            if ($event->booking_opens_at !== null && $event->booking_closes_at !== null && ! $event->booking_closes_at->greaterThan($event->booking_opens_at)) {
+                throw ValidationException::withMessages([
+                    'booking_closes_at' => ['預約截止時間必須晚於開放時間。'],
                 ]);
             }
         });
@@ -94,6 +115,22 @@ class CalendarEvent extends Model
     public function scopeOverlapping(Builder $query, Carbon $from, Carbon $to): void
     {
         $query->where('starts_at', '<', $to)->where('ends_at', '>', $from);
+    }
+
+    /**
+     * @return HasMany<EventBooking, $this>
+     */
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(EventBooking::class);
+    }
+
+    /**
+     * When bookings close: the configured time, otherwise the event start.
+     */
+    public function bookingClosesAt(): Carbon
+    {
+        return $this->booking_closes_at ?? $this->starts_at;
     }
 
     public function cancel(?string $reason): void

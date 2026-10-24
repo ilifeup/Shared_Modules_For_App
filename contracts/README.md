@@ -1,6 +1,6 @@
 # API contract
 
-`openapi.yaml` describes the API implemented by `examples/poc_backend` (S1–S5) and integrated by each App.
+`openapi.yaml` describes the API implemented by `examples/poc_backend` (S1–S6) and integrated by each App.
 Each App runs its own backend; this is a contract, not a shared service.
 
 - CI (`s1-poc-backend.yml`) compares it with `php artisan route:list` — every route must be documented and every
@@ -22,4 +22,5 @@ Each App runs its own backend; this is a contract, not a shared service.
 | `/notices`, `/notices/{id}/read`, `/public/notices`, `/notice-categories` | `NoticeApi` → `NoticePage`, `Notice`, `NoticeCategory` (`MemberApi.notices/notice` unchanged) |
 | `/me/notifications*` | `NotificationApi` → `NotificationPage`, `MemberNotification` |
 | `/events*`, `/public/events*` | `EventApi` → `EventRange`, `CalendarEvent` |
+| `/events/{id}/booking`, `/events/{id}/bookings`, `/me/bookings*` | `BookingApi` → `BookingInfo`, `Booking` |
 | `Error` | App `ApiException` (`code`, `message`, `fields`, `requestId`, `statusCode`) |

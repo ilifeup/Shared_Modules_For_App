@@ -182,7 +182,7 @@ it('rejects wrong and expired phone reset codes', function () {
 
     $this->postJson('/api/v1/auth/password/phone/reset', newPassword(['phone' => '0966000111', 'code' => $code]))
         ->assertStatus(422)
-        ->assertJsonPath('error.code', 'OTP_EXPIRED');
+        ->assertJsonPath('error.code', 'OTP_INVALID');
 
     $this->postJson('/api/v1/auth/login', ['identifier' => '0966000111', 'password' => 'old-password-1'])->assertOk();
 });
@@ -243,4 +243,56 @@ it('limits each public auth endpoint separately', function () {
 
     // Other endpoints keep their own budget.
     $this->postJson('/api/v1/auth/login', ['identifier' => 'reset@example.com', 'password' => 'old-password-1'])->assertOk();
+});
+
+it('keeps the reset code, password and tokens when saving the new password fails', function () {
+    $user = resetMember();
+    $token = $user->createToken('phone')->plainTextToken;
+
+    $this->postJson('/api/v1/auth/password/phone/send-otp', ['phone' => '0966000111'])->assertOk();
+    $code = lastOtp();
+
+    // Simulated database failure while the new password is written.
+    $fail = true;
+    User::saving(function () use (&$fail) {
+        if ($fail) {
+            throw new RuntimeException('simulated database failure');
+        }
+    });
+
+    $this->postJson('/api/v1/auth/password/phone/reset', newPassword(['phone' => '0966000111', 'code' => $code]))
+        ->assertStatus(500)
+        ->assertJsonPath('error.code', 'SERVER_ERROR');
+
+    // Everything rolled back: code still usable, old password and tokens still valid.
+    $otp = PhoneOtp::query()->where('purpose', PhoneOtp::PURPOSE_PASSWORD_RESET)->firstOrFail();
+    expect($otp->status)->toBe(PhoneOtp::STATUS_SENT)
+        ->and($otp->used_at)->toBeNull()
+        ->and($user->tokens()->count())->toBe(1)
+        ->and(AuditEvent::query()->where('event', 'password.reset_completed')->exists())->toBeFalse();
+    $this->postJson('/api/v1/auth/login', ['identifier' => '0966000111', 'password' => 'old-password-1'])->assertOk();
+
+    // Once the database works again the same code completes the reset.
+    $fail = false;
+    $this->postJson('/api/v1/auth/password/phone/reset', newPassword(['phone' => '0966000111', 'code' => $code]))->assertOk();
+    expect($user->tokens()->count())->toBe(0)
+        ->and($otp->refresh()->status)->toBe(PhoneOtp::STATUS_USED);
+    $this->app['auth']->forgetGuards();
+    $this->withToken($token)->getJson('/api/v1/me')->assertUnauthorized();
+});
+
+it('completes a repeated phone reset submission only once', function () {
+    $user = resetMember();
+    $this->postJson('/api/v1/auth/password/phone/send-otp', ['phone' => '0966000111'])->assertOk();
+    $request = newPassword(['phone' => '0966000111', 'code' => lastOtp()]);
+
+    $this->postJson('/api/v1/auth/password/phone/reset', $request)->assertOk();
+    $user->createToken('after-reset');
+    $this->postJson('/api/v1/auth/password/phone/reset', $request)
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'OTP_INVALID');
+
+    // The second submission revoked nothing and recorded nothing.
+    expect($user->tokens()->count())->toBe(1)
+        ->and(AuditEvent::query()->where('event', 'password.reset_completed')->count())->toBe(1);
 });

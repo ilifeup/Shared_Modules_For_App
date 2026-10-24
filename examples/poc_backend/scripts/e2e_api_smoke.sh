@@ -41,6 +41,7 @@ check() { # path expected label
 }
 age_otps() { # skip the resend cooldown for the next step (synthetic CI data only)
   php artisan tinker --execute='App\Models\PhoneOtp::query()->update(["created_at" => now()->subMinutes(10)]);' > /dev/null
+  php artisan cache:clear > /dev/null # per-number cooldown is also kept in the cache
 }
 
 expect 200 "$(call GET /api/v1/auth/policy)" "read verification policy"

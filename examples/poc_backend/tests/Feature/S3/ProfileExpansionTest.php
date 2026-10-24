@@ -101,6 +101,54 @@ it('changes a phone number only through a phone-change code for that number', fu
     $this->actingAs($user, 'sanctum')->postJson('/api/v1/me/phone/verify', ['phone' => '0977000444', 'code' => $code])->assertStatus(422);
 });
 
+it('rolls back a phone change and OTP consumption if saving the new number fails', function () {
+    $user = profileMember();
+    $oldPhone = $user->phone_e164;
+    $oldVerifiedAt = $user->phone_verified_at;
+
+    $this->actingAs($user, 'sanctum')
+        ->postJson('/api/v1/me/phone/send-otp', [
+            'phone' => '0977000888',
+            'password' => 'correct-horse-1',
+        ])->assertOk();
+
+    $code = lastOtp();
+    $otpId = PhoneOtp::query()->latest('id')->firstOrFail()->id;
+    $failOnce = true;
+
+    User::saving(function (User $saving) use (&$failOnce): void {
+        if ($failOnce && $saving->phone_e164 === '+886977000888') {
+            $failOnce = false;
+            throw new RuntimeException('Simulated phone update failure');
+        }
+    });
+
+    try {
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/me/phone/verify', [
+                'phone' => '0977000888',
+                'code' => $code,
+            ])->assertStatus(500);
+
+        expect($user->refresh()->phone_e164)->toBe($oldPhone)
+            ->and($user->phone_verified_at->equalTo($oldVerifiedAt))->toBeTrue()
+            ->and(PhoneOtp::findOrFail($otpId)->status)->toBe(PhoneOtp::STATUS_SENT)
+            ->and(PhoneOtp::findOrFail($otpId)->used_at)->toBeNull()
+            ->and(AuditEvent::query()->where('event', 'member.phone_changed')->exists())->toBeFalse();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/me/phone/verify', [
+                'phone' => '0977000888',
+                'code' => $code,
+            ])->assertOk()->assertJsonPath('data.phone', '+886977000888');
+
+        expect(PhoneOtp::findOrFail($otpId)->status)->toBe(PhoneOtp::STATUS_USED)
+            ->and(AuditEvent::query()->where('event', 'member.phone_changed')->count())->toBe(1);
+    } finally {
+        User::flushEventListeners();
+    }
+});
+
 it('marks a changed email unverified and requires verifying it again', function () {
     Notification::fake();
     $user = profileMember();

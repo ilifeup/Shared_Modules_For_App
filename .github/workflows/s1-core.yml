@@ -57,3 +57,4 @@ jobs:
           dart run test/registration_api_smoke.dart
           dart run test/password_reset_api_smoke.dart
           dart run test/profile_membership_smoke.dart
+          dart run test/notice_api_smoke.dart

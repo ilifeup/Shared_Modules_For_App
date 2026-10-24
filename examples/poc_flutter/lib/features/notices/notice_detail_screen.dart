@@ -27,6 +27,9 @@ class NoticeDetailScreen extends ConsumerWidget {
             Text(item.title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text('發布時間：${formatPublishedAt(item.publishedAt)}'),
+            if (noticeLabels(item).isNotEmpty) Text(noticeLabels(item)),
+            if (item.publishEndsAt != null)
+              Text('下架時間：${formatPublishedAt(item.publishEndsAt)}'),
             const Divider(height: 24),
             SelectableText(item.body),
           ],

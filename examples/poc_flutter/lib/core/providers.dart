@@ -62,3 +62,7 @@ final membershipApiProvider = Provider<MembershipApi>(
 final avatarRepositoryProvider = Provider<AvatarRepository>(
   (ref) => DioAvatarRepository(ref.watch(dioProvider)),
 );
+
+final noticeApiProvider = Provider<NoticeApi>(
+  (ref) => NoticeApi(ref.watch(apiTransportProvider)),
+);

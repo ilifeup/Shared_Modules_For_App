@@ -31,7 +31,7 @@ class AppServiceProvider extends ServiceProvider
         // Per-route limits for the public auth endpoints. A plain `throttle:N,1` shares one
         // counter per IP across all routes, so a normal register → login → verify flow could
         // exhaust the strict limit of an unrelated endpoint.
-        foreach ([3, 5, 10] as $perMinute) {
+        foreach ([3, 5, 10, 60] as $perMinute) {
             RateLimiter::for("auth-{$perMinute}", fn (Request $request) => Limit::perMinute($perMinute)
                 ->by($request->method().'|'.$request->path().'|'.$request->ip()));
         }

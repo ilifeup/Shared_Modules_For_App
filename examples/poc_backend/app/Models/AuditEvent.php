@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Http\Middleware\AssignRequestId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 /**
  * M07 audit trail. Append-only from the application: there is no update or delete
@@ -27,6 +28,13 @@ class AuditEvent extends Model
     protected function casts(): array
     {
         return ['details' => 'array'];
+    }
+
+    protected static function booted(): void
+    {
+        // Append-only: existing audit rows can never be changed or removed through the App.
+        static::updating(fn () => throw new LogicException('Audit events are append-only.'));
+        static::deleting(fn () => throw new LogicException('Audit events are append-only.'));
     }
 
     /**

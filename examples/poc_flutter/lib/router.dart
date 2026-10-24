@@ -12,6 +12,7 @@ import 'features/auth/verify_phone_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
 import 'features/notices/notices_screen.dart';
+import 'features/notices/public_notices_screen.dart';
 import 'features/profile/change_email_screen.dart';
 import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
@@ -22,6 +23,7 @@ const _publicPaths = {
   '/verify-phone',
   '/email-sent',
   '/forgot-password',
+  '/public-notices',
   '/health',
 };
 
@@ -109,6 +111,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/verify-account',
         builder: (context, state) => const VerifyAccountScreen(),
+      ),
+      GoRoute(
+        path: '/public-notices',
+        builder: (context, state) => const PublicNoticesScreen(),
       ),
       GoRoute(
         path: '/forgot-password',

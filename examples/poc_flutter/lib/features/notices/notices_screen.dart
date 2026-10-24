@@ -8,13 +8,43 @@ import 'notice_providers.dart';
 class NoticesScreen extends ConsumerWidget {
   const NoticesScreen({super.key});
 
+  Widget _filter(WidgetRef ref) {
+    final categories = ref.watch(noticeCategoriesProvider).value ?? const [];
+    if (categories.isEmpty) return const SizedBox.shrink();
+    final selected = ref.watch(noticeCategoryFilterProvider);
+    final filter = ref.read(noticeCategoryFilterProvider.notifier);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            key: const Key('notice-category-all'),
+            label: const Text('全部'),
+            selected: selected == null,
+            onSelected: (_) => filter.select(null),
+          ),
+          for (final category in categories)
+            ChoiceChip(
+              key: Key('notice-category-${category.id}'),
+              label: Text(category.name),
+              selected: selected == category.id,
+              onSelected: (_) => filter.select(category.id),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notices = ref.watch(noticesProvider);
+    final unread = notices.value?.unreadCount;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('公告'),
+        title: Text(unread != null && unread > 0 ? '公告（未讀 $unread）' : '公告'),
         actions: [
           IconButton(
             key: const Key('open-profile'),
@@ -24,35 +54,51 @@ class NoticesScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => ref.refresh(noticesProvider.future),
-        child: notices.when(
-          loading: () => const Center(child: Text('【載入中】')),
-          error: (error, _) => ListView(
-            padding: const EdgeInsets.all(16),
-            children: [ErrorBox(error: error)],
-          ),
-          data: (items) => items.isEmpty
-              ? ListView(
+      body: Column(
+        children: [
+          _filter(ref),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => ref.refresh(noticesProvider.future),
+              child: notices.when(
+                loading: () => const Center(child: Text('【載入中】')),
+                error: (error, _) => ListView(
                   padding: const EdgeInsets.all(16),
-                  children: const [
-                    StatusBox(label: '【目前沒有公告】', detail: '有新公告時會顯示在這裡。'),
-                  ],
-                )
-              : ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final notice = items[index];
-                    return ListTile(
-                      title: Text(notice.title),
-                      subtitle: Text(formatPublishedAt(notice.publishedAt)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.push('/notices/${notice.id}'),
-                    );
-                  },
+                  children: [ErrorBox(error: error)],
                 ),
-        ),
+                data: (page) => page.items.isEmpty
+                    ? ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: const [
+                          StatusBox(
+                            label: '【目前沒有公告】',
+                            detail: '有新公告時會顯示在這裡。',
+                          ),
+                        ],
+                      )
+                    : ListView.separated(
+                        itemCount: page.items.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final notice = page.items[index];
+                          final labels = noticeLabels(notice);
+                          return ListTile(
+                            title: Text(notice.title),
+                            subtitle: Text(
+                              [
+                                if (labels.isNotEmpty) labels,
+                                formatPublishedAt(notice.publishedAt),
+                              ].join(' '),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.push('/notices/${notice.id}'),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

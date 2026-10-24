@@ -26,6 +26,7 @@ class FakeBackend implements ApiTransport {
   bool emailVerified = true;
   bool hasAvatar = false;
   String levelCode = 'general';
+  final Set<String> readIds = {};
 
   @override
   Future<Map<String, dynamic>> request(
@@ -61,6 +62,26 @@ class FakeBackend implements ApiTransport {
         if (missing == 'phone') missing = null;
         return {
           'data': {'verified': true},
+        };
+      case 'GET /api/v1/notice-categories':
+        return {
+          'data': [
+            {'id': '3', 'name': '活動'},
+          ],
+        };
+      case 'GET /api/v1/notices?category=3':
+        return {
+          'data': [_notice('2', '活動公告', category: true)],
+          'meta': {'unread_count': 1},
+        };
+      case 'POST /api/v1/notices/1/read':
+        readIds.add('1');
+        return {
+          'data': {'id': '1', 'is_read': true},
+        };
+      case 'GET /api/v1/public/notices':
+        return {
+          'data': [_notice('9', '公開活動')],
         };
       case 'GET /api/v1/me/membership':
         return {
@@ -138,8 +159,8 @@ class FakeBackend implements ApiTransport {
           );
         }
         return {
-          'data': [_notice('1', '第一則公告')],
-          'meta': {'current_page': 1},
+          'data': [_notice('1', '第一則公告', pinned: true)],
+          'meta': {'current_page': 1, 'unread_count': readIds.length == 1 ? 0 : 1},
         };
       case 'GET /api/v1/notices/1':
         return {'data': _notice('1', '第一則公告')};
@@ -178,12 +199,20 @@ class FakeBackend implements ApiTransport {
     },
   };
 
-  Map<String, dynamic> _notice(String id, String title) => {
+  Map<String, dynamic> _notice(
+    String id,
+    String title, {
+    bool pinned = false,
+    bool category = false,
+  }) => {
     'id': id,
     'title': title,
     'body': '公告內容',
     'status': 'published',
     'published_at': '2026-10-24T01:00:00Z',
+    'is_pinned': pinned,
+    'category': category ? {'id': '3', 'name': '活動'} : null,
+    'is_read': readIds.contains(id),
   };
 }
 
@@ -303,7 +332,7 @@ void main() {
   ) async {
     await pumpApp(tester, FakeBackend(), MemoryTokenStorage('saved-token'));
 
-    expect(find.text('公告'), findsOneWidget);
+    expect(find.text('公告（未讀 1）'), findsOneWidget);
     expect(find.text('會員登入'), findsNothing);
   });
 
@@ -667,6 +696,49 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Email 設定'), findsOneWidget);
+  });
+
+  testWidgets('shows pinned and unread labels and marks a notice read', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    expect(find.text('公告（未讀 1）'), findsOneWidget);
+    expect(find.textContaining('【置頂】【未讀】'), findsOneWidget);
+
+    await tester.tap(find.text('第一則公告'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('POST /api/v1/notices/1/read'));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('公告'), findsOneWidget);
+    expect(find.textContaining('【未讀】'), findsNothing);
+  });
+
+  testWidgets('filters notices by category', (tester) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    await tester.tap(find.byKey(const Key('notice-category-3')));
+    await tester.pumpAndSettle();
+
+    expect(backend.calls, contains('GET /api/v1/notices?category=3'));
+    expect(find.text('活動公告'), findsOneWidget);
+    expect(find.text('第一則公告'), findsNothing);
+  });
+
+  testWidgets('shows public notices without logging in', (tester) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage());
+
+    await tester.ensureVisible(find.byKey(const Key('login-public-notices')));
+    await tester.tap(find.byKey(const Key('login-public-notices')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('公開活動'), findsOneWidget);
+    expect(backend.calls, isNot(contains('GET /api/v1/notices')));
   });
 }
 

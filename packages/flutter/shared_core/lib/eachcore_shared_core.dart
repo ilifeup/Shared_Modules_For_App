@@ -12,3 +12,4 @@ export 'src/registration_api.dart';
 export 'src/password_reset_api.dart';
 export 'src/membership.dart';
 export 'src/profile_api.dart';
+export 'src/notice_api.dart';

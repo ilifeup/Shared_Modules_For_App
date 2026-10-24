@@ -75,16 +75,9 @@ class _BookingSectionState extends ConsumerState<BookingSection> {
 
     return info.when(
       loading: () => const Text('【預約資訊載入中】'),
-      error: (error, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ErrorBox(error: error),
-          OutlinedButton(
-            onPressed: () =>
-                ref.invalidate(bookingInfoProvider(widget.eventId)),
-            child: const Text('重試'),
-          ),
-        ],
+      error: (error, _) => ErrorRetry(
+        error: ErrorBox(error: error),
+        onRetry: () => ref.invalidate(bookingInfoProvider(widget.eventId)),
       ),
       data: (value) {
         if (!value.enabled) return const SizedBox.shrink();

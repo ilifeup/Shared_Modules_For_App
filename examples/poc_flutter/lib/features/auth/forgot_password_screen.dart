@@ -117,35 +117,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       '',
     );
     if (ok && mounted) {
+      final messenger = ScaffoldMessenger.of(context);
       context.go('/login');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('密碼已重設，所有裝置皆已登出，請以新密碼登入')));
+      showFeedback(messenger, '密碼已重設，所有裝置皆已登出，請以新密碼登入');
     }
-  }
-
-  Widget _field(
-    String key,
-    TextEditingController controller,
-    String label, {
-    bool obscure = false,
-    TextInputType? keyboard,
-    int? maxLength,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        key: Key(key),
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboard,
-        maxLength: maxLength,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
   }
 
   @override
@@ -177,11 +152,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             StatusBox(label: '【已送出】', detail: _notice!),
           if (_error != null) ErrorBox(error: _error!),
           if (!_byPhone) ...[
-            _field(
-              'forgot-email',
-              _email,
-              'Email',
-              keyboard: TextInputType.emailAddress,
+            LabeledTextField(
+              fieldKey: const Key('forgot-email'),
+              controller: _email,
+              label: 'Email',
+              keyboardType: TextInputType.emailAddress,
             ),
             FilledButton(
               key: const Key('forgot-email-submit'),
@@ -189,11 +164,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               child: const Text('寄送重設密碼連結'),
             ),
           ] else ...[
-            _field(
-              'forgot-phone',
-              _phone,
-              '手機號碼',
-              keyboard: TextInputType.phone,
+            LabeledTextField(
+              fieldKey: const Key('forgot-phone'),
+              controller: _phone,
+              label: '手機號碼',
+              keyboardType: TextInputType.phone,
             ),
             OutlinedButton(
               key: const Key('forgot-send-code'),
@@ -202,20 +177,25 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             ),
             const SizedBox(height: 12),
             if (_codeSent) ...[
-              _field(
-                'forgot-code',
-                _code,
-                '6 位數驗證碼',
-                keyboard: TextInputType.number,
+              LabeledTextField(
+                fieldKey: const Key('forgot-code'),
+                controller: _code,
+                label: '6 位數驗證碼',
+                keyboardType: TextInputType.number,
                 maxLength: 6,
               ),
-              _field(
-                'forgot-password',
-                _password,
-                '新密碼（至少 8 字元）',
-                obscure: true,
+              LabeledTextField(
+                fieldKey: const Key('forgot-password'),
+                controller: _password,
+                label: '新密碼（至少 8 字元）',
+                obscureText: true,
               ),
-              _field('forgot-confirm', _confirmation, '再次輸入新密碼', obscure: true),
+              LabeledTextField(
+                fieldKey: const Key('forgot-confirm'),
+                controller: _confirmation,
+                label: '再次輸入新密碼',
+                obscureText: true,
+              ),
               FilledButton(
                 key: const Key('forgot-reset-submit'),
                 onPressed: _busy ? null : _resetByPhone,

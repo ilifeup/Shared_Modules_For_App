@@ -28,9 +28,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (_identifier.text.trim().isEmpty || _password.text.isEmpty) {
       setState(() => _error = null);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('請輸入帳號與密碼')));
+      showFeedback(ScaffoldMessenger.of(context), '請輸入帳號與密碼');
       return;
     }
     setState(() {

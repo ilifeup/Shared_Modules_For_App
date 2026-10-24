@@ -51,9 +51,7 @@ class _ChangeEmailScreenState extends ConsumerState<ChangeEmailScreen> {
       final profile = await ref
           .read(profileApiProvider)
           .changeEmail(_email.text, _password.text);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Email 已更新，請到信箱點擊驗證連結')),
-      );
+      showFeedback(messenger, 'Email 已更新，請到信箱點擊驗證連結');
       // Leave this screen before publishing the new profile: the session change
       // refreshes the router, which would otherwise restore this route.
       if (profile.verificationSatisfied) {

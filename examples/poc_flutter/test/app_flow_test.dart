@@ -1090,8 +1090,12 @@ void main() {
 
     expect(find.textContaining('SERVER_ERROR'), findsOneWidget);
     backend.eventsFail = false;
-    await tester.ensureVisible(find.byKey(const Key('calendar-retry')));
-    await tester.tap(find.byKey(const Key('calendar-retry')));
+    final retry = find.descendant(
+      of: find.byKey(const Key('calendar-retry')),
+      matching: find.text('重試'),
+    );
+    await tester.ensureVisible(retry);
+    await tester.tap(retry);
     await tester.pumpAndSettle();
     expect(find.text('社區講座'), findsOneWidget);
   });

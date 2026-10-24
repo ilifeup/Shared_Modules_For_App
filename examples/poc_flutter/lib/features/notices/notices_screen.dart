@@ -82,7 +82,7 @@ class NoticesScreen extends ConsumerWidget {
             child: RefreshIndicator(
               onRefresh: () => ref.refresh(noticesProvider.future),
               child: notices.when(
-                loading: () => const Center(child: Text('【載入中】')),
+                loading: () => const LoadingView(),
                 error: (error, _) => ListView(
                   padding: const EdgeInsets.all(16),
                   children: [ErrorBox(error: error)],

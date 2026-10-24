@@ -24,14 +24,13 @@ class MyBookingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('我的預約')),
       body: bookings.when(
-        loading: () => const Center(child: Text('【載入中】')),
+        loading: () => const LoadingView(),
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ErrorBox(error: error),
-            OutlinedButton(
-              onPressed: () => ref.invalidate(myBookingsProvider),
-              child: const Text('重試'),
+            ErrorRetry(
+              error: ErrorBox(error: error),
+              onRetry: () => ref.invalidate(myBookingsProvider),
             ),
           ],
         ),

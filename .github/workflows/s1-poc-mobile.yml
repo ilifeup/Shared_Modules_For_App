@@ -89,7 +89,7 @@ jobs:
       - name: Publish build failure details as annotations
         if: failure()
         run: |
-          [ -s "$RUNNER_TEMP/build.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/build.log" "build" 200
+          [ -s "$RUNNER_TEMP/build.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/build.log" "build" 300 8 tail
           true
 
       - name: Verify application ID and targetSdk 36

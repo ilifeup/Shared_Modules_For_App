@@ -107,7 +107,9 @@ class BookingInfo {
       opensAt: BookingDto._date(json['opens_at']),
       closesAt: BookingDto._date(json['closes_at']),
       unavailableReason: reason is String ? reason : null,
-      myBooking: mine is Map<String, dynamic> ? BookingDto.fromJson(mine) : null,
+      myBooking: mine is Map<String, dynamic>
+          ? BookingDto.fromJson(mine)
+          : null,
     );
   }
 }
@@ -130,8 +132,7 @@ class BookingApi {
 
   /// Own bookings only. 409 BOOKING_NOT_ACTIVE when already cancelled.
   Future<BookingInfo> cancel(String bookingId) async {
-    final path =
-        '/api/v1/me/bookings/${Uri.encodeComponent(bookingId)}/cancel';
+    final path = '/api/v1/me/bookings/${Uri.encodeComponent(bookingId)}/cancel';
     return _info(await transport.request('POST', path));
   }
 

@@ -83,6 +83,7 @@ class FakeBackend implements ApiTransport {
           : null,
     };
   }
+
   final List<Map<String, dynamic>> events = [
     _event('1', '社區講座', '2026-12-30T02:00:00Z', '2026-12-30T04:00:00Z'),
     _event(
@@ -1090,9 +1091,7 @@ void main() {
     expect(find.text('社區講座'), findsOneWidget);
   });
 
-  testWidgets('books an event once, then cancels the booking', (
-    tester,
-  ) async {
+  testWidgets('books an event once, then cancels the booking', (tester) async {
     final backend = FakeBackend();
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-calendar')));

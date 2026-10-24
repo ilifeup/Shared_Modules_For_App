@@ -37,7 +37,7 @@ for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && bre
 
 pids=()
 i=0
-while IFS= read -r token; do
+while IFS= read -r token || [ -n "$token" ]; do # last line has no newline
   i=$((i + 1))
   curl -sS --max-time 30 -o "$OUT/r$i.json" -w '%{http_code}' -X POST "$BASE/api/v1/events/$EVENT/bookings" \
     -H 'Accept: application/json' -H "Authorization: Bearer $token" > "$OUT/r$i.code" &

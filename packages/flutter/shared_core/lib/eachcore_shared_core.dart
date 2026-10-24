@@ -7,3 +7,4 @@ export 'src/member_profile.dart';
 export 'src/notice_dto.dart';
 export 'src/member_api.dart';
 export 'src/session_api.dart';
+export 'src/login_identifier.dart';

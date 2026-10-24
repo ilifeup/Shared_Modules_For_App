@@ -34,8 +34,11 @@ Future<void> main() async {
   check(token == 'synthetic-token');
   check(fake.method == 'POST');
   check(fake.path == '/api/v1/auth/login');
-  check(fake.body?['email'] == 'test@example.invalid');
+  check(fake.body?['identifier'] == 'test@example.invalid');
   check(fake.body?['password'] == 'fake-password');
+  final phoneToken = await api.login('+886912345678', 'fake-password');
+  check(phoneToken == 'synthetic-token');
+  check(fake.body?['identifier'] == '+886912345678');
   await api.logout();
   check(fake.method == 'POST');
   check(fake.path == '/api/v1/auth/logout');

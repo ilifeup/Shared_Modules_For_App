@@ -40,6 +40,8 @@ class MeController extends Controller
         $changes = array_filter([
             'name' => $request->has('name') ? trim($request->string('name')->toString()) : null,
             'display_name' => $request->has('display_name') ? trim($request->string('display_name')->toString()) : null,
+            'nickname' => $request->has('nickname') ? trim($request->string('nickname')->toString()) : null,
+            'show_in_like_list' => $request->has('show_in_like_list') ? $request->boolean('show_in_like_list') : null,
         ], fn ($value) => $value !== null);
 
         $user->update($changes);

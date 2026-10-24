@@ -40,6 +40,7 @@ class SystemSettings extends Page
         'member_long_login', 'member_idle_minutes', 'admin_idle_minutes',
         'sms_test_mode', 'sms_provider', 'sms_global_hourly_limit', 'sms_phone_hourly_limit',
         'sms_resend_cooldown_minutes', 'otp_ttl_minutes', 'otp_max_attempts',
+        'article_like_weight', 'article_view_dedupe_minutes', 'comment_report_threshold',
     ];
 
     public static function canAccess(): bool
@@ -89,6 +90,14 @@ class SystemSettings extends Page
                             ->numeric()->integer()->minValue(1)->required(),
                         TextInput::make('otp_max_attempts')->label('OTP 錯誤次數上限')
                             ->numeric()->integer()->minValue(1)->required(),
+                    ]),
+                    Tab::make('文章互動')->schema([
+                        TextInput::make('article_like_weight')->label('人氣：每個讚等於幾次瀏覽')
+                            ->numeric()->integer()->minValue(0)->maxValue(1000)->required(),
+                        TextInput::make('article_view_dedupe_minutes')->label('同一人重複瀏覽不計時間（分鐘）')
+                            ->numeric()->integer()->minValue(1)->maxValue(1440)->required(),
+                        TextInput::make('comment_report_threshold')->label('觸發 AI 審核的檢舉人數')
+                            ->numeric()->integer()->minValue(1)->maxValue(100)->required(),
                     ]),
                 ]),
             ])

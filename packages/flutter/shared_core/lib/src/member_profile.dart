@@ -12,6 +12,8 @@ class MemberProfile {
     this.name,
     this.hasAvatar = false,
     this.missingFields = const [],
+    this.nickname,
+    this.showInLikeList = false,
   });
 
   final String id;
@@ -39,7 +41,15 @@ class MemberProfile {
   /// Required fields an older account still lacks: `name`, `email`, `phone`.
   final List<String> missingFields;
 
+  /// S8: the single public nickname shown with likes and comments.
+  final String? nickname;
+
+  /// S8: show my nickname in like lists (default off; still counted when off).
+  final bool showInLikeList;
+
   bool get profileComplete => missingFields.isEmpty;
+
+  bool get hasNickname => nickname != null && nickname!.trim().isNotEmpty;
 
   factory MemberProfile.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -56,6 +66,8 @@ class MemberProfile {
     final realName = json['name'];
     final profile = json['profile'];
     final missingFields = profile is Map ? profile['missing'] : null;
+    final nickname = json['nickname'];
+    final privacy = json['privacy'];
     return MemberProfile(
       id: id,
       displayName: name,
@@ -71,6 +83,8 @@ class MemberProfile {
       missingFields: missingFields is List
           ? missingFields.map((field) => field.toString()).toList()
           : const [],
+      nickname: nickname is String ? nickname : null,
+      showInLikeList: privacy is Map && privacy['show_in_like_list'] == true,
     );
   }
 

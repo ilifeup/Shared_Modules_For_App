@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Web\ArticleSharePageController;
 use App\Http\Controllers\Web\EmailVerificationController;
 use App\Http\Controllers\Web\PasswordResetPageController;
 use Illuminate\Support\Facades\Route;
@@ -19,3 +20,9 @@ Route::get('/password/reset/{token}', [PasswordResetPageController::class, 'show
 Route::post('/password/reset', [PasswordResetPageController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('password.update');
+
+// S8 M05 shared article link (read permission enforced; see the controller).
+Route::get('/articles/{slug}', ArticleSharePageController::class)
+    ->where('slug', '[A-Za-z0-9-]+')
+    ->middleware('throttle:60,1')
+    ->name('articles.share');

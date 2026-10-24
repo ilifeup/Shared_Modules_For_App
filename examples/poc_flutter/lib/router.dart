@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/articles/article_detail_screen.dart';
+import 'features/articles/articles_screen.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/email_sent_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
@@ -55,7 +57,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (status == AuthStatus.unknown) {
         return path == '/splash' ? null : '/splash';
       }
-      final isPublic = _publicPaths.contains(path);
+      // S8: articles are open to visitors; the server decides what they may read.
+      final isPublic =
+          _publicPaths.contains(path) ||
+          path == '/articles' ||
+          path.startsWith('/articles/');
       if (status == AuthStatus.signedOut) {
         return isPublic ? null : '/login';
       }
@@ -85,6 +91,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/notices/:id',
         builder: (context, state) =>
             NoticeDetailScreen(id: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/articles',
+        builder: (context, state) => const ArticlesScreen(),
+      ),
+      GoRoute(
+        path: '/articles/:id',
+        builder: (context, state) =>
+            ArticleDetailScreen(id: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/calendar',

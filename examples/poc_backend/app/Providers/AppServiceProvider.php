@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\Moderation\CommentModerator;
+use App\Services\Moderation\NullModerator;
+use App\Services\Moderation\OpenAiCompatibleModerator;
 use App\Services\Sms\FakeSmsGateway;
 use App\Support\Settings;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -21,6 +24,20 @@ class AppServiceProvider extends ServiceProvider
         // Read settings once per request / job / test.
         $this->app->scoped(Settings::class);
         $this->app->scoped(FakeSmsGateway::class);
+
+        // S8 M05: AI review of reported comments (server side only).
+        $this->app->bind(CommentModerator::class, function (): CommentModerator {
+            $config = (array) config('articles.moderation', []);
+
+            return ($config['driver'] ?? 'null') === 'openai_compatible'
+                ? new OpenAiCompatibleModerator(
+                    (string) $config['endpoint'],
+                    $config['api_key'] ?? null,
+                    (string) $config['model'],
+                    (int) ($config['timeout'] ?? 15),
+                )
+                : new NullModerator;
+        });
     }
 
     /**

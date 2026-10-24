@@ -22,6 +22,9 @@ class MemberResource extends JsonResource
             'id' => (string) $this->id,
             'name' => $this->name,
             'display_name' => $this->display_name ?? $this->name,
+            // S8 M01: public nickname (likes / comments) and privacy.
+            'nickname' => $this->nickname,
+            'privacy' => ['show_in_like_list' => (bool) $this->show_in_like_list],
             'email' => $this->email,
             'phone' => $this->phone_e164,
             'email_verified' => $this->email_verified_at !== null,

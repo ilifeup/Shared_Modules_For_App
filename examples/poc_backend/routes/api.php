@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CalendarEventController;
@@ -18,6 +19,17 @@ Route::get('/membership-levels', [MembershipController::class, 'index']);
 Route::get('/notice-categories', [NoticeController::class, 'categories']);
 Route::get('/public/notices', [NoticeController::class, 'publicIndex'])->middleware('throttle:auth-60');
 Route::get('/public/notices/{id}', [NoticeController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
+// S8 M05 articles: optional login; read permission is checked per article on the server.
+Route::middleware('throttle:auth-60')->group(function () {
+    Route::get('/articles', [ArticleController::class, 'index']);
+    Route::get('/articles/featured', [ArticleController::class, 'featured']);
+    Route::get('/articles/{id}', [ArticleController::class, 'show'])->whereNumber('id');
+    Route::get('/articles/{id}/cover', [ArticleController::class, 'cover'])->whereNumber('id');
+    Route::get('/articles/{id}/likes', [ArticleController::class, 'likes'])->whereNumber('id');
+    Route::get('/articles/{id}/comments', [ArticleController::class, 'comments'])->whereNumber('id');
+});
+Route::get('/article-categories', [ArticleController::class, 'categories']);
+Route::get('/article-report-reasons', [ArticleController::class, 'reportReasons']);
 Route::get('/public/events', [CalendarEventController::class, 'publicIndex'])->middleware('throttle:auth-60');
 Route::get('/public/events/{id}', [CalendarEventController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
 
@@ -70,6 +82,12 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/events/{id}/bookings', [BookingController::class, 'store'])->whereNumber('id');
     Route::get('/me/bookings', [BookingController::class, 'mine']);
     Route::post('/me/bookings/{id}/cancel', [BookingController::class, 'cancel'])->whereNumber('id');
+
+    // S8 M05-B interaction (members with read permission).
+    Route::post('/articles/{id}/like', [ArticleController::class, 'like'])->whereNumber('id');
+    Route::delete('/articles/{id}/like', [ArticleController::class, 'unlike'])->whereNumber('id');
+    Route::post('/articles/{id}/comments', [ArticleController::class, 'storeComment'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/article-comments/{id}/reports', [ArticleController::class, 'report'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S4 M04 in-app notifications (own notifications only).
     Route::get('/me/notifications', [NotificationController::class, 'index']);

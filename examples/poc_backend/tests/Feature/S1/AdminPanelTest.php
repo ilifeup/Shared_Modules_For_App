@@ -3,6 +3,7 @@
 use App\Filament\Pages\SystemSettings;
 use App\Filament\Resources\Notices\Pages\CreateNotice;
 use App\Http\Middleware\EnforceAdminIdle;
+use App\Models\AuditEvent;
 use App\Models\Notice;
 use App\Models\User;
 use App\Support\Settings;
@@ -73,14 +74,13 @@ it('applies an admin idle limit changed in settings', function () {
         ->assertRedirect('/admin/login');
 });
 
-it('saves the three settings tabs to the database', function () {
+it('saves the session and SMS settings to the database and audits the change', function () {
     $this->actingAs(makeAdmin());
 
     Livewire::test(SystemSettings::class)
         ->set('data.member_long_login', false)
         ->set('data.member_idle_minutes', 1440)
         ->set('data.admin_idle_minutes', 4320)
-        ->set('data.registration_phone_enabled', false)
         ->set('data.sms_provider', 'smsgo')
         ->set('data.sms_global_hourly_limit', 50)
         ->set('data.otp_max_attempts', 4)
@@ -91,10 +91,12 @@ it('saves the three settings tabs to the database', function () {
     expect($settings->bool('member_long_login'))->toBeFalse()
         ->and($settings->int('member_idle_minutes'))->toBe(1440)
         ->and($settings->int('admin_idle_minutes'))->toBe(4320)
-        ->and($settings->bool('registration_phone_enabled'))->toBeFalse()
         ->and($settings->string('sms_provider'))->toBe('smsgo')
         ->and($settings->int('sms_global_hourly_limit'))->toBe(50)
         ->and($settings->int('otp_max_attempts'))->toBe(4);
+
+    $event = AuditEvent::query()->where('event', 'settings.updated')->firstOrFail();
+    expect($event->details['changes']['sms_provider'])->toBe(['old' => 'fake', 'new' => 'smsgo']);
 });
 
 it('creates and publishes a notice from Filament that members can then read', function () {

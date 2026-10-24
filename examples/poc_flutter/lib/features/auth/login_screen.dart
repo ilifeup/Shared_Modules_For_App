@@ -86,6 +86,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: const Text('註冊新帳號'),
           ),
           TextButton(
+            key: const Key('login-forgot'),
+            onPressed: _busy ? null : () => context.push('/forgot-password'),
+            child: const Text('忘記密碼'),
+          ),
+          TextButton(
             onPressed: _busy ? null : () => context.push('/verify-phone'),
             child: const Text('輸入手機驗證碼'),
           ),

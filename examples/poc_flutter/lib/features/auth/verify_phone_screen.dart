@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
+import 'auth_controller.dart';
 import '../../ui/status_box.dart';
 
 class VerifyPhoneScreen extends ConsumerStatefulWidget {
@@ -47,12 +48,22 @@ class _VerifyPhoneScreenState extends ConsumerState<VerifyPhoneScreen> {
   Future<void> _verify() async {
     final api = ref.read(registrationApiProvider);
     await _run(() => api.verifyPhoneOtp(_phone.text, _code.text), '');
-    if (mounted && _error == null) {
-      context.go('/login');
+    if (!mounted || _error != null) return;
+    final auth = ref.read(authControllerProvider);
+    if (auth.status == AuthStatus.signedIn) {
+      // Signed in behind the verification gate: re-check and continue.
+      await ref.read(authControllerProvider.notifier).refreshProfile();
+      if (!mounted) return;
+      context.go('/');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('手機驗證成功，請登入')));
+      ).showSnackBar(const SnackBar(content: Text('手機驗證成功')));
+      return;
     }
+    context.go('/login');
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('手機驗證成功，請登入')));
   }
 
   Future<void> _resend() {

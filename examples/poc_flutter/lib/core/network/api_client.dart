@@ -11,6 +11,7 @@ Dio createApiClient({
   required TokenStorage tokenStorage,
   HttpClientAdapter? adapter,
   void Function()? onUnauthorized,
+  void Function()? onVerificationRequired,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -24,20 +25,31 @@ Dio createApiClient({
     dio.httpClientAdapter = adapter;
   }
   dio.interceptors.add(
-    ApiInterceptor(tokenStorage, onUnauthorized: onUnauthorized),
+    ApiInterceptor(
+      tokenStorage,
+      onUnauthorized: onUnauthorized,
+      onVerificationRequired: onVerificationRequired,
+    ),
   );
   return dio;
 }
 
 /// Adds X-Request-Id and the Bearer token; clears the token on 401 and
 /// tells the session layer so the App returns to the login screen.
+/// A 403 `VERIFICATION_REQUIRED` keeps the token (the member is signed in but
+/// must verify first) and tells the session layer to show the verification gate.
 class ApiInterceptor extends Interceptor {
-  ApiInterceptor(this._tokenStorage, {Random? random, this.onUnauthorized})
-    : _random = random ?? Random.secure();
+  ApiInterceptor(
+    this._tokenStorage, {
+    Random? random,
+    this.onUnauthorized,
+    this.onVerificationRequired,
+  }) : _random = random ?? Random.secure();
 
   final TokenStorage _tokenStorage;
   final Random _random;
   final void Function()? onUnauthorized;
+  final void Function()? onVerificationRequired;
 
   @override
   Future<void> onRequest(
@@ -57,11 +69,23 @@ class ApiInterceptor extends Interceptor {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    if (err.response?.statusCode == 401) {
+    final status = err.response?.statusCode;
+    if (status == 401) {
       await _tokenStorage.clear();
       onUnauthorized?.call();
+    } else if (status == 403 && _errorCode(err) == 'VERIFICATION_REQUIRED') {
+      onVerificationRequired?.call();
     }
     handler.next(err);
+  }
+
+  static String? _errorCode(DioException err) {
+    final data = err.response?.data;
+    if (data is Map && data['error'] is Map) {
+      final code = (data['error'] as Map)['code'];
+      return code is String ? code : null;
+    }
+    return null;
   }
 
   String _newRequestId() {

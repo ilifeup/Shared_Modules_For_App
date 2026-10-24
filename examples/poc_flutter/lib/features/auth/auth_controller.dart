@@ -82,6 +82,18 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// Re-reads the profile, e.g. after a verification or a 403
+  /// `VERIFICATION_REQUIRED`, so the router can open or close the gate.
+  Future<void> refreshProfile() async {
+    if (state.status != AuthStatus.signedIn) return;
+    try {
+      final profile = await ref.read(memberApiProvider).myProfile();
+      state = AuthState.signedIn(profile);
+    } on ApiException {
+      // 401 is handled by the interceptor; other errors keep the current state.
+    }
+  }
+
   void updateProfile(MemberProfile profile) {
     state = AuthState.signedIn(profile);
   }

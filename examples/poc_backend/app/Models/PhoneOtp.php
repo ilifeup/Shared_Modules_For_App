@@ -21,6 +21,19 @@ class PhoneOtp extends Model
 
     public const STATUS_SUPERSEDED = 'superseded';
 
+    public const PURPOSE_VERIFY = 'verify';
+
+    public const PURPOSE_PASSWORD_RESET = 'password_reset';
+
+    public const PURPOSE_PHONE_CHANGE = 'phone_change';
+
+    /** Prefix used in the SMS text, e.g. "密碼重設驗證碼 123456". */
+    public const PURPOSE_LABELS = [
+        self::PURPOSE_VERIFY => '',
+        self::PURPOSE_PASSWORD_RESET => '密碼重設',
+        self::PURPOSE_PHONE_CHANGE => '手機變更',
+    ];
+
     /** Statuses that count toward hourly limits and cooldown. */
     public const COUNTED_STATUSES = [
         self::STATUS_PENDING,
@@ -35,6 +48,7 @@ class PhoneOtp extends Model
     protected $fillable = [
         'user_id',
         'phone_e164',
+        'purpose',
         'code_hash',
         'status',
         'attempts',

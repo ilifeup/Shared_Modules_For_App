@@ -21,11 +21,8 @@ final class Settings
         'member_idle_minutes' => 43200,       // used only when member_long_login is false (30 days)
         'admin_idle_minutes' => 10080,        // Filament: log out after 7 days without activity
 
-        // Tab 2: registration & verification
-        'registration_email_enabled' => true,
-        'email_verification_required' => true,
-        'registration_phone_enabled' => true,
-        'phone_verification_required' => true,
+        // 會員驗證設定 (S3 A02): which verified contact grants full member access.
+        'verification_policy' => self::POLICY_EMAIL,
 
         // Tab 3: SMS OTP
         'sms_provider' => 'fake',             // fake | mitake | every8d | smsgo
@@ -38,6 +35,14 @@ final class Settings
     ];
 
     public const SMS_PROVIDERS = ['fake', 'mitake', 'every8d', 'smsgo'];
+
+    /** Testing stage: email must be verified; phone OTP optional. */
+    public const POLICY_EMAIL = 'email_required';
+
+    /** Store release: phone OTP must be verified; email can be verified later. */
+    public const POLICY_PHONE = 'phone_required';
+
+    public const POLICIES = [self::POLICY_EMAIL, self::POLICY_PHONE];
 
     /** @var array<string, bool|int|string>|null */
     private ?array $values = null;
@@ -101,6 +106,15 @@ final class Settings
             $merged[$key] = $this->cast($key, $value);
         }
 
+        // Validate everything before writing anything.
+        if (! in_array($merged['sms_provider'], self::SMS_PROVIDERS, true)) {
+            throw new InvalidArgumentException("Unknown SMS provider [{$merged['sms_provider']}].");
+        }
+
+        if (! in_array($merged['verification_policy'], self::POLICIES, true)) {
+            throw new InvalidArgumentException("Unknown verification policy [{$merged['verification_policy']}].");
+        }
+
         // Shared validation of the session/SMS limits (packages/laravel/shared_core).
         new AuthSettings(
             memberIdleMinutes: $merged['member_long_login'] ? null : (int) $merged['member_idle_minutes'],
@@ -112,15 +126,8 @@ final class Settings
             otpMaxAttempts: (int) $merged['otp_max_attempts'],
         );
 
-        foreach ($values as $key => $value) {
-            $this->assertKnown($key);
-            $value = $this->cast($key, $value);
-
-            if ($key === 'sms_provider' && ! in_array($value, self::SMS_PROVIDERS, true)) {
-                throw new InvalidArgumentException("Unknown SMS provider [{$value}].");
-            }
-
-            AppSetting::query()->updateOrCreate(['key' => $key], ['value' => json_encode($value)]);
+        foreach (array_keys($values) as $key) {
+            AppSetting::query()->updateOrCreate(['key' => $key], ['value' => json_encode($merged[$key])]);
         }
 
         $this->values = null;

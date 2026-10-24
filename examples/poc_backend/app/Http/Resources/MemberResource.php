@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Support\VerificationPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,6 +26,8 @@ class MemberResource extends JsonResource
             'phone' => $this->phone_e164,
             'email_verified' => $this->email_verified_at !== null,
             'phone_verified' => $this->phone_verified_at !== null,
+            // S3 A02: whether the current verification policy grants full member access.
+            'verification' => app(VerificationPolicy::class)->describe($this->resource),
             'created_at' => $this->created_at?->toIso8601ZuluString(),
         ];
     }

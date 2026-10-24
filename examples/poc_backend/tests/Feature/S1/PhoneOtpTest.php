@@ -1,8 +1,13 @@
 <?php
 
+use App\Models\AppSetting;
 use App\Models\PhoneOtp;
 use App\Models\User;
+use App\Services\PhoneOtpService;
+use App\Services\Sms\SmsGatewayFactory;
 use App\Support\Settings;
+use EachCore\SharedCore\SmsProvider;
+use EachCore\SharedCore\SmsSendResult;
 
 function phoneMember(string $phone = '+886912345678'): User
 {
@@ -140,4 +145,77 @@ it('reports a provider failure without leaving a usable code', function () {
     // A failed send does not start the cooldown or consume the hourly quota.
     app(Settings::class)->put(['sms_test_mode' => true]);
     requestOtp()->assertOk();
+});
+
+it('enforces limits with a database lock, independent of the cache driver', function () {
+    // S2: issuance must not rely on cache locks (deployments may use a non-shared cache).
+    config(['cache.default' => 'null']);
+    phoneMember();
+
+    requestOtp()->assertOk();
+    requestOtp()->assertStatus(429)->assertJsonPath('error.code', 'SMS_COOLDOWN');
+
+    expect(fakeSms()->sent)->toHaveCount(1);
+    expect(AppSetting::query()->whereKey(PhoneOtpService::ISSUE_LOCK_KEY)->exists())->toBeTrue();
+});
+
+/**
+ * A provider double that simulates a newer request superseding the code while
+ * this request is still waiting for the provider's reply.
+ */
+function slowProviderSupersededMeanwhile(bool $accepted): void
+{
+    app()->instance(SmsGatewayFactory::class, new class(app(Settings::class), $accepted) extends SmsGatewayFactory
+    {
+        public function __construct(Settings $settings, private readonly bool $accepted)
+        {
+            parent::__construct($settings);
+        }
+
+        public function make(): SmsProvider
+        {
+            $accepted = $this->accepted;
+
+            return new class($accepted) implements SmsProvider
+            {
+                public function __construct(private readonly bool $accepted) {}
+
+                public function sendOtp(string $phoneE164, string $message): SmsSendResult
+                {
+                    PhoneOtp::query()->whereNull('used_at')->update([
+                        'status' => PhoneOtp::STATUS_SUPERSEDED,
+                        'used_at' => now(),
+                    ]);
+
+                    return $this->accepted
+                        ? new SmsSendResult(true, 'slow', 'late-reply')
+                        : SmsSendResult::rejected('slow', 'TIMEOUT');
+                }
+            };
+        }
+    });
+}
+
+it('does not revive a superseded code when a slow provider reply arrives late', function () {
+    phoneMember();
+    slowProviderSupersededMeanwhile(accepted: true);
+
+    requestOtp()->assertOk();
+
+    $otp = PhoneOtp::query()->firstOrFail();
+    expect($otp->status)->toBe(PhoneOtp::STATUS_SUPERSEDED)
+        ->and($otp->used_at)->not->toBeNull()
+        ->and($otp->provider_message_id)->toBeNull();
+
+    // Nothing usable is left for this phone.
+    verifyOtp('123456')->assertStatus(422)->assertJsonPath('error.code', 'OTP_INVALID');
+});
+
+it('does not overwrite a superseded code when a slow provider call fails late', function () {
+    phoneMember();
+    slowProviderSupersededMeanwhile(accepted: false);
+
+    requestOtp()->assertStatus(502)->assertJsonPath('error.code', 'SMS_SEND_FAILED');
+
+    expect(PhoneOtp::query()->firstOrFail()->status)->toBe(PhoneOtp::STATUS_SUPERSEDED);
 });

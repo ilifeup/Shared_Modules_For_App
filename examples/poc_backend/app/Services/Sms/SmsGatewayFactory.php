@@ -10,7 +10,7 @@ use EachCore\SharedCore\SmsProvider;
  * from server-side config/env (config/services.php "sms"), never from the database
  * or the App. Test mode always uses the fake transport.
  */
-final class SmsGatewayFactory
+class SmsGatewayFactory
 {
     public function __construct(private readonly Settings $settings) {}
 

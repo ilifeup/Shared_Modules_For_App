@@ -6,6 +6,9 @@ use App\Support\Phone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
+/**
+ * S3 A03: name, email, Taiwan mobile and password are all required at registration.
+ */
 class RegisterRequest extends FormRequest
 {
     public function authorize(): bool
@@ -32,8 +35,8 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'phone' => ['required', 'string', 'max:30'],
             'phone_e164' => ['nullable', 'unique:users,phone_e164'],
             'password' => ['required', 'string', 'min:8', 'max:255', 'confirmed'],
         ];
@@ -46,10 +49,6 @@ class RegisterRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                if ($this->input('email') === null && $this->input('phone') === null) {
-                    $validator->errors()->add('email', '請輸入 Email 或手機號碼。');
-                }
-
                 if ($this->input('phone') !== null && $this->input('phone_e164') === null) {
                     $validator->errors()->add('phone', '請輸入台灣手機號碼，例如 0912345678。');
                 }
@@ -63,8 +62,11 @@ class RegisterRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'email.unique' => '此 Email 已註冊。',
-            'phone_e164.unique' => '此手機號碼已註冊。',
+            'name.required' => '請輸入姓名。',
+            'email.required' => '請輸入 Email。',
+            'phone.required' => '請輸入手機號碼。',
+            'email.unique' => '此 Email 無法使用，請改用其他 Email 或使用忘記密碼。',
+            'phone_e164.unique' => '此手機號碼無法使用，請改用其他號碼或使用忘記密碼。',
             'password.min' => '密碼至少 8 個字元。',
             'password.confirmed' => '兩次輸入的密碼不一致。',
         ];

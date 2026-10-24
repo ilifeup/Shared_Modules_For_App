@@ -7,11 +7,13 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Resources\MemberResource;
 use App\Models\AuditEvent;
+use App\Models\PhoneOtp;
 use App\Models\User;
 use App\Services\PhoneOtpService;
 use App\Support\Api\ApiException;
 use App\Support\Phone;
 use App\Support\Settings;
+use App\Support\VerificationPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,71 +22,51 @@ use Illuminate\Support\Facades\Hash;
 class AuthController extends Controller
 {
     public function __construct(
-        private readonly Settings $settings,
+        private readonly VerificationPolicy $policy,
         private readonly PhoneOtpService $otp,
     ) {}
 
     /**
-     * POST /api/v1/auth/register — open self-registration with email and/or Taiwan mobile.
+     * GET /api/v1/auth/policy — current member verification policy (public).
+     */
+    public function policy(): JsonResponse
+    {
+        return new JsonResponse([
+            'data' => [
+                'verification_policy' => $this->policy->current(),
+                'required_fields' => ['name', 'email', 'phone', 'password'],
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/v1/auth/register — name, email, Taiwan mobile and password are all required.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $email = $request->input('email');
-        $phone = $request->input('phone_e164');
-
-        if ($email !== null && ! $this->settings->bool('registration_email_enabled')) {
-            throw new ApiException(403, 'EMAIL_REGISTRATION_DISABLED', '目前未開放 Email 註冊。');
-        }
-
-        if ($phone !== null && ! $this->settings->bool('registration_phone_enabled')) {
-            throw new ApiException(403, 'PHONE_REGISTRATION_DISABLED', '目前未開放手機註冊。');
-        }
-
-        $user = DB::transaction(function () use ($request, $email, $phone): User {
-            $user = User::query()->create([
-                'name' => $request->string('name')->toString(),
-                'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
-                'email' => $email,
-                'phone_e164' => $phone,
-                'password' => $request->string('password')->toString(),
-                'is_active' => true,
-            ]);
-
-            if ($email !== null && ! $this->settings->bool('email_verification_required')) {
-                $user->markEmailAsVerified();
-            }
-
-            if ($phone !== null && ! $this->settings->bool('phone_verification_required')) {
-                $user->forceFill(['phone_verified_at' => now()])->save();
-            }
-
-            return $user;
-        });
+        $user = DB::transaction(fn (): User => User::query()->create([
+            'name' => $request->string('name')->toString(),
+            'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
+            'email' => $request->input('email'),
+            'phone_e164' => $request->input('phone_e164'),
+            'password' => $request->string('password')->toString(),
+            'is_active' => true,
+        ]));
 
         AuditEvent::record('member.registered', $user->id, $user);
 
-        $verification = ['email' => null, 'phone' => null];
+        // Email verification is always offered; an SMS is only sent automatically when
+        // the policy requires the phone (avoids paid SMS during the email stage).
+        $user->sendEmailVerificationNotification();
+        $verification = ['email' => 'sent', 'phone' => null];
 
-        if ($email !== null) {
-            if ($user->hasVerifiedEmail()) {
-                $verification['email'] = 'verified';
-            } else {
-                $user->sendEmailVerificationNotification();
-                $verification['email'] = 'sent';
-            }
-        }
-
-        if ($phone !== null) {
-            if ($user->hasVerifiedPhone()) {
-                $verification['phone'] = 'verified';
-            } else {
-                try {
-                    $this->otp->send($user);
-                    $verification['phone'] = 'sent';
-                } catch (ApiException $e) {
-                    // The account exists; the member can request a new code later.
-                    $verification['phone'] = 'send_failed:'.$e->errorCode;
-                }
+        if ($this->policy->current() === Settings::POLICY_PHONE) {
+            try {
+                $this->otp->send($user);
+                $verification['phone'] = 'sent';
+            } catch (ApiException $e) {
+                // The account exists; the member can request a new code later.
+                $verification['phone'] = 'send_failed:'.$e->errorCode;
             }
         }
 
@@ -98,32 +80,21 @@ class AuthController extends Controller
 
     /**
      * POST /api/v1/auth/login — identifier is an email or a Taiwan mobile number.
+     * Unverified members receive a token, but protected endpoints stay closed until
+     * the verification policy is satisfied (see data.user.verification).
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $identifier = trim($request->string('identifier')->toString());
-        $byEmail = str_contains($identifier, '@');
-
-        $user = $byEmail
-            ? User::query()->where('email', mb_strtolower($identifier))->first()
-            : (($phone = Phone::normalize($identifier)) !== null
-                ? User::query()->where('phone_e164', $phone)->first()
-                : null);
+        $user = $this->findByIdentifier(trim($request->string('identifier')->toString()));
 
         if ($user === null || ! Hash::check($request->string('password')->toString(), $user->password)) {
+            AuditEvent::record('member.login', $user?->id, $user, [], 'failure');
+
             throw new ApiException(401, 'INVALID_CREDENTIALS', '帳號或密碼錯誤。');
         }
 
         if (! $user->is_active) {
             throw new ApiException(403, 'ACCOUNT_DISABLED', '此帳號已停用。');
-        }
-
-        if ($byEmail && ! $user->hasVerifiedEmail() && $this->settings->bool('email_verification_required')) {
-            throw new ApiException(403, 'EMAIL_NOT_VERIFIED', '請先完成 Email 驗證。');
-        }
-
-        if (! $byEmail && ! $user->hasVerifiedPhone() && $this->settings->bool('phone_verification_required')) {
-            throw new ApiException(403, 'PHONE_NOT_VERIFIED', '請先完成手機驗證。');
         }
 
         $token = $user->createToken($request->input('device_name') ?: 'mobile');
@@ -166,16 +137,20 @@ class AuthController extends Controller
     }
 
     /**
-     * POST /api/v1/auth/phone/send-otp
+     * POST /api/v1/auth/phone/send-otp — same answers (including cooldown and hourly
+     * limits) for registered and unregistered numbers.
      */
     public function sendPhoneOtp(Request $request): JsonResponse
     {
         $request->validate(['phone' => ['required', 'string', 'max:30']]);
 
-        $user = $this->findByPhone((string) $request->input('phone'));
+        $phone = $this->normalizePhone((string) $request->input('phone'));
+        $user = User::query()->where('phone_e164', $phone)->first();
 
         if ($user !== null && ! $user->hasVerifiedPhone()) {
             $this->otp->send($user);
+        } else {
+            $this->otp->throttleWithoutSending($phone, PhoneOtp::PURPOSE_VERIFY);
         }
 
         return new JsonResponse(['data' => ['message' => '若此手機尚未驗證，驗證碼已發送。']]);
@@ -191,18 +166,30 @@ class AuthController extends Controller
             'code' => ['required', 'string', 'regex:/^\d{6}$/'],
         ]);
 
-        $user = $this->findByPhone((string) $request->input('phone'));
+        $user = User::query()->where('phone_e164', $this->normalizePhone((string) $request->input('phone')))->first();
 
         if ($user === null || $user->hasVerifiedPhone()) {
             throw new ApiException(422, 'OTP_INVALID', '驗證碼錯誤或已失效。');
         }
 
         $this->otp->verify($user, (string) $request->input('code'));
+        AuditEvent::record('member.phone_verified', $user->id, $user);
 
         return new JsonResponse(['data' => ['verified' => true]]);
     }
 
-    private function findByPhone(string $input): ?User
+    private function findByIdentifier(string $identifier): ?User
+    {
+        if (str_contains($identifier, '@')) {
+            return User::query()->where('email', mb_strtolower($identifier))->first();
+        }
+
+        $phone = Phone::normalize($identifier);
+
+        return $phone !== null ? User::query()->where('phone_e164', $phone)->first() : null;
+    }
+
+    private function normalizePhone(string $input): string
     {
         $phone = Phone::normalize($input);
 
@@ -212,6 +199,6 @@ class AuthController extends Controller
             ]);
         }
 
-        return User::query()->where('phone_e164', $phone)->first();
+        return $phone;
     }
 }

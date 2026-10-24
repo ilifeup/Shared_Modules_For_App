@@ -95,6 +95,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: const Text('輸入手機驗證碼'),
           ),
           TextButton(
+            key: const Key('login-public-notices'),
+            onPressed: () => context.push('/public-notices'),
+            child: const Text('查看公開公告'),
+          ),
+          TextButton(
             onPressed: () => context.push('/health'),
             child: const Text('連線檢查'),
           ),

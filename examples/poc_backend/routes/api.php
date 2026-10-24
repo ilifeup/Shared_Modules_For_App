@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthController::class)->name('api.health');
 Route::get('/membership-levels', [MembershipController::class, 'index']);
+Route::get('/notice-categories', [NoticeController::class, 'categories']);
+Route::get('/public/notices', [NoticeController::class, 'publicIndex'])->middleware('throttle:auth-60');
+Route::get('/public/notices/{id}', [NoticeController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
 
 // Public: registration, verification and account recovery.
 // auth-N limiters count per route and client IP (see AppServiceProvider).
@@ -51,4 +54,5 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
 
     Route::get('/notices', [NoticeController::class, 'index']);
     Route::get('/notices/{id}', [NoticeController::class, 'show'])->whereNumber('id');
+    Route::post('/notices/{id}/read', [NoticeController::class, 'markRead'])->whereNumber('id');
 });

@@ -41,12 +41,19 @@ jobs:
           sdk: stable
       - name: Dart format (prints the diff on failure)
         working-directory: packages/flutter/shared_core
+        shell: bash
         run: |
           dart format lib test
-          git diff --exit-code -- .
+          git diff -- . > "$RUNNER_TEMP/format.diff"
+          if [ -s "$RUNNER_TEMP/format.diff" ]; then
+            bash ../../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 400
+            exit 1
+          fi
       - name: Dart analyze and smoke
         working-directory: packages/flutter/shared_core
+        shell: bash
         run: |
+          set -o pipefail
           dart pub get
           dart analyze
           dart run test/smoke.dart
@@ -57,3 +64,4 @@ jobs:
           dart run test/registration_api_smoke.dart
           dart run test/password_reset_api_smoke.dart
           dart run test/profile_membership_smoke.dart
+          dart run test/notice_api_smoke.dart

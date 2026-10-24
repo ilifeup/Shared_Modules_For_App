@@ -2,6 +2,7 @@
 # HTTP end-to-end smoke for CI: real `php artisan serve`, MySQL and the fake SMS
 # transport (test mode). Synthetic data only; never point this at production.
 set -euo pipefail
+trap 'echo "::error title=e2e smoke::failed at line $LINENO: $BASH_COMMAND"' ERR
 
 BASE="http://127.0.0.1:8001"
 LOG="storage/logs/laravel.log"
@@ -26,7 +27,7 @@ call() { # method path [json] [token]
 
 expect() { # expected actual label
   if [ "$1" != "$2" ]; then
-    echo "FAIL: $3 (expected HTTP $1, got $2)"; cat /tmp/s1-body.json; echo; exit 1
+    echo "::error title=e2e smoke::$3 (expected HTTP $1, got $2): $(head -c 600 /tmp/s1-body.json)"; exit 1
   fi
   echo "PASS: $3"
 }
@@ -34,8 +35,8 @@ expect() { # expected actual label
 expect 201 "$(call POST /api/v1/auth/register "{\"name\":\"E2E Phone\",\"phone\":\"$PHONE\",\"password\":\"$PASS\",\"password_confirmation\":\"$PASS\"}")" "register with phone"
 expect 403 "$(call POST /api/v1/auth/login "{\"identifier\":\"$PHONE\",\"password\":\"$PASS\"}")" "login blocked before OTP"
 
-CODE="$(grep -oP '驗證碼 \K[0-9]{6}' "$LOG" | tail -n 1)"
-[ -n "$CODE" ] || { echo "FAIL: OTP not found in fake SMS log"; exit 1; }
+CODE="$(grep -oP '驗證碼 \K[0-9]{6}' "$LOG" 2>/dev/null | tail -n 1 || true)"
+[ -n "$CODE" ] || { echo "::error title=e2e smoke::OTP not found in fake SMS log: $(tail -n 5 "$LOG" | cut -c1-200 | tr '\n' ' ')"; exit 1; }
 
 expect 422 "$(call POST /api/v1/auth/phone/verify "{\"phone\":\"$PHONE\",\"code\":\"000000\"}")" "wrong OTP rejected"
 expect 200 "$(call POST /api/v1/auth/phone/verify "{\"phone\":\"$PHONE\",\"code\":\"$CODE\"}")" "OTP verified"

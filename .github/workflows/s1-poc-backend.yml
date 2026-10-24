@@ -107,6 +107,7 @@ jobs:
         if: failure() || steps.pint.outcome == 'failure'
         working-directory: .
         run: |
+          set +e
           [ "${{ steps.pint.outcome }}" = failure ] && (cd examples/poc_backend && vendor/bin/pint --test -v > "$RUNNER_TEMP/pint.log" 2>&1; true)
           for f in pint pest e2e; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 120

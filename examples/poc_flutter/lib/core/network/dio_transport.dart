@@ -28,10 +28,7 @@ class DioTransport implements ApiTransport {
       if (data is Map<String, dynamic>) {
         return data;
       }
-      throw const ApiException(
-        code: 'INVALID_RESPONSE',
-        message: '伺服器回應格式錯誤。',
-      );
+      throw const ApiException(code: 'INVALID_RESPONSE', message: '伺服器回應格式錯誤。');
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }

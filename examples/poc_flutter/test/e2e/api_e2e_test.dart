@@ -14,42 +14,38 @@ const baseUrl = String.fromEnvironment('E2E_API_BASE_URL');
 const password = String.fromEnvironment('E2E_MEMBER_PASSWORD');
 
 void main() {
-  test(
-    'login, profile, notices and logout against the real API',
-    () async {
-      final storage = MemoryTokenStorage();
-      final transport = DioTransport(
-        createApiClient(baseUrl: baseUrl, tokenStorage: storage),
-      );
-      final session = SessionApi(transport);
-      final members = MemberApi(transport);
+  test('login, profile, notices and logout against the real API', () async {
+    final storage = MemoryTokenStorage();
+    final transport = DioTransport(
+      createApiClient(baseUrl: baseUrl, tokenStorage: storage),
+    );
+    final session = SessionApi(transport);
+    final members = MemberApi(transport);
 
-      final token = await session.login('e2e@example.com', password);
-      expect(token, isNotEmpty);
-      await storage.write(token);
+    final token = await session.login('e2e@example.com', password);
+    expect(token, isNotEmpty);
+    await storage.write(token);
 
-      final profile = await members.myProfile();
-      expect(profile.email, 'e2e@example.com');
+    final profile = await members.myProfile();
+    expect(profile.email, 'e2e@example.com');
 
-      final updated = await members.updateDisplayName('E2E 會員');
-      expect(updated.displayName, 'E2E 會員');
+    final updated = await members.updateDisplayName('E2E 會員');
+    expect(updated.displayName, 'E2E 會員');
 
-      final notices = await members.notices();
-      expect(notices.map((n) => n.title), contains('E2E 已發布公告'));
-      expect(notices.map((n) => n.title), isNot(contains('E2E 草稿')));
+    final notices = await members.notices();
+    expect(notices.map((n) => n.title), contains('E2E 已發布公告'));
+    expect(notices.map((n) => n.title), isNot(contains('E2E 草稿')));
 
-      final detail = await members.notice(notices.first.id);
-      expect(detail.status, 'published');
+    final detail = await members.notice(notices.first.id);
+    expect(detail.status, 'published');
 
-      await session.logout();
+    await session.logout();
 
-      await expectLater(
-        members.myProfile(),
-        throwsA(
-          isA<ApiException>().having((e) => e.statusCode, 'statusCode', 401),
-        ),
-      );
-    },
-    skip: baseUrl.isEmpty ? 'E2E_API_BASE_URL not set' : false,
-  );
+    await expectLater(
+      members.myProfile(),
+      throwsA(
+        isA<ApiException>().having((e) => e.statusCode, 'statusCode', 401),
+      ),
+    );
+  }, skip: baseUrl.isEmpty ? 'E2E_API_BASE_URL not set' : false);
 }

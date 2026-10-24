@@ -284,3 +284,45 @@ S6 在 `calendar_events` 增加 `booking_enabled`、`booking_capacity`、`bookin
 - **仍存在的 P0**：S8 PR 尚未合併；S9 全自動合併部署尚未證明可用；M08 多人／訪客／候補及 M09 場次仍需增量 Schema。
 - **下輪**：核對 S8 文章分享／可見性與 M14/M15/M17 的介面；補充九模組的 API 差距矩陣；審查其他 workflow、分支保護與部署前置條件。
 - 本輪僅唯讀核對與文件更新；**未修改程式、CI 設定、PR 合併狀態或部署**。
+
+## 13. 第六輪：S8 文章分享／權限／精選／瀏覽與 M14/M15/M17 邊界（2026-10-25）
+
+### 13.1 已讀取的實際程式（Shared 未合併 S8 分支）
+
+- `examples/poc_backend/app/Http/Controllers/Web/ArticleSharePageController.php`
+- `examples/poc_backend/app/Services/ArticleAccess.php`
+- `examples/poc_backend/app/Http/Controllers/Api/ArticleController.php`
+- `examples/poc_backend/app/Models/Article.php`
+- `docs/s8_m05_articles.md`
+
+**注意：以上都來自 `feat/s8-m05-articles`，不表示 S8 已合併至 `main`。**
+
+### 13.2 現有功能與 S9 所有權
+
+| S8 已存在的行為 | S9 整合方向 | 具體證據／限制 |
+|---|---|---|
+| 分享頁 `/articles/{slug}` | M14 通用連結需重用 S8 文章網址／權限，不複製文章公開頁 | `ArticleSharePageController`：文章必須 live；僅 public 可傳入文章內容；members/restricted 頁不顯示標題及內文 |
+| `share_url` 回應 | M14 可將它視為文章目的地，但不可把分享網址視為存取授權 | `ArticleController::show` 產生 `share_base_url/articles/{slug}` |
+| `/articles/featured`、`is_featured`、`featured_order` | M15 不重做文章手動精選排序；另定行銷活動／CTA 的權威資料 | `ArticleController::featured` 限 10 筆並先套 `readable()` 權限；`Article` model 有精選欄位 |
+| `view_count`、`like_count`、人氣排序 | M17 連結點擊與歸因不可直接覆寫或等同文章瀏覽／按讚 | `Article::scopeOrderByPopularity` 使用 view + like×weight；S8 文件描述同會員或 IP+UA 30 分鐘去重，具體實作仍待 `ArticleInteractionService` 全面核對 |
+| `ArticleAccess::scope/denial` | M14 目的地、M15 曝光、M19 搜尋需各自保留後端可見性判斷 | public／members／restricted；restricted 以會員等級 OR 角色符合任一 access rule |
+| `/articles/{id}/cover` | M14／M19 不能讓封面 URL 成為權限繞過 | `ArticleController::cover` 再次呼叫 `authorizeRead`；本地檔回應 private cache |
+| 文章留言、按讚、檢舉 | M17 不將互動 API 誤認為點擊分析 | `ArticleController` 有 like/unlike、comments、report；非通用點擊事件 |
+
+### 13.3 API／安全性具體風險
+
+1. **受限文章 Deep Link**：登入前可見「登入提示」，但不可顯示受限文章標題、摘要、封面或內文；登入後仍須重新查核 `ArticleAccess`。
+2. **M15 行銷曝光**：推廣位／CTA 若引用 restricted 文章，須先過內容權限；不得直接把 `is_featured` 當作可向所有使用者顯示。
+3. **M17 事件語意**：`article.view`、`article.like`、`link.click` 是不同事件；M17 若記錄來源歸因應避免以文章計數欄位替代。
+4. **M14 與 M17 分工**：M14 解決連結／導向；M17 解決點擊事件／分析；M15 消費分析而不重複記錄點擊。此為既有 INT-D03 分工的技術落實方向，尚未定稿具體 API。
+5. **S8 上線依賴**：S8 文件明確要求 Queue worker、Mail、AI moderation、封面持久儲存；其 AI/Email 自動化測試使用 fake，**尚未以真實 AI 與郵件服務驗收**。即使 S8 PR CI 綠燈也不能據此宣稱可正式部署。
+
+### 13.4 待核對事項
+
+- [ ] `ArticleInteractionService` 的瀏覽去重、併發與稽核，判斷 M17 事件是否可重用其去重元件。
+- [ ] S8 分享頁 Blade、Flutter 開啟／複製分享流程與 M14 路由整合。
+- [ ] M14/M15/M17 既有規格中對應的 API、Migration 與事件名稱，避免重複實作。
+- [ ] S8 PR 與 S9 的先後合併／部署相依與 Queue/Mail/AI/Storage 的實際可用性。
+- [ ] 檢查 M16/M19 是否應重用 S8 文章分類、列表與存取控制。
+
+本輪只更新審查文件，未修改任何功能程式或部署設定。

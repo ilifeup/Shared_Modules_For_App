@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.9｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v1.0｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -578,3 +578,48 @@ Tiandi `shared/SHARED_VERSION` 明載來源 Shared commit `0e16f591ce17e2fc23ac8
 - [ ] 對 L02 deadline_mode、L03 Google 同步及九模組的錯誤碼做全域相容審查。
 
 **本輪僅規劃文件更新，未修改 Dart、Laravel、Migration、OpenAPI、PR 或部署。**
+
+## 19. v1.0 九模組加速整合審查與開發入口總表（2026-10-25）
+
+### 19.1 一次核對的 GitHub 證據
+- Shared S8 HEAD `0e16f591ce17e2fc23ac8ff61061c012c4d15299` 對 `main` compare = **ahead 4 / behind 0 / 72 changed files**；該 commit 的 Actions：Validate S0 Documentation、S1 PoC Backend、S1 Shared Core Checks、S1 PoC Mobile，皆 `completed/success`。
+- Tiandi S8 HEAD `5b071aefd25459d9cad1b586cbc9374cc279dafd` 對 `main` compare = **ahead 2 / behind 0 / 72 changed files**；該 commit 的 Actions：backend、mobile，皆 `completed/success`。
+- Tiandi `shared/SHARED_VERSION` 釘選上述 Shared HEAD，包含 `booking_api.dart` 與 `openapi.yaml` 的 SHA-256。兩 Repo 分支不能各自任意改動釘版。
+- Shared/Tiandi S8 `BookingApi`、`BookingInfo`、S8 OpenAPI v0.7.0 與 S5/S6 Laravel 已核對；**以上成功僅代表這些 commit 的 CI，不代表 S9 CI 或實機驗收成功**。
+- PR #20/#17 的合併與保護狀態需在真正執行 merge 前即時再次核對；此處不推定已合併。
+
+### 19.2 九模組一次性相容矩陣
+
+| 模組 | 重用現有基礎 | S9 核心增量 | 主要 P0 Gate |
+|---|---|---|---|
+| M03 身分認證 | Sanctum、member.verified、既有 OTP、會員與稽核 | 類型／證據／多人審核／徽章／到期撤銷 | 不繞過既有驗證；證據私有；審核權限與資格分離 |
+| M08 活動預約 | S6 `event_bookings`、BookingService、原 API | group、attendee、guest、FIFO waitlist | L06 A；唯一席次帳本、同場次 row lock、不超賣、不插隊 |
+| M09 活動日曆 | S5 `calendar_events`、原事件查詢 | event_series、週／月、例外、Google 同步、nullable floor/studio | L05 A；ID 穩定、歷史保護、改期期限 L02、Google 冪等 L03 |
+| M11 簽到 | M08 attendee、M09 場次、稽核 | 每人簽到／簽退／修正、動態 QR | 權限與每人每場次唯一性；QR 60 秒／10 秒容忍 |
+| M14 Deep Link | S8 文章分享頁／權限（未合併基線） | 跨內容解析、外部回退 | 連結不得繞過 ArticleAccess／登入／VIP 權限 |
+| M15 Marketing | S8 文章 featured（部分相關） | 版位、排程、CTA、成效 | 不與 M14/M17 重複記錄；上線後觀察不豁免 CI |
+| M16 Tag Intelligence | S8 文章分類（非等同 tags） | 單層 tag、顏色、內容標記 | 單內容最多 10 tag、各 App 資料隔離 |
+| M17 Click Analytics | 既有稽核／文章瀏覽防刷（用途不同） | URL click、每日彙總、隱私保留 | 事件與彙總冪等；敏感資料最小化 |
+| M19 Search/Bookmark | S8 文章讀取、S5 活動與公告 | 跨型別 AND tags、收藏／失效 placeholder | 後端 ArticleAccess、每 App 1000 收藏、20/page、刪文不 cascade bookmark |
+
+### 19.3 技術規格中的舊候選不得直接實作
+- `docs/s9_decisions.md` M08 早期「直接把 event_bookings 改成群組主表／user_id 可空」及「不另建 waitlist」是**L06 A 之前的候選技術草案**，已由 **L06 A** 覆蓋；正式方案保留 S6 event_bookings，新增 group／attendee／waitlist。
+- v0.1–v0.2 `event_occurrences` 第二套場次權威已由 **L05 A** 覆蓋，正式方案沿用 calendar_events。
+- 舊 M08 技術候選路由若與現有 `POST /events/{id}/bookings` 無 body 行為衝突，必須保留 S6 原路徑；新群組另訂契約。
+- 任何舊草案不能因為出現在同一份文件就視為與最新核准決策同級。
+
+### 19.4 開發前 Gate（集中一次，不逐輪問）
+**P0-1 基線**：S8 PR 合併狀態／HEAD／釘版／CI 最終確認，先 Shared 再 Tiandi；沒有 merge 授權不可操作。
+**P0-2 Schema**：L05/L06 相容，候選表 FK、unique、backfill、rollback、資料保留／匿名化；避免雙重 booking 與 occurrence 權威。
+**P0-3 API**：完整九模組 OpenAPI 3.1 paths、request/response、error codes、Policy、Idempotency；保護 S6 BookingInfo／BookingApi 舊 DTO。
+**P0-4 併發**：容量、legacy＋group 席次、FIFO、取消與遞補、改期與取消整場活動的鎖定與狀態機。
+**P0-5 安全**：M03 證據、M11 QR、M14/M19 內容存取、M17 個資、各 App 獨立 DB／Secrets。
+**P0-6 CI／部署**：Shared/Tiandi 測試、實機 Gate、目標與 credentials、rollback、失敗停止；目前沒有證據可宣稱自動部署已準備完成。
+
+### 19.5 單次交付規則（遵照 L04）
+1. 先將此草案收斂成**一份**可審查的完整九模組 API／Migration／測試規格，不再以每一個欄位逐輪要求使用者決策。
+2. 僅將真正影響資料語意或安全的未決衝突彙整成**一次核准清單**。
+3. 使用者明確核准完整技術規格及「開始 S9 開發」後，才建立功能分支、寫程式與 Migration；合併／部署仍遵守獨立授權及安全 Gate。
+4. 若 CI／實機／部署 Gate 未達標，停止，提供失敗證據與最小修正；不得聲稱已完成九模組。
+
+**本輪為加速開發準備的跨模組文件審查，不代表完整逐檔安全稽核、實機測試或可立即部署。未修改功能程式、Migration、OpenAPI、PR 或部署。**

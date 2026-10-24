@@ -28,6 +28,10 @@ return [
     |
     */
 
+    // S3 A03: private disk for member avatars (served only through the API).
+    // Use persistent storage in production (e.g. an object storage bucket).
+    'avatar_disk' => env('AVATAR_DISK', 'local'),
+
     'disks' => [
 
         'local' => [

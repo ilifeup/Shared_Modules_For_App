@@ -3,6 +3,7 @@ import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/auth_controller.dart';
+import '../features/profile/avatar_repository.dart';
 import 'config/app_config.dart';
 import 'network/api_client.dart';
 import 'network/dio_transport.dart';
@@ -48,4 +49,16 @@ final registrationApiProvider = Provider<RegistrationApi>(
 
 final passwordResetApiProvider = Provider<PasswordResetApi>(
   (ref) => PasswordResetApi(ref.watch(apiTransportProvider)),
+);
+
+final profileApiProvider = Provider<ProfileApi>(
+  (ref) => ProfileApi(ref.watch(apiTransportProvider)),
+);
+
+final membershipApiProvider = Provider<MembershipApi>(
+  (ref) => MembershipApi(ref.watch(apiTransportProvider)),
+);
+
+final avatarRepositoryProvider = Provider<AvatarRepository>(
+  (ref) => DioAvatarRepository(ref.watch(dioProvider)),
 );

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,8 @@ import 'package:s1_poc_app/app.dart';
 import 'package:s1_poc_app/core/network/api_exception.dart';
 import 'package:s1_poc_app/core/providers.dart';
 import 'package:s1_poc_app/core/storage/token_storage.dart';
+import 'package:s1_poc_app/features/profile/avatar_repository.dart';
+import 'package:s1_poc_app/features/profile/profile_providers.dart';
 
 /// In-memory backend speaking the S1/S3 API contract.
 class FakeBackend implements ApiTransport {
@@ -17,6 +21,11 @@ class FakeBackend implements ApiTransport {
   /// Null = verification policy satisfied; otherwise `email` or `phone`.
   String? missing;
   String policy = 'email_required';
+  String? email = 'member@example.com';
+  String? phone = '+886912345678';
+  bool emailVerified = true;
+  bool hasAvatar = false;
+  String levelCode = 'general';
 
   @override
   Future<Map<String, dynamic>> request(
@@ -53,6 +62,49 @@ class FakeBackend implements ApiTransport {
         return {
           'data': {'verified': true},
         };
+      case 'GET /api/v1/me/membership':
+        return {
+          'data': {
+            'level': {
+              'code': levelCode,
+              'name': levelCode == 'vip' ? 'VIP 會員' : '一般會員',
+              'benefits': levelCode == 'vip' ? '優先報名' : null,
+              'is_default': levelCode != 'vip',
+            },
+            'starts_at': null,
+            'ends_at': levelCode == 'vip' ? '2026-12-31T00:00:00Z' : null,
+          },
+        };
+      case 'POST /api/v1/me/email':
+        if (body?['password'] != 'secret-1') {
+          throw const ApiException(
+            code: 'VALIDATION_FAILED',
+            message: '密碼錯誤。',
+            statusCode: 422,
+            fields: {
+              'password': ['密碼錯誤。'],
+            },
+          );
+        }
+        email = body!['email'] as String;
+        emailVerified = false;
+        if (policy == 'email_required') missing = 'email';
+        return {'data': _profile()};
+      case 'POST /api/v1/me/phone/send-otp':
+        return {
+          'data': {'message': 'ok'},
+        };
+      case 'POST /api/v1/me/phone/verify':
+        if (body?['code'] != '123456') {
+          throw const ApiException(
+            code: 'OTP_INVALID',
+            message: '驗證碼錯誤或已失效。',
+            statusCode: 422,
+          );
+        }
+        phone = '+886${(body!['phone'] as String).substring(1)}';
+        if (missing == 'phone') missing = null;
+        return {'data': _profile()};
       case 'POST /api/v1/auth/password/phone/reset':
         return {
           'data': {'reset': true},
@@ -72,7 +124,7 @@ class FakeBackend implements ApiTransport {
       case 'GET /api/v1/me/profile':
         return {'data': _profile()};
       case 'PATCH /api/v1/me/profile':
-        displayName = body!['display_name'] as String;
+        displayName = body!['display_name'] as String? ?? displayName;
         return {'data': _profile()};
       case 'GET /api/v1/notices':
         if (missing != null) {
@@ -109,10 +161,16 @@ class FakeBackend implements ApiTransport {
   Map<String, dynamic> _profile() => {
     'id': '1',
     'display_name': displayName,
-    'email': 'member@example.com',
-    'phone': '+886912345678',
-    'email_verified': missing != 'email',
+    'name': '王小明',
+    'email': email,
+    'phone': phone,
+    'email_verified': emailVerified && missing != 'email',
     'phone_verified': missing != 'phone',
+    'has_avatar': hasAvatar,
+    'profile': {
+      'complete': email != null && phone != null,
+      'missing': [if (email == null) 'email', if (phone == null) 'phone'],
+    },
     'verification': {
       'policy': policy,
       'satisfied': missing == null,
@@ -129,17 +187,44 @@ class FakeBackend implements ApiTransport {
   };
 }
 
+class FakeAvatars implements AvatarRepository {
+  FakeAvatars(this.backend);
+
+  final FakeBackend backend;
+  final List<String> uploads = [];
+
+  @override
+  Future<void> upload(Uint8List bytes, String filename) async {
+    uploads.add(filename);
+    backend.hasAvatar = true;
+  }
+
+  @override
+  Future<Uint8List?> fetch() async => null;
+
+  @override
+  Future<void> delete() async => backend.hasAvatar = false;
+}
+
 Future<void> pumpApp(
   WidgetTester tester,
   FakeBackend backend,
-  MemoryTokenStorage storage,
-) async {
+  MemoryTokenStorage storage, {
+  FakeAvatars? avatars,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       retry: (retryCount, error) => null,
       overrides: [
         apiTransportProvider.overrideWithValue(backend),
         tokenStorageProvider.overrideWithValue(storage),
+        avatarRepositoryProvider.overrideWithValue(
+          avatars ?? FakeAvatars(backend),
+        ),
+        avatarPickerProvider.overrideWithValue(
+          () async =>
+              (bytes: Uint8List.fromList([1, 2, 3]), filename: 'me.jpg'),
+        ),
       ],
       child: const S1PocApp(),
     ),
@@ -226,6 +311,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('profile-display-name')), '  ');
+    await tester.ensureVisible(find.byKey(const Key('profile-save')));
     await tester.tap(find.byKey(const Key('profile-save')));
     await tester.pumpAndSettle();
     expect(find.textContaining('【請修正】'), findsOneWidget);
@@ -235,6 +321,7 @@ void main() {
       find.byKey(const Key('profile-display-name')),
       '新名字',
     );
+    await tester.ensureVisible(find.byKey(const Key('profile-save')));
     await tester.tap(find.byKey(const Key('profile-save')));
     await tester.pumpAndSettle();
     expect(find.textContaining('【已儲存】'), findsOneWidget);
@@ -433,6 +520,127 @@ void main() {
 
     expect(backend.calls, contains('POST /api/v1/auth/password/forgot'));
     expect(find.textContaining('若此 Email 已註冊'), findsOneWidget);
+  });
+
+  testWidgets('profile shows the level, benefits and missing fields', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..levelCode = 'vip'
+      ..phone = null;
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    await tester.tap(find.byKey(const Key('open-profile')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('【會員等級】VIP 會員'), findsOneWidget);
+    expect(find.textContaining('待遇：優先報名'), findsOneWidget);
+    expect(find.text('【請補齊資料】'), findsOneWidget);
+    expect(find.textContaining('尚缺：手機號碼'), findsOneWidget);
+    expect(find.text('手機：未設定'), findsOneWidget);
+  });
+
+  testWidgets('adds a phone number only after the code is confirmed', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..phone = null;
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    await tester.tap(find.byKey(const Key('open-profile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-change-phone')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('change-phone')), '0922333444');
+    await tester.enterText(
+      find.byKey(const Key('change-phone-password')),
+      'secret-1',
+    );
+    await tester.tap(find.byKey(const Key('change-phone-send')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('POST /api/v1/me/phone/send-otp'));
+    expect(backend.phone, isNull);
+
+    await tester.enterText(find.byKey(const Key('change-phone-code')), '123456');
+    await tester.tap(find.byKey(const Key('change-phone-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(backend.phone, '+886922333444');
+    expect(find.text('手機：+886922333444'), findsOneWidget);
+    expect(find.text('【請補齊資料】'), findsNothing);
+  });
+
+  testWidgets('changing the email needs the password and re-verification', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    await tester.tap(find.byKey(const Key('open-profile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-change-email')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('change-email')),
+      'new@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const Key('change-email-password')),
+      'wrong',
+    );
+    await tester.tap(find.byKey(const Key('change-email-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('【錯誤】密碼錯誤。'), findsOneWidget);
+    expect(backend.email, 'member@example.com');
+
+    await tester.enterText(
+      find.byKey(const Key('change-email-password')),
+      'secret-1',
+    );
+    await tester.tap(find.byKey(const Key('change-email-submit')));
+    await tester.pumpAndSettle();
+
+    // Email policy: the new address must be verified before full access.
+    expect(backend.email, 'new@example.com');
+    expect(find.text('【待驗證】請完成 Email 驗證'), findsOneWidget);
+  });
+
+  testWidgets('uploads an avatar picked from the gallery', (tester) async {
+    final backend = FakeBackend();
+    final avatars = FakeAvatars(backend);
+    await pumpApp(
+      tester,
+      backend,
+      MemoryTokenStorage('saved-token'),
+      avatars: avatars,
+    );
+
+    await tester.tap(find.byKey(const Key('open-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('avatar-delete')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('avatar-pick')));
+    await tester.pumpAndSettle();
+
+    expect(avatars.uploads, ['me.jpg']);
+    expect(find.text('【已儲存】頭像已更新。'), findsOneWidget);
+    expect(find.byKey(const Key('avatar-delete')), findsOneWidget);
+  });
+
+  testWidgets('an old member without email can add it from the gate', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..email = null
+      ..missing = 'email';
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    expect(find.text('【待驗證】請完成 Email 驗證'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('gate-add-email')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email 設定'), findsOneWidget);
   });
 }
 

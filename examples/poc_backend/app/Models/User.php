@@ -7,6 +7,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -64,6 +65,28 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function hasVerifiedPhone(): bool
     {
         return $this->phone_verified_at !== null;
+    }
+
+    /**
+     * @return HasMany<MemberLevelAssignment, $this>
+     */
+    public function levelAssignments(): HasMany
+    {
+        return $this->hasMany(MemberLevelAssignment::class);
+    }
+
+    /**
+     * S3 A03: required profile fields that are still missing (old members may lack some).
+     *
+     * @return list<string>
+     */
+    public function missingProfileFields(): array
+    {
+        return array_values(array_filter([
+            blank($this->name) ? 'name' : null,
+            blank($this->email) ? 'email' : null,
+            blank($this->phone_e164) ? 'phone' : null,
+        ]));
     }
 
     /**

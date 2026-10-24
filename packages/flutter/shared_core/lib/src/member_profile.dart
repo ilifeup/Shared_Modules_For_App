@@ -9,6 +9,9 @@ class MemberProfile {
     this.verificationPolicy,
     this.verificationSatisfied = true,
     this.verificationMissing,
+    this.name,
+    this.hasAvatar = false,
+    this.missingFields = const [],
   });
 
   final String id;
@@ -27,6 +30,17 @@ class MemberProfile {
   /// `email` or `phone`: the contact that still has to be verified.
   final String? verificationMissing;
 
+  /// Real name (required at registration since S3).
+  final String? name;
+
+  /// Avatar bytes are fetched from `GET /api/v1/me/avatar` (owner only).
+  final bool hasAvatar;
+
+  /// Required fields an older account still lacks: `name`, `email`, `phone`.
+  final List<String> missingFields;
+
+  bool get profileComplete => missingFields.isEmpty;
+
   factory MemberProfile.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
     final name = json['display_name'];
@@ -39,6 +53,9 @@ class MemberProfile {
     final policy = verification is Map ? verification['policy'] : null;
     final satisfied = verification is Map ? verification['satisfied'] : null;
     final missing = verification is Map ? verification['missing'] : null;
+    final realName = json['name'];
+    final profile = json['profile'];
+    final missingFields = profile is Map ? profile['missing'] : null;
     return MemberProfile(
       id: id,
       displayName: name,
@@ -49,6 +66,11 @@ class MemberProfile {
       verificationPolicy: policy is String ? policy : null,
       verificationSatisfied: satisfied is bool ? satisfied : true,
       verificationMissing: missing is String ? missing : null,
+      name: realName is String ? realName : null,
+      hasAvatar: json['has_avatar'] == true,
+      missingFields: missingFields is List
+          ? missingFields.map((field) => field.toString()).toList()
+          : const [],
     );
   }
 

@@ -8,14 +8,14 @@ class SessionApi {
 
   final ApiTransport transport;
 
-  Future<String> login(String email, String password) async {
-    if (email.trim().isEmpty || password.isEmpty) {
-      throw ArgumentError('Email and password are required');
+  Future<String> login(String identifier, String password) async {
+    if (identifier.trim().isEmpty || password.isEmpty) {
+      throw ArgumentError('Identifier and password are required');
     }
     final json = await transport.request(
       'POST',
       '/api/v1/auth/login',
-      body: {'email': email.trim(), 'password': password},
+      body: {'identifier': identifier.trim(), 'password': password},
     );
     return ApiEnvelope<String>.fromJson(json, (data) {
       if (data is! Map<String, dynamic>) {

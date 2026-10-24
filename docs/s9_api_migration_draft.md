@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.3｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.4｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -305,3 +305,48 @@
 **S9-L05（尚未核准）**：A＝沿用 `calendar_events` 作為實際場次權威，新增 `event_series` 與必要欄位；B＝另建 `event_occurrences` 並處理雙 ID/backfill。建議 A。
 
 本輪僅修改規劃文件；不修改 Laravel、Migration、OpenAPI、CI、PR 或部署。
+
+## 13. v0.4 L05 A 核准後的場次模型收斂與 M08 席次整合規劃（2026-10-25）
+
+### 13.1 決策優先序與草案修訂聲明
+**S9-L05 A 已在 `docs/s9_decisions.md` 正式核准**：`calendar_events` 是每個實際場次的唯一權威，不另建 `event_occurrences`。因此本文件第 1、2、8、9 節先前提出的 `event_occurrences` 表、`occurrence_id` FK、`/occurrences/{id}` URI 均屬**歷史候選草案，不能直接實作**；本節為後續設計基準。對外 URI 是否仍使用 occurrences 語意須經正式 OpenAPI 核准，但 ID 必須映射既有 `calendar_events.id`。
+
+### 13.2 確認／待審欄位分界
+
+| 資料 | 已確認基線／業務規則 | 候選增量（待技術核准） |
+|---|---|---|
+| `calendar_events` | S5 的 `id`、`location NULL`、`starts_at/ends_at`、`status`、`audience`；S6 的 booking capacity/window | `event_series_id BIGINT NULL`、`series_original_start_at TIMESTAMP NULL`、`floor VARCHAR(255) NULL`、`studio VARCHAR(255) NULL`、`revision INT` |
+| `event_series` | M09 週／月、單次／未來／全部、L01 歷史保護 | `frequency`、`timezone`、`local_start_time`、`recurrence_rule`、`until_at`、`status`；時區／DST 與月份不存在日期策略須測試 |
+| `event_bookings` | S6 `calendar_event_id` FK、`user_id` FK、`active` 與唯一索引保持 | 以現有 booking 作為會員單人預約的相容入口；群組／訪客延伸如何掛接仍待核准 |
+| `event_booking_groups`、`event_booking_attendees`、`event_waitlist_entries` | M08 多人按席次、整組 FIFO、每場次獨立 | 統一以 `calendar_event_id` 關聯；是否以 group FK 指向 legacy booking 待確定 |
+| `event_attendances` | M11 每實際參加者獨立簽到 | `calendar_event_id` + `attendee_id` unique；legacy 單人 booking 的 attendee 映射待確定 |
+
+### 13.3 避免雙計數／超賣的建議實作契約
+
+1. **單一容量權威**：讀取同一 `calendar_events.booking_capacity`；每個有效 legacy 單人 booking 應視為 1 席，每個有效群組以有效 attendees 數計席次。
+2. **互斥表示，禁止重複計數**：若某筆舊 `event_bookings` 被新群組模型「包裝」為 attendee，計數必須只計一次；建議用明確的 `legacy_booking_id` 參照或互斥來源標記，具體 unique/FK 待審。
+3. **交易入口收斂**：既有 `BookingService.book/cancel` 與新群組／候補服務都必須先鎖同一 `calendar_events` row；確認容量、狀態、取消期限及 FIFO 後，在交易內提交席次變更。
+4. **逐步回填**：優先以相容讀取 legacy booking + 新 attendees 的單一統計查詢，不預先假設必須回填全部舊資料；如為簽到需要補 attendee，必須採可重跑、unique 防重複且可驗證的資料修復流程。
+5. **取消整場活動**：場次取消後終止所有有效報名／候補；不得因取消釋放席次觸發遞補。
+6. **保護唯一索引**：不移除 `(calendar_event_id,user_id,active)`；群組代報名／訪客不得繞過同會員同場次重複預約的已核准規則，具體唯一性範圍待契約確認。
+
+### 13.4 單次例外與系列生成的候選約束
+- `calendar_events.id` 一旦產生即不因改期重建；單次例外只修改既有場次或保存例外覆寫資料。
+- 對已展開場次，候選 `UNIQUE(event_series_id,series_original_start_at)` 防止重複產生；無系列的單次活動允許 NULL。
+- 每週／每月依系列時區產生場次，UTC 儲存實際起訖；須測試 DST 與每月 29／30／31 日。
+- L01 A：future/all 不覆寫已開始或已結束場次，也不覆蓋已建立單次例外。
+- 取消單次場次保留 `calendar_events` row；已取消場次是否繼續占用 recurrence slot 須確保不被重新生成。
+- 生成未來場次的期間上限、排程時機、例外資料表是否必要，尚未核准。
+
+### 13.5 本輪追加的驗收測試
+- [ ] Legacy 會員預約 1 席 + 新群組 2 席，容量 3 時剛好滿額；再報名 1 席不得超賣。
+- [ ] 同一筆 legacy booking 經 attendee 映射後仍只占 1 席。
+- [ ] Legacy 取消與群組報名同時進行，鎖定順序一致、容量正確。
+- [ ] 群組取消與候補整組遞補同一交易，不發生插隊。
+- [ ] 重複系列生成重跑，不產生相同原始場次的第二個 `calendar_events.id`。
+- [ ] 單次例外改期後，既有 booking FK 與 check-in 關聯不變。
+- [ ] 取消場次不被後續系列生成工作重新建立。
+- [ ] 原 API、舊唯一索引及 nullable 場地欄位回歸測試通過。
+
+### 13.6 下一步仍需技術核准
+M08 legacy booking 與 group/attendee 的唯一表示方案、場次生成上限、系列時區規則、實際 API JSON Schema、Google 重試參數與部署回退，仍待完整整合草案一次審查；**L05 A 不等於授權開發**。

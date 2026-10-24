@@ -117,8 +117,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       '',
     );
     if (ok && mounted) {
+      final messenger = ScaffoldMessenger.of(context);
       context.go('/login');
-      showFeedback(ScaffoldMessenger.of(context), '密碼已重設，所有裝置皆已登出，請以新密碼登入');
+      showFeedback(messenger, '密碼已重設，所有裝置皆已登出，請以新密碼登入');
     }
   }
 

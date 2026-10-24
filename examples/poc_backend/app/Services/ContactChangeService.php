@@ -6,7 +6,6 @@ use App\Models\AuditEvent;
 use App\Models\PhoneOtp;
 use App\Models\User;
 use App\Support\Api\ApiException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -55,14 +54,20 @@ final class ContactChangeService
 
     public function confirmPhone(User $user, string $phoneE164, string $code): void
     {
-        $this->otp->verify($user, $code, PhoneOtp::PURPOSE_PHONE_CHANGE, $phoneE164);
+        // Keep OTP consumption, contact update, and audit in the same transaction.
+        // A failed update rolls back the consumed code so it can be retried.
+        $this->otp->verify(
+            $user,
+            $code,
+            PhoneOtp::PURPOSE_PHONE_CHANGE,
+            $phoneE164,
+            onVerified: function () use ($user, $phoneE164): void {
+                $this->ensurePhoneFree($user, $phoneE164);
+                $user->forceFill(['phone_e164' => $phoneE164, 'phone_verified_at' => now()])->save();
 
-        DB::transaction(function () use ($user, $phoneE164): void {
-            $this->ensurePhoneFree($user, $phoneE164);
-            $user->forceFill(['phone_e164' => $phoneE164, 'phone_verified_at' => now()])->save();
-        });
-
-        AuditEvent::record('member.phone_changed', $user->id, $user);
+                AuditEvent::record('member.phone_changed', $user->id, $user);
+            },
+        );
     }
 
     private function ensurePhoneFree(User $user, string $phoneE164): void

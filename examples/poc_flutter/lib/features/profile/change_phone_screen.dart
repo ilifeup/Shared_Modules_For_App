@@ -65,22 +65,23 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       setState(() => _localError = '請輸入 6 位數驗證碼。');
       return;
     }
+    // Updating the session can rebuild this route, so navigate with handles
+    // captured before the request instead of this State's context.
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     await _guard(() async {
       final profile = await ref
           .read(profileApiProvider)
           .confirmPhoneChange(_phone.text, _code.text);
       ref.read(authControllerProvider.notifier).updateProfile(profile);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('手機號碼已驗證並更新')));
+      messenger.showSnackBar(const SnackBar(content: Text('手機號碼已驗證並更新')));
       // Still blocked by the verification policy: show the gate; otherwise go back.
       if (!profile.verificationSatisfied) {
-        context.go('/verify-account');
-      } else if (context.canPop()) {
-        context.pop();
+        router.go('/verify-account');
+      } else if (router.canPop()) {
+        router.pop();
       } else {
-        context.go('/profile');
+        router.go('/profile');
       }
     });
   }

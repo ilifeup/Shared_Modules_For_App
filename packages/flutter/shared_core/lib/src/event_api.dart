@@ -35,9 +35,8 @@ class CalendarEvent {
 
   /// True when the event overlaps the local calendar day of [day].
   bool occursOn(DateTime day) {
-    final local = day.toLocal();
-    final start = DateTime(local.year, local.month, local.day);
-    final end = DateTime(local.year, local.month, local.day + 1);
+    final start = DateTime(day.year, day.month, day.day);
+    final end = DateTime(day.year, day.month, day.day + 1);
     return startsAt.isBefore(end) && endsAt.isAfter(start);
   }
 }
@@ -93,10 +92,9 @@ class EventRange {
 
 /// Local month containing [day], as an exclusive [from, to) range.
 ({DateTime from, DateTime to}) localMonthRange(DateTime day) {
-  final local = day.toLocal();
   return (
-    from: DateTime(local.year, local.month),
-    to: DateTime(local.year, local.month + 1),
+    from: DateTime(day.year, day.month),
+    to: DateTime(day.year, day.month + 1),
   );
 }
 

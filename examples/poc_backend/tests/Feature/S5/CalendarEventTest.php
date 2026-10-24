@@ -7,6 +7,7 @@ use App\Models\CalendarEvent;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
 
@@ -171,4 +172,32 @@ it('shows the calendar admin only with events.manage', function () {
     $this->actingAs($admin->refresh());
 
     $this->get('/admin/calendar-events')->assertForbidden();
+});
+
+it('rejects invalid intervals on direct model create and update but accepts overnight events', function () {
+    foreach (['2026-11-10 02:00:00', '2026-11-10 01:00:00'] as $invalidEnd) {
+        try {
+            calendarEvent(['ends_at' => $invalidEnd]);
+            test()->fail('Invalid event interval was saved');
+        } catch (ValidationException $exception) {
+            expect($exception->errors())->toHaveKey('ends_at');
+        }
+    }
+
+    $event = calendarEvent([
+        'starts_at' => '2026-11-10 23:00:00',
+        'ends_at' => '2026-11-11 01:00:00',
+    ]);
+    expect($event->exists)->toBeTrue();
+
+    foreach (['2026-11-10 23:00:00', '2026-11-10 22:00:00'] as $invalidEnd) {
+        try {
+            $event->update(['ends_at' => $invalidEnd]);
+            test()->fail('Invalid event update was saved');
+        } catch (ValidationException $exception) {
+            expect($exception->errors())->toHaveKey('ends_at');
+        }
+        $event->refresh();
+        expect($event->ends_at->toDateTimeString())->toBe('2026-11-11 01:00:00');
+    }
 });

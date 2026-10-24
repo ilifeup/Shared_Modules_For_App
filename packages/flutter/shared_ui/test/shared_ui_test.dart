@@ -54,8 +54,7 @@ void main() {
       host(
         Builder(
           builder: (context) => TextButton(
-            onPressed: () =>
-                showFeedback(ScaffoldMessenger.of(context), '已儲存'),
+            onPressed: () => showFeedback(ScaffoldMessenger.of(context), '已儲存'),
             child: const Text('送出'),
           ),
         ),

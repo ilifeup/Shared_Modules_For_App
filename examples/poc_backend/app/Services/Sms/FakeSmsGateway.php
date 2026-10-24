@@ -29,5 +29,4 @@ final class FakeSmsGateway implements SmsProvider
 
         return new SmsSendResult(true, 'fake', 'fake-'.count($this->sent));
     }
-
 }

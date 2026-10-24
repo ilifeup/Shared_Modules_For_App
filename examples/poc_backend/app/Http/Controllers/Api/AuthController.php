@@ -88,12 +88,12 @@ class AuthController extends Controller
             }
         }
 
-        return (new JsonResponse([
+        return new JsonResponse([
             'data' => [
                 'user' => new MemberResource($user),
                 'verification' => $verification,
             ],
-        ], 201));
+        ], 201);
     }
 
     /**

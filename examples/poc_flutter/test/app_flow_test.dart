@@ -141,7 +141,8 @@ void main() {
 
     await tester.tap(find.text('第一則公告'));
     await tester.pumpAndSettle();
-    expect(find.text('公告內容'), findsOneWidget);
+    // SelectableText renders the body through an EditableText as well.
+    expect(find.text('公告內容'), findsWidgets);
   });
 
   testWidgets('restores a saved session without asking to log in again', (

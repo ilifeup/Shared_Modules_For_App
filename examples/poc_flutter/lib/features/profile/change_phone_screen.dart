@@ -69,19 +69,25 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     // captured before the request instead of this State's context.
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final auth = ref.read(authControllerProvider.notifier);
     await _guard(() async {
       final profile = await ref
           .read(profileApiProvider)
           .confirmPhoneChange(_phone.text, _code.text);
-      ref.read(authControllerProvider.notifier).updateProfile(profile);
       messenger.showSnackBar(const SnackBar(content: Text('手機號碼已驗證並更新')));
-      // Still blocked by the verification policy: show the gate; otherwise go back.
-      if (!profile.verificationSatisfied) {
-        router.go('/verify-account');
-      } else if (router.canPop()) {
-        router.pop();
+      // Leave this screen before publishing the new profile: the session change
+      // refreshes the router, which would otherwise restore this route.
+      if (profile.verificationSatisfied) {
+        if (router.canPop()) {
+          router.pop();
+        } else {
+          router.go('/profile');
+        }
+        auth.updateProfile(profile);
       } else {
-        router.go('/profile');
+        // Still blocked by the verification policy: show the gate.
+        auth.updateProfile(profile);
+        router.go('/verify-account');
       }
     });
   }

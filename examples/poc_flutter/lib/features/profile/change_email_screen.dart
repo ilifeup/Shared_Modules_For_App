@@ -46,21 +46,27 @@ class _ChangeEmailScreenState extends ConsumerState<ChangeEmailScreen> {
     // captured before the request instead of this State's context.
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final auth = ref.read(authControllerProvider.notifier);
     try {
       final profile = await ref
           .read(profileApiProvider)
           .changeEmail(_email.text, _password.text);
-      ref.read(authControllerProvider.notifier).updateProfile(profile);
       messenger.showSnackBar(
         const SnackBar(content: Text('Email 已更新，請到信箱點擊驗證連結')),
       );
-      // Still blocked by the verification policy: show the gate; otherwise go back.
-      if (!profile.verificationSatisfied) {
-        router.go('/verify-account');
-      } else if (router.canPop()) {
-        router.pop();
+      // Leave this screen before publishing the new profile: the session change
+      // refreshes the router, which would otherwise restore this route.
+      if (profile.verificationSatisfied) {
+        if (router.canPop()) {
+          router.pop();
+        } else {
+          router.go('/profile');
+        }
+        auth.updateProfile(profile);
       } else {
-        router.go('/profile');
+        // Still blocked by the verification policy: show the gate.
+        auth.updateProfile(profile);
+        router.go('/verify-account');
       }
     } catch (error) {
       if (mounted) setState(() => _error = error);

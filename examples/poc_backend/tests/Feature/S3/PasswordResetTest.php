@@ -230,3 +230,17 @@ it('keeps passwords, codes and tokens out of the audit log', function () {
         ->and(AuditEvent::query()->where('event', 'password.reset_completed')->count())->toBe(2)
         ->and(AuditEvent::query()->where('event', 'member.login')->where('result', 'failure')->count())->toBe(1);
 });
+
+it('limits each public auth endpoint separately', function () {
+    resetMember();
+
+    foreach (range(1, 3) as $_) {
+        $this->postJson('/api/v1/auth/password/forgot', ['email' => 'nobody@example.com'])->assertOk();
+    }
+    $this->postJson('/api/v1/auth/password/forgot', ['email' => 'nobody@example.com'])
+        ->assertStatus(429)
+        ->assertJsonPath('error.code', 'RATE_LIMITED');
+
+    // Other endpoints keep their own budget.
+    $this->postJson('/api/v1/auth/login', ['identifier' => 'reset@example.com', 'password' => 'old-password-1'])->assertOk();
+});

@@ -12,18 +12,19 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', HealthController::class)->name('api.health');
 
 // Public: registration, verification and account recovery.
+// auth-N limiters count per route and client IP (see AppServiceProvider).
 Route::prefix('auth')->group(function () {
     Route::get('/policy', [AuthController::class, 'policy']);
-    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
-    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
-    Route::post('/email/resend', [AuthController::class, 'resendEmail'])->middleware('throttle:3,1');
-    Route::post('/phone/send-otp', [AuthController::class, 'sendPhoneOtp'])->middleware('throttle:5,1');
-    Route::post('/phone/verify', [AuthController::class, 'verifyPhone'])->middleware('throttle:10,1');
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth-10');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-10');
+    Route::post('/email/resend', [AuthController::class, 'resendEmail'])->middleware('throttle:auth-3');
+    Route::post('/phone/send-otp', [AuthController::class, 'sendPhoneOtp'])->middleware('throttle:auth-5');
+    Route::post('/phone/verify', [AuthController::class, 'verifyPhone'])->middleware('throttle:auth-10');
 
-    Route::post('/password/forgot', [PasswordResetController::class, 'forgot'])->middleware('throttle:3,1');
-    Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:10,1');
-    Route::post('/password/phone/send-otp', [PasswordResetController::class, 'sendPhoneOtp'])->middleware('throttle:5,1');
-    Route::post('/password/phone/reset', [PasswordResetController::class, 'resetByPhone'])->middleware('throttle:10,1');
+    Route::post('/password/forgot', [PasswordResetController::class, 'forgot'])->middleware('throttle:auth-3');
+    Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-10');
+    Route::post('/password/phone/send-otp', [PasswordResetController::class, 'sendPhoneOtp'])->middleware('throttle:auth-5');
+    Route::post('/password/phone/reset', [PasswordResetController::class, 'resetByPhone'])->middleware('throttle:auth-10');
 
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });

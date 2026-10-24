@@ -27,6 +27,12 @@ class FakeBackend implements ApiTransport {
   bool hasAvatar = false;
   String levelCode = 'general';
   final Set<String> readIds = {};
+  final Map<String, bool> notifications = {
+    'n-1': false,
+    'n-2': false,
+    'n-3': true,
+  };
+  bool notificationsFail = false;
 
   @override
   Future<Map<String, dynamic>> request(
@@ -62,6 +68,32 @@ class FakeBackend implements ApiTransport {
         if (missing == 'phone') missing = null;
         return {
           'data': {'verified': true},
+        };
+      case 'GET /api/v1/me/notifications':
+        if (notificationsFail) {
+          throw const ApiException(
+            code: 'SERVER_ERROR',
+            message: '伺服器發生錯誤，請稍後再試。',
+            statusCode: 500,
+          );
+        }
+        return {
+          'data': [for (final id in notifications.keys) _notification(id)],
+          'meta': {
+            'current_page': 1,
+            'last_page': 1,
+            'unread_count': _unreadNotifications(),
+          },
+        };
+      case 'GET /api/v1/me/notifications/unread-count':
+        return {
+          'data': {'unread_count': _unreadNotifications()},
+        };
+      case 'POST /api/v1/me/notifications/read-all':
+        final updated = _unreadNotifications();
+        notifications.updateAll((_, _) => true);
+        return {
+          'data': {'updated': updated, 'unread_count': 0},
         };
       case 'GET /api/v1/notice-categories':
         return {
@@ -179,6 +211,17 @@ class FakeBackend implements ApiTransport {
           },
         };
     }
+    final match = RegExp(
+      r'^/api/v1/me/notifications/([\w-]+)(/read)?$',
+    ).firstMatch(path);
+    if (match != null && notifications.containsKey(match.group(1))) {
+      final id = match.group(1)!;
+      if (method == 'POST') notifications[id] = true;
+      return {
+        'data': _notification(id),
+        'meta': {'unread_count': _unreadNotifications()},
+      };
+    }
     throw ApiException(code: 'NOT_FOUND', message: '找不到 $path');
   }
 
@@ -200,6 +243,20 @@ class FakeBackend implements ApiTransport {
       'satisfied': missing == null,
       'missing': missing,
     },
+  };
+
+  int _unreadNotifications() =>
+      notifications.values.where((read) => !read).length;
+
+  Map<String, dynamic> _notification(String id) => {
+    'id': id,
+    'type': 'notice',
+    'title': '通知 $id',
+    'body': '通知內容 $id',
+    'action': {'type': 'notice', 'id': '1'},
+    'is_read': notifications[id],
+    'read_at': notifications[id]! ? '2026-10-24T02:00:00Z' : null,
+    'created_at': '2026-10-24T01:00:00Z',
   };
 
   Map<String, dynamic> _notice(
@@ -742,6 +799,64 @@ void main() {
 
     expect(find.text('公開活動'), findsOneWidget);
     expect(backend.calls, isNot(contains('GET /api/v1/notices')));
+  });
+
+  testWidgets('shows the unread badge and opens a notification as read', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+
+    expect(find.byTooltip('通知（未讀 2）'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('open-notifications')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('通知（未讀 2）'), findsOneWidget);
+    expect(find.textContaining('【未讀】'), findsNWidgets(2));
+
+    await tester.tap(find.text('通知 n-1'));
+    await tester.pumpAndSettle();
+    expect(find.text('通知內容 n-1'), findsWidgets);
+    expect(backend.calls, contains('POST /api/v1/me/notifications/n-1/read'));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('通知（未讀 1）'), findsOneWidget);
+    expect(find.textContaining('【未讀】'), findsOneWidget);
+  });
+
+  testWidgets('marks all notifications read', (tester) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-notifications')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('notifications-read-all')));
+    await tester.pumpAndSettle();
+
+    expect(backend.calls, contains('POST /api/v1/me/notifications/read-all'));
+    expect(find.text('通知'), findsOneWidget);
+    expect(find.textContaining('【未讀】'), findsNothing);
+  });
+
+  testWidgets('shows empty and error states for notifications', (tester) async {
+    final backend = FakeBackend()..notifications.clear();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-notifications')));
+    await tester.pumpAndSettle();
+    expect(find.text('【目前沒有通知】'), findsOneWidget);
+
+    backend.notificationsFail = true;
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-notifications')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('SERVER_ERROR'), findsOneWidget);
+
+    backend.notificationsFail = false;
+    await tester.tap(find.text('重試'));
+    await tester.pumpAndSettle();
+    expect(find.text('【目前沒有通知】'), findsOneWidget);
   });
 }
 

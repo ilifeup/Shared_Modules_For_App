@@ -194,3 +194,54 @@
 - [ ] 彙整具體 Schema／API 增量提案，僅將真正的規格衝突交由使用者裁決。
 
 本輪僅唯讀審查與文件更新，未修改程式、合併或部署。
+
+## 11. 第四輪：S5/S6 Migration 與現有 CI 核對（2026-10-25）
+
+### 11.1 Migration：已定位並讀取兩 Repo 的對應檔案
+
+| 功能 | Shared `main` | Tiandi `main` | 已核對 |
+|---|---|---|---|
+| S5 M09 活動 | `examples/poc_backend/database/migrations/2026_10_29_000100_s5_calendar_events.php` | `backend/database/migrations/2026_10_29_000100_s5_calendar_events.php` | `calendar_events` 欄位／索引／權限 |
+| S6 M08 報名 | `examples/poc_backend/database/migrations/2026_10_30_000100_s6_event_bookings.php` | `backend/database/migrations/2026_10_30_000100_s6_event_bookings.php` | `calendar_events` 擴充、`event_bookings` 欄位／索引／down() |
+
+S5 的 `calendar_events` 有 `id`、`title`、`description`、`location`、`starts_at`、`ends_at`、`status`、`audience`、`cancelled_at`、`cancel_reason`、timestamps，索引 `(status,starts_at)` 與 `(status,ends_at)`。S5 同時建立 `events.manage` 權限並賦予 admin。
+
+S6 在 `calendar_events` 增加 `booking_enabled`、`booking_capacity`、`booking_opens_at`、`booking_closes_at`。建立 `event_bookings`，含 `calendar_event_id`、`user_id`、`status`、`active`、`booked_at`、`cancelled_at`、`cancelled_by`、timestamps；唯一索引 `(calendar_event_id,user_id,active)`；查詢索引 `(calendar_event_id,status)`、`(user_id,status)`。取消後 `active=NULL`，可保留歷史。
+
+兩 Repo 所讀取的 S5/S6 Migration 內容相對應；**本輪未進行完整字節 hash 比較，也未實際執行 migrate／rollback**。`down()` 已在程式中確認，但回退是否能在 S9 新資料下安全執行仍待測試。
+
+### 11.2 S9 Schema 擴充限制
+
+1. 不可重新 `Schema::create('calendar_events')` 或 `Schema::create('event_bookings')` 取代現有表。
+2. 不可直接刪除 `(calendar_event_id,user_id,active)` 唯一索引來達成多人報名；應先明確定義「報名聯絡人／報名群組／實際參加者」與既有會員預約的相容關係。
+3. M09 重複場次需穩定識別，不應以顯示時間代替主鍵；M08/M11 透過正式場次關聯，不複製活動主表。
+4. S9 候補狀態／訪客資料／簽到資料需新增增量 Migration，並保留歷史資料及稽核。
+5. 同 App 內現有 FK 合法；INT-D07 禁止的是**跨 App 資料庫外鍵**，不是禁止 App 內所有 FK。
+
+### 11.3 已讀取的 GitHub Actions（main）
+
+| Repository | Workflow | 實際工作 | 是否含自動合併／部署 |
+|---|---|---|---|
+| Shared | `.github/workflows/s1-core.yml` | Shared PHP/Dart lint、smoke、Composer 檢查 | 否 |
+| Shared | `.github/workflows/s1-poc-backend.yml` | PHP 8.4、MySQL 8.4、Migration、OpenAPI 路由對照、Pest、HTTP E2E、OTP／Booking 併發、Gate | 否，檔案明載 test only |
+| Shared | `.github/workflows/s1-poc-mobile.yml` | Flutter 3.47、format/analyze/test、Shared UI、Android Debug APK、Flutter→Laravel→MySQL E2E | 否，產生測試 APK artifact |
+| Tiandi | `.github/workflows/backend.yml` | PHP 8.4、MySQL 8.4、Composer audit、Migration、OpenAPI、Pest、HTTP E2E、OTP／Booking 併發、最終 Gate | 否，檔案明載 tests only |
+| Tiandi | `.github/workflows/mobile.yml` | Flutter 3.47、分析、單元／Widget 測試、Shared UI、Debug APK、E2E | 否，檔案明載 tests only |
+
+**範圍限制：** 這是已定位的五個 workflow 審查，不代表已列出兩 Repo 的所有 workflow。尚未核對完整分支保護規則、正式部署環境、Secrets 設定與 CI 最新執行結果。測試「有寫在 YAML」不等於「最新 HEAD 全數通過」。
+
+### 11.4 對 INT-D06/D13/D15–D18 的實際影響
+
+- 使用者決策仍為「一次開發、自動合併部署」，但現有已讀 workflow 只執行測試，且先前查得兩 Repo `allow_auto_merge=false`。
+- 後續須另行設計可檢查、可停止、可回退的合併／部署流程；**不得把 GitHub Actions 產生 Debug APK 當成正式發布**。
+- 自動合併前要確認 Shared／Tiandi 版本鎖定與兩邊 CI 全綠，並確認 S8 未合併 PR 與 S9 基線的順序。
+- 自動部署前要先查明每個 App 的正式部署目標、Secrets／最小權限、DB Migration 策略、備份與回退。
+- 本輪沒有更改 workflow、repo 設定、Secrets、程式或 PR 狀態。
+
+### 11.5 下一輪
+
+- [ ] 檢查 S8 PR #20/#17 最新 CI 實際執行狀態與是否存在阻擋。
+- [ ] 比對 Shared 與 Tiandi 主要 Controller/Service 是否漂移。
+- [ ] 逐項對照 S9 M08/M09/M11 具體 Schema 草案與上述既有 Migration，產生增量欄位／表格提案。
+- [ ] 查驗兩 Repo 其餘 workflows、部署／發布環境、分支保護設定（不讀取或公開 Secrets 值）。
+- [ ] 檢查 M14/M15/M17 與 S8 文章分享／統計功能的介面責任。

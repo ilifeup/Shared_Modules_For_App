@@ -1,6 +1,6 @@
 # S9 九模組單一 API／Migration 增量設計草案
 
-> 版本：draft v0.4｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
+> 版本：draft v0.5｜2026-10-25｜狀態：**待使用者一次審查核准；非開發授權**
 >
 > 依據：`docs/s9_decisions.md`（S9-L01～L04 全 A）、`docs/s9_feature_inventory.md`（第 1–20 節）。
 >
@@ -350,3 +350,47 @@
 
 ### 13.6 下一步仍需技術核准
 M08 legacy booking 與 group/attendee 的唯一表示方案、場次生成上限、系列時區規則、實際 API JSON Schema、Google 重試參數與部署回退，仍待完整整合草案一次審查；**L05 A 不等於授權開發**。
+
+## 14. v0.5 M08 舊單人與新多人報名統一模型方案（2026-10-25）
+
+### 14.1 原始碼與已核准邊界
+- S6 現有 `event_bookings` 以 `calendar_event_id,user_id,active` 限制每會員同場次一筆有效 booking；`BookingService.confirmedCount()` 目前只計 confirmed booking 列數。
+- S9-L05 A 已核准 `calendar_events` 為實際場次唯一權威；M08 已核准多人實際參加者、整組候補、嚴格 FIFO、訪客報名；本節僅提出**資料表示與遷移技術候選**。
+- 必須避免兩套 booking 流程各自扣名額、同會員重複報名、候補插隊及資料雙重計數。
+
+### 14.2 三種候選資料模型比較
+
+| 方案 | 方式 | 優點 | 風險／代價 | 建議 |
+|---|---|---|---|---|
+| **A：現有 booking 作為會員訂單錨點** | `event_bookings` 保留單會員已確認報名及唯一索引；新增 `event_booking_groups` 作為多人／訪客／候補交易主體，`event_booking_attendees` 每人一列；會員群組透過可空 `event_booking_groups.legacy_booking_id` 對應既有 booking，計數以參加者為權威並對 legacy 未映射資料補計 | 舊 API／FK 保留，能逐步導入 | 一筆 booking 代表訂單或一位會員須明確界定；legacy 與 group 關係若不嚴謹可能雙計數 | **待審** |
+| **B：現有 booking 擴成所有訂單主體** | 在 `event_bookings` 增加可空 user_id、guest、group、waitlist 欄位，attendees 為子表 | 單一訂單表 | 既有 user_id NOT NULL、confirmed/cancelled 與唯一索引語意須改；高相容風險 | 不建議 |
+| **C：新 group 完全取代舊 booking** | 全量回填舊 booking，改所有服務與 API 指向 group | 新模型一致 | 高風險一次切換、雙 ID、回退困難 | 不建議 |
+
+### 14.3 方案 A 仍需先解決的五項關鍵不變量
+1. **單一有效報名來源**：同會員同場次若有 legacy booking 與 group，須確保是同一筆邏輯報名，不能形成兩筆有效席次；同一 legacy booking 最多連結一個 group（候選 `UNIQUE(legacy_booking_id)`）。
+2. **席次單一計數**：`confirmed_seats = count(confirmed legacy bookings without mapped group) + sum(confirmed attendees of mapped/new groups)`；同一 attendee 不可重複占位，候補不計容量。此公式是候選，需在 DB transaction 下驗證。
+3. **會員重複保護**：會員本人在 group 中擔任 booker 或 attendee 的重複資格如何處理，必須依既有 M08「一位會員一次活動」規則審查；不能只靠舊 `event_bookings` 唯一索引推定所有群組成員皆受保護。
+4. **原子取消與候補**：取消 group、legacy booking 或活動時必須走同一場次鎖定及遞補引擎；活動取消不執行遞補。
+5. **訪客與稽核**：訪客可以沒有 user_id，但應有受保護的聯絡資料與可追溯 group；claim 成為會員後不可讓同場次原有會員 booking 與 guest group 重複有效。
+
+### 14.4 建議的無破壞遷移階段（僅規劃）
+- **階段 0：核對**：確認 Shared/Tiandi 實際 HEAD、S8 是否合併、既有預約與會員關聯資料，建立筆數／FK／唯一性基線。
+- **階段 1：加法**：新增 groups、attendees、waitlist 及必要索引，不改舊 `event_bookings.user_id NOT NULL` 或舊 unique。
+- **階段 2：相容讀取**：以統一服務計算席次，識別 legacy-only booking；只在需要時建立其 attendee 映射，採唯一鍵冪等避免重複。
+- **階段 3：統一寫入**：所有新舊 API 轉向同一場次鎖與容量／FIFO 服務，避免並行雙套寫入。
+- **階段 4：驗收／切換**：在測試資料完成舊新並行／回退驗證；各 App 另行核准 migration 與部署，不得自行正式切換。
+
+### 14.5 必須通過的情境
+- [ ] 會員舊 booking 一席與兩位新 group attendees 合計三席，容量三時無法再確認第四席。
+- [ ] 舊 booking 建立 attendee 映射後，席次仍是一席而非兩席。
+- [ ] 同會員從舊 API 與新 group API 同時報名，最多一筆有效邏輯報名。
+- [ ] 訪客報名後 claim，與既有會員 booking 撞號時安全拒絕／引導管理員處理，無重複占位。
+- [ ] 舊 API 取消與新 group 取消同時進行，無重複釋位／遞補。
+- [ ] 群組取消後嚴格 FIFO，前組未滿席時後組不得插隊。
+- [ ] 管理員取消整場活動，所有報名／候補停止且無自動遞補。
+- [ ] migration rollback 後舊 S6 API、FK、唯一索引仍可運作。
+
+### 14.6 待使用者核准
+**S9-L06：舊／新報名資料模型**。A＝保留 `event_bookings` 為既有會員報名錨點，新增 group＋attendee＋waitlist，以單一交易／席次引擎統一；B＝直接擴充 `event_bookings` 為所有報名訂單；C＝全量改為新 group。**建議 A**，但需先完成上述五項不變量的技術契約。使用者未確認前不得將 A 視為正式決策。
+
+本輪只更新文件，未開發、合併或部署。

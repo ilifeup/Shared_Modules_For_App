@@ -120,13 +120,13 @@ final class BookingEngine
                 $this->createAttendee($group, $member->name, $member->id, EventBookingAttendee::STATUS_CONFIRMED);
                 $this->queueSync($member->id, $locked->id);
 
+                AuditEvent::record('booking.confirmed', $member->id, $booking, ['event_id' => $event->id]);
                 return $booking;
             });
         } catch (QueryException $e) {
             throw $this->duplicateOr($e);
         }
 
-        AuditEvent::record('booking.confirmed', $member->id, $booking, ['event_id' => $event->id]);
         $this->flush();
 
         return $booking;
@@ -158,13 +158,13 @@ final class BookingEngine
 
             $this->promote($event);
 
+            AuditEvent::record('booking.cancelled', $actor->id, $cancelled, [
+                'event_id' => $cancelled->calendar_event_id,
+                'by' => $actor->id === $cancelled->user_id ? 'member' : 'admin',
+            ]);
             return $locked->refresh();
         });
 
-        AuditEvent::record('booking.cancelled', $actor->id, $cancelled, [
-            'event_id' => $cancelled->calendar_event_id,
-            'by' => $actor->id === $cancelled->user_id ? 'member' : 'admin',
-        ]);
         $this->flush();
 
         return $cancelled;
@@ -230,6 +230,12 @@ final class BookingEngine
                     $this->queueSync($request->booker->id, $locked->id);
                 }
 
+                AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
+                    'event_id' => $event->id,
+                    'seats' => $group->seat_count,
+                    'guest' => $group->is_guest,
+                    'by' => $request->byAdmin ? 'admin' : ($group->is_guest ? 'guest' : 'member'),
+                ]);
                 return $group;
             });
         } catch (QueryException $e) {
@@ -242,12 +248,6 @@ final class BookingEngine
             return $this->replay($replayed, $event, $request);
         }
 
-        AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
-            'event_id' => $event->id,
-            'seats' => $group->seat_count,
-            'guest' => $group->is_guest,
-            'by' => $request->byAdmin ? 'admin' : ($group->is_guest ? 'guest' : 'member'),
-        ]);
         $this->flush();
 
         return $group->refresh()->load('attendees', 'waitlistEntry');
@@ -276,15 +276,15 @@ final class BookingEngine
             $this->cancelGroupLocked($locked, $actor, $byAdmin, $reason);
             $this->promote($event);
 
+            AuditEvent::record($wasConfirmed ? 'booking.group_cancelled' : 'booking.waitlist_cancelled', $actor->id, $result, [
+                'event_id' => $result->calendar_event_id,
+                'seats' => $result->seat_count,
+                'by' => $byAdmin ? 'admin' : 'member',
+                'reason' => $reason,
+            ]);
             return $locked->refresh();
         });
 
-        AuditEvent::record($wasConfirmed ? 'booking.group_cancelled' : 'booking.waitlist_cancelled', $actor->id, $result, [
-            'event_id' => $result->calendar_event_id,
-            'seats' => $result->seat_count,
-            'by' => $byAdmin ? 'admin' : 'member',
-            'reason' => $reason,
-        ]);
         $this->flush();
 
         return $result;
@@ -313,10 +313,10 @@ final class BookingEngine
             EventBooking::query()->where('calendar_event_id', $locked->id)->where('status', EventBooking::STATUS_CONFIRMED)
                 ->get()->each(fn (EventBooking $b) => $this->cancelLegacyRow($b, $actor));
 
+            AuditEvent::record('event.cancelled_with_bookings', $actor->id, $event, ['groups' => $count]);
             return $groups->count();
         });
 
-        AuditEvent::record('event.cancelled_with_bookings', $actor->id, $event, ['groups' => $count]);
         $this->flush();
     }
 
@@ -351,11 +351,11 @@ final class BookingEngine
 
             $locked->forceFill(['booking_capacity' => $capacity])->save();
             $this->promote($locked);
+            AuditEvent::record('event.capacity_changed', $actor->id, $event, [
+                'from' => $before, 'to' => $capacity, 'cancelled_groups' => array_values($cancelGroupIds), 'reason' => $reason,
+            ]);
         });
 
-        AuditEvent::record('event.capacity_changed', $actor->id, $event, [
-            'from' => $before, 'to' => $capacity, 'cancelled_groups' => array_values($cancelGroupIds), 'reason' => $reason,
-        ]);
         $this->flush();
     }
 
@@ -393,9 +393,9 @@ final class BookingEngine
             }
 
             $this->promote($event);
+            AuditEvent::record('booking.waitlist_reordered', $actor->id, $group, $order + ['reason' => $reason]);
         });
 
-        AuditEvent::record('booking.waitlist_reordered', $actor->id, $group, $order + ['reason' => $reason]);
         $this->flush();
     }
 

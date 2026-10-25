@@ -181,8 +181,9 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                 ? null
                 : () async {
                     final picked = await ref.read(avatarPickerProvider)();
-                    if (picked != null && mounted)
+                    if (picked != null && mounted) {
                       setState(() => _files.add(picked));
+                    }
                   },
             child: const Text('選擇證明文件'),
           ),

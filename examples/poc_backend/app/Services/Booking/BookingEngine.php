@@ -366,7 +366,7 @@ final class BookingEngine
     public function moveInWaitlist(EventBookingGroup $group, int $position, User $actor, string $reason): void
     {
         $order = [];
-        $this->transaction(function () use ($group, $position, &$order): void {
+        $this->transaction(function () use ($group, $position, $actor, $reason, &$order): void {
             $event = $this->lock($group->event);
             $entries = EventWaitlistEntry::query()->where('calendar_event_id', $event->id)->where('status', EventWaitlistEntry::WAITING)
                 ->orderBy('sequence')->lockForUpdate()->get();

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:s1_poc_app/app.dart';
@@ -50,6 +50,166 @@ class FakeBackend implements ApiTransport {
 
   /// When set, booking requests wait for it (simulates a slow network).
   Completer<void>? bookingGate;
+
+  /// S8 public profile and article interactions.
+  String? nickname;
+  bool showInLikeList = false;
+  bool articleLiked = false;
+  final List<Map<String, dynamic>> articleComments = [
+    {'id': 'c1', 'nickname': '路人甲', 'body': '寫得很好', 'is_mine': false},
+  ];
+  final List<Map<String, dynamic>> reports = [];
+
+  Map<String, dynamic> _article(
+    String id,
+    String title, {
+    String visibility = 'public',
+    bool featured = false,
+  }) => {
+    'id': id,
+    'slug': 'article-$id',
+    'title': title,
+    'summary': null,
+    'cover_url': null,
+    'author_name': '講師',
+    'categories': [
+      {'id': '1', 'name': '教義'},
+    ],
+    'visibility': visibility,
+    'is_featured': featured,
+    'published_at': '2026-12-01T00:00:00Z',
+    'like_count': articleLiked ? 1 : 0,
+    'view_count': 3,
+  };
+
+  Map<String, dynamic> _articleDetail(bool signedIn) => {
+    ..._article('1', '心法入門'),
+    'body_html': '<h2>第一章</h2><p>內文段落</p>',
+    'blocks': [
+      {'type': 'heading', 'level': 2, 'text': '第一章'},
+      {'type': 'paragraph', 'text': '內文段落'},
+      {'type': 'list_item', 'text': '重點一', 'ordered': false},
+    ],
+    'share_url': 'https://app.example/articles/article-1',
+    'liked_by_me': articleLiked,
+    'comment_count': articleComments.length,
+    'can_interact': signedIn,
+  };
+
+  Future<Map<String, dynamic>?> _articles(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    switch ('$method $path') {
+      case 'GET /api/v1/articles':
+      case 'GET /api/v1/articles?sort=popular':
+        return {
+          'data': [
+            _article('1', '心法入門'),
+            _article('2', '會員專文', visibility: 'members'),
+          ],
+          'meta': {'current_page': 1, 'last_page': 1},
+        };
+      case 'GET /api/v1/articles?category=2':
+        return {
+          'data': [_article('3', '入門分類文章')],
+          'meta': {'current_page': 1, 'last_page': 1},
+        };
+      case 'GET /api/v1/articles/featured':
+        return {
+          'data': [_article('1', '心法入門', featured: true)],
+        };
+      case 'GET /api/v1/article-categories':
+        return {
+          'data': [
+            {
+              'id': '1',
+              'name': '教義',
+              'children': [
+                {'id': '2', 'name': '入門', 'children': <Object>[]},
+              ],
+            },
+          ],
+        };
+      case 'GET /api/v1/articles/1':
+        return {'data': _articleDetail(lastTokenPresent)};
+      case 'GET /api/v1/articles/2':
+        throw const ApiException(
+          code: 'ARTICLE_LOGIN_REQUIRED',
+          message: '請先登入會員才能閱讀這篇文章。',
+          statusCode: 401,
+        );
+      case 'POST /api/v1/articles/1/like':
+        articleLiked = true;
+        return {
+          'data': {'liked': true, 'like_count': 1},
+        };
+      case 'DELETE /api/v1/articles/1/like':
+        articleLiked = false;
+        return {
+          'data': {'liked': false, 'like_count': 0},
+        };
+      case 'GET /api/v1/articles/1/likes':
+        return {
+          'data': {
+            'total': articleLiked ? 2 : 1,
+            'listed': [
+              {'nickname': '公開會員'},
+            ],
+            'unlisted_count': articleLiked ? 1 : 0,
+          },
+        };
+      case 'GET /api/v1/articles/1/comments':
+        return {
+          'data': articleComments,
+          'meta': {'current_page': 1, 'last_page': 1},
+        };
+      case 'POST /api/v1/articles/1/comments':
+        final text = body!['body'] as String;
+        if (text.contains('http')) {
+          throw const ApiException(
+            code: 'COMMENT_BLOCKED',
+            message: '留言含有不允許的內容，請修改後再送出。',
+            statusCode: 422,
+            fields: {
+              'body': ['留言含有不允許的內容（例如連結或廣告），請修改後再送出。'],
+            },
+          );
+        }
+        final comment = {
+          'id': 'c${articleComments.length + 1}',
+          'nickname': nickname,
+          'body': text,
+          'is_mine': true,
+        };
+        articleComments.insert(0, comment);
+        return {'data': comment};
+      case 'GET /api/v1/article-report-reasons':
+        return {
+          'data': [
+            {'code': 'spam', 'label': '垃圾訊息或廣告'},
+            {'code': 'abuse', 'label': '人身攻擊或騷擾'},
+          ],
+        };
+      case 'POST /api/v1/article-comments/c1/reports':
+        if (reports.isNotEmpty) {
+          throw const ApiException(
+            code: 'ALREADY_REPORTED',
+            message: '您已檢舉過這則留言。',
+            statusCode: 409,
+          );
+        }
+        reports.add(body!);
+        return {
+          'data': {'reported': true},
+        };
+    }
+    return null;
+  }
+
+  /// Whether the App is signed in (set by the test; the fake has no token).
+  bool lastTokenPresent = true;
 
   Map<String, dynamic> _bookingInfo(String eventId) {
     final b = bookings[eventId];
@@ -262,7 +422,19 @@ class FakeBackend implements ApiTransport {
       case 'GET /api/v1/me/profile':
         return {'data': _profile()};
       case 'PATCH /api/v1/me/profile':
-        displayName = body!['display_name'] as String? ?? displayName;
+        if (body!['nickname'] == '已使用') {
+          throw const ApiException(
+            code: 'VALIDATION_FAILED',
+            message: '輸入資料有誤。',
+            statusCode: 422,
+            fields: {
+              'nickname': ['這個暱稱已有人使用。'],
+            },
+          );
+        }
+        displayName = body['display_name'] as String? ?? displayName;
+        nickname = body['nickname'] as String? ?? nickname;
+        showInLikeList = body['show_in_like_list'] as bool? ?? showInLikeList;
         return {'data': _profile()};
       case 'GET /api/v1/notices':
         if (missing != null) {
@@ -336,6 +508,8 @@ class FakeBackend implements ApiTransport {
       }
       return {'data': _bookingInfo(eventId)};
     }
+    final article = await _articles(method, path, body);
+    if (article != null) return article;
     final cancelMatch = RegExp(
       r'^/api/v1/me/bookings/b(\d+)/cancel$',
     ).firstMatch(path);
@@ -390,6 +564,8 @@ class FakeBackend implements ApiTransport {
     'email_verified': emailVerified && missing != 'email',
     'phone_verified': missing != 'phone',
     'has_avatar': hasAvatar,
+    'nickname': nickname,
+    'privacy': {'show_in_like_list': showInLikeList},
     'profile': {
       'complete': email != null && phone != null,
       'missing': [if (email == null) 'email', if (phone == null) 'phone'],
@@ -482,10 +658,17 @@ Future<void> pumpApp(
 
 /// Scrolls the page's main ListView until [key] is built and visible.
 Future<void> scrollTo(WidgetTester tester, String key) async {
+  // The vertical list (the profile tabs add a horizontal page view).
   await tester.scrollUntilVisible(
     find.byKey(Key(key)),
     200,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
+        )
+        .first,
   );
   await tester.pumpAndSettle();
 }
@@ -1172,6 +1355,200 @@ void main() {
 
     expect(find.text('社區講座'), findsOneWidget);
     expect(find.textContaining('已預約'), findsOneWidget);
+  });
+
+  testWidgets('lists featured and categorized articles and opens one', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-articles')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('【精選】心法入門'), findsOneWidget);
+    expect(find.text('【會員】會員專文'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('article-sort-popular')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('GET /api/v1/articles?sort=popular'));
+
+    await tester.tap(find.byKey(const Key('article-sort-latest')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-category-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('入門分類文章'), findsOneWidget);
+    expect(find.text('教義 › 入門'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('article-category-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('第一章'), findsOneWidget);
+    expect(find.text('內文段落'), findsWidgets);
+  });
+
+  testWidgets('shows public articles to visitors and asks to log in', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..lastTokenPresent = false;
+    await pumpApp(tester, backend, MemoryTokenStorage());
+    await scrollTo(tester, 'login-public-articles');
+    await tester.tap(find.byKey(const Key('login-public-articles')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('article-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-login-required')), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-1')));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, 'article-like');
+    final like = tester.widget<FilledButton>(
+      find.byKey(const Key('article-like')),
+    );
+    expect(like.onPressed, isNull);
+  });
+
+  testWidgets('likes, unlikes, shows the like list and copies the link', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..nickname = '小明';
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-articles')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-1')));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, 'article-like');
+
+    await tester.tap(find.byKey(const Key('article-like')));
+    await tester.pumpAndSettle();
+    expect(find.text('已按讚（1）'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('article-like')));
+    await tester.pumpAndSettle();
+    expect(find.text('按讚（0）'), findsOneWidget);
+    expect(backend.calls, contains('DELETE /api/v1/articles/1/like'));
+
+    await tester.tap(find.byKey(const Key('article-like-list')));
+    await tester.pumpAndSettle();
+    expect(find.text('公開會員'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('article-share')));
+    await tester.pumpAndSettle();
+    expect(copied, 'https://app.example/articles/article-1');
+    expect(find.text('已複製文章連結'), findsOneWidget);
+  });
+
+  testWidgets('asks for a nickname before commenting', (tester) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-articles')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-1')));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, 'comment-set-nickname');
+
+    expect(find.byKey(const Key('comment-nickname-required')), findsOneWidget);
+    expect(find.byKey(const Key('comment-body')), findsNothing);
+  });
+
+  testWidgets('posts a comment, shows a blacklist warning and reports', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..nickname = '小明';
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-articles')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-1')));
+    await tester.pumpAndSettle();
+
+    await scrollTo(tester, 'comment-send');
+    await tester.enterText(
+      find.byKey(const Key('comment-body')),
+      '看 https://spam',
+    );
+    await tester.tap(find.byKey(const Key('comment-send')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('COMMENT_BLOCKED'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('comment-body')), '感謝分享');
+    await tester.tap(find.byKey(const Key('comment-send')));
+    await tester.pumpAndSettle();
+    expect(find.text('【已送出】留言已公開。'), findsOneWidget);
+    expect(find.text('感謝分享'), findsOneWidget);
+    // Own comments cannot be reported.
+    expect(find.byKey(const Key('comment-report-c2')), findsNothing);
+
+    await scrollTo(tester, 'comment-report-c1');
+    await tester.tap(find.byKey(const Key('comment-report-c1')));
+    await tester.pumpAndSettle();
+    final submit = find.byKey(const Key('report-submit'));
+    expect(tester.widget<FilledButton>(submit).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('report-reason-abuse')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('report-note')), '人身攻擊');
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+
+    expect(backend.reports.single, {'reason': 'abuse', 'note': '人身攻擊'});
+    expect(find.text('【已檢舉】感謝回報，管理員會處理。'), findsOneWidget);
+  });
+
+  testWidgets('sets the public nickname and like-list privacy in tabs', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
+    await tester.tap(find.byKey(const Key('open-profile')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('profile-tab-nickname')));
+    await tester.pumpAndSettle();
+    expect(find.text('【尚未設定公開暱稱】'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('profile-nickname')), 'A');
+    await tester.tap(find.byKey(const Key('profile-nickname-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('【請修正】公開暱稱需為 2–20 字。'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('profile-nickname')), '已使用');
+    await tester.tap(find.byKey(const Key('profile-nickname-save')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('這個暱稱已有人使用。'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('profile-nickname')), '小明');
+    await tester.tap(find.byKey(const Key('profile-nickname-save')));
+    await tester.pumpAndSettle();
+    expect(backend.nickname, '小明');
+    expect(find.text('【公開暱稱】小明'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('profile-tab-privacy')));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const Key('privacy-like-list'));
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(backend.showInLikeList, isTrue);
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
   });
 }
 

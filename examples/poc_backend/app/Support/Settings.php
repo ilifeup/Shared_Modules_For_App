@@ -32,6 +32,12 @@ final class Settings
         'sms_resend_cooldown_minutes' => 3,
         'otp_ttl_minutes' => 5,
         'otp_max_attempts' => 5,
+
+        // S8 M05 articles: popularity = valid views + likes × weight; view de-duplication
+        // window; distinct member reports that trigger the AI review of a comment.
+        'article_like_weight' => 10,
+        'article_view_dedupe_minutes' => 30,
+        'comment_report_threshold' => 3,
     ];
 
     public const SMS_PROVIDERS = ['fake', 'mitake', 'every8d', 'smsgo'];
@@ -113,6 +119,12 @@ final class Settings
 
         if (! in_array($merged['verification_policy'], self::POLICIES, true)) {
             throw new InvalidArgumentException("Unknown verification policy [{$merged['verification_policy']}].");
+        }
+
+        foreach (['article_like_weight' => [0, 1000], 'article_view_dedupe_minutes' => [1, 1440], 'comment_report_threshold' => [1, 100]] as $key => [$min, $max]) {
+            if ($merged[$key] < $min || $merged[$key] > $max) {
+                throw new InvalidArgumentException("Setting [{$key}] must be between {$min} and {$max}.");
+            }
         }
 
         // Shared validation of the session/SMS limits (packages/laravel/shared_core).

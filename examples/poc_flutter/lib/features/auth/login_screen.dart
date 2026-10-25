@@ -98,6 +98,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: const Text('查看公開公告'),
           ),
           TextButton(
+            key: const Key('login-public-articles'),
+            onPressed: () => context.push('/articles'),
+            child: const Text('瀏覽公開文章'),
+          ),
+          TextButton(
             onPressed: () => context.push('/health'),
             child: const Text('連線檢查'),
           ),

@@ -23,6 +23,26 @@ class ProfileApi {
     );
   }
 
+  /// S8 public profile: nickname (2–20 characters, unique) and the like-list
+  /// privacy switch. 422 when the nickname is taken or invalid.
+  Future<MemberProfile> updatePublicProfile({
+    String? nickname,
+    bool? showInLikeList,
+  }) async {
+    final trimmed = nickname?.trim();
+    if (trimmed != null && (trimmed.length < 2 || trimmed.length > 20)) {
+      throw ArgumentError.value(nickname, 'nickname', 'Use 2–20 characters');
+    }
+    final body = <String, dynamic>{
+      if (trimmed != null) 'nickname': trimmed,
+      if (showInLikeList != null) 'show_in_like_list': showInLikeList,
+    };
+    if (body.isEmpty) throw ArgumentError('Nothing to update');
+    return _profile(
+      await transport.request('PATCH', '/api/v1/me/profile', body: body),
+    );
+  }
+
   Future<MemberProfile> changeEmail(String email, String password) async {
     if (!email.contains('@') || password.isEmpty) {
       throw ArgumentError('Email and current password are required');

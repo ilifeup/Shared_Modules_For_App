@@ -81,3 +81,7 @@ final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 final bookingApiProvider = Provider<BookingApi>(
   (ref) => BookingApi(ref.watch(apiTransportProvider)),
 );
+
+final articleApiProvider = Provider<ArticleApi>(
+  (ref) => ArticleApi(ref.watch(apiTransportProvider)),
+);

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: EachCore shared member API (per-App backend)
-  version: 0.6.0
+  version: 0.7.0
   description: |
-    Contract of the API implemented by examples/poc_backend (S1–S6) and integrated by each App
+    Contract of the API implemented by examples/poc_backend (S1–S8) and integrated by each App
     (tiandi-app first). Every App runs its own backend, database and tokens; nothing here is a
     shared production service and there is no SSO.
 
@@ -33,6 +33,7 @@ tags:
   - name: notifications
   - name: calendar
   - name: bookings
+  - name: articles
 security:
   - bearer: []
 paths:
@@ -340,8 +341,11 @@ paths:
       tags: [profile]
       operationId: updateProfile
       x-verification: required
-      x-dart: ProfileApi.update / MemberApi.updateDisplayName -> MemberProfile
-      description: Only name and display_name; other fields are ignored.
+      x-dart: ProfileApi.update / ProfileApi.updatePublicProfile / MemberApi.updateDisplayName -> MemberProfile
+      description: |
+        Only name, display_name, nickname and show_in_like_list; other fields are ignored.
+        nickname is the single public name used for likes and comments (unique, 2–20 letters,
+        digits, space, _ or -); renaming changes how all earlier likes and comments are shown.
       requestBody:
         required: true
         content:
@@ -351,6 +355,8 @@ paths:
               properties:
                 name: { type: string, maxLength: 255 }
                 display_name: { type: string, maxLength: 80 }
+                nickname: { type: string, minLength: 2, maxLength: 20 }
+                show_in_like_list: { type: boolean, description: 'Show my nickname in like lists (default false)' }
       responses:
         '200': { $ref: '#/components/responses/MemberResponse' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
@@ -889,6 +895,274 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/BookingConflict' }
 
+  /articles:
+    get:
+      tags: [articles]
+      operationId: articles
+      security: []
+      x-dart: ArticleApi.list -> ArticlePage
+      x-rate-limit: 60/min per IP
+      description: |
+        Live articles the caller may read (optional Bearer token; without it only public
+        articles). sort=latest (publish time) or popular (views + likes × article_like_weight).
+      parameters:
+        - { name: category, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [latest, popular] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/ArticlePage' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/featured:
+    get:
+      tags: [articles]
+      operationId: featuredArticles
+      security: []
+      x-dart: ArticleApi.featured -> List<ArticleSummary>
+      x-rate-limit: 60/min per IP
+      description: Featured live articles the caller may read, in the admin's order (max 10).
+      responses:
+        '200':
+          description: Featured articles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ArticleSummary' } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/{id}:
+    get:
+      tags: [articles]
+      operationId: article
+      security: []
+      x-dart: ArticleApi.detail -> ArticleDetail
+      x-rate-limit: 60/min per IP
+      description: |
+        Read permission is decided on the server: 401 ARTICLE_LOGIN_REQUIRED (no token),
+        403 VERIFICATION_REQUIRED / ARTICLE_FORBIDDEN (level or role not matched).
+        Drafts, scheduled, taken-down, withdrawn and trashed articles are 404.
+        A view is counted once per viewer within article_view_dedupe_minutes.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Article
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ArticleDetail' }
+        '401': { $ref: '#/components/responses/ArticleLoginRequired' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/{id}/cover:
+    get:
+      tags: [articles]
+      operationId: articleCover
+      security: []
+      x-dart: ArticleSummary.coverUrl (Image.network with the Bearer header)
+      x-rate-limit: 60/min per IP
+      description: Uploaded cover image, same read permission as the article.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Image
+          content:
+            image/*: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/ArticleLoginRequired' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/{id}/likes:
+    get:
+      tags: [articles]
+      operationId: articleLikes
+      security: []
+      x-dart: ArticleApi.likes -> ArticleLikeList
+      x-rate-limit: 60/min per IP
+      description: |
+        Total likes and the public nicknames of members who opted in (show_in_like_list);
+        others are only counted in unlisted_count. Never real names or member ids.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Like list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ArticleLikeList' }
+        '401': { $ref: '#/components/responses/ArticleLoginRequired' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/{id}/comments:
+    get:
+      tags: [articles]
+      operationId: articleComments
+      security: []
+      x-dart: ArticleApi.comments -> ArticleCommentPage
+      x-rate-limit: 60/min per IP
+      description: Visible comments, newest first, 20 per page; nickname is always the current one.
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/ArticleCommentPage' }
+        '401': { $ref: '#/components/responses/ArticleLoginRequired' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [articles]
+      operationId: createArticleComment
+      x-verification: required
+      x-dart: ArticleApi.comment -> ArticleComment
+      x-rate-limit: 10/min per IP
+      description: |
+        Public at once. 422 NICKNAME_REQUIRED (set a public nickname first), COMMENT_BLOCKED
+        (server-side regex blacklist; fields.body), VALIDATION_FAILED (1–1000 characters).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 1000 }
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ArticleComment' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /articles/{id}/like:
+    post:
+      tags: [articles]
+      operationId: likeArticle
+      x-verification: required
+      x-dart: ArticleApi.like -> ArticleLikeState
+      description: Idempotent; one like per member and article.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/ArticleLikeState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [articles]
+      operationId: unlikeArticle
+      x-verification: required
+      x-dart: ArticleApi.unlike -> ArticleLikeState
+      description: Idempotent.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/ArticleLikeState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /article-comments/{id}/reports:
+    post:
+      tags: [articles]
+      operationId: reportArticleComment
+      x-verification: required
+      x-dart: ArticleApi.report -> void
+      x-rate-limit: 10/min per IP
+      description: |
+        One effective report per member and round (409 ALREADY_REPORTED); own comments cannot
+        be reported. When comment_report_threshold distinct members reported in the open round,
+        one AI review is queued for that round (server side only); the comment may be hidden.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, description: 'Code from /article-report-reasons' }
+                note: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '201':
+          description: Report recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { reported: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ArticleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 409 ALREADY_REPORTED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /article-categories:
+    get:
+      tags: [articles]
+      operationId: articleCategories
+      security: []
+      x-dart: ArticleApi.categories -> List<ArticleCategory>
+      description: Category tree (up to three levels).
+      responses:
+        '200':
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ArticleCategory' } }
+
+  /article-report-reasons:
+    get:
+      tags: [articles]
+      operationId: articleReportReasons
+      security: []
+      x-dart: ArticleApi.reportReasons -> List<ReportReason>
+      responses:
+        '200':
+          description: Preset report reasons
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      x-dart: ReportReason
+                      properties:
+                        code: { type: string }
+                        label: { type: string }
+
 components:
   securitySchemes:
     bearer:
@@ -942,6 +1216,11 @@ components:
             satisfied: { type: boolean, x-dart: MemberProfile.verificationSatisfied }
             missing: { type: [string, 'null'], enum: [email, phone, null], x-dart: MemberProfile.verificationMissing }
         has_avatar: { type: boolean, x-dart: MemberProfile.hasAvatar }
+        nickname: { type: [string, 'null'], description: Unified public nickname (likes and comments), x-dart: MemberProfile.nickname }
+        privacy:
+          type: object
+          properties:
+            show_in_like_list: { type: boolean, default: false, x-dart: MemberProfile.showInLikeList }
         profile:
           type: object
           properties:
@@ -1043,6 +1322,73 @@ components:
         is_read: { type: boolean, x-dart: MemberNotification.isRead }
         read_at: { type: [string, 'null'], format: date-time, x-dart: MemberNotification.readAt }
         created_at: { type: [string, 'null'], format: date-time, x-dart: MemberNotification.createdAt }
+    ArticleCategory:
+      x-dart: ArticleCategory (ArticleCategory.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        children: { type: array, items: { $ref: '#/components/schemas/ArticleCategory' } }
+    ArticleSummary:
+      x-dart: ArticleSummary (ArticleSummary.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        title: { type: string }
+        summary: { type: [string, 'null'] }
+        cover_url: { type: [string, 'null'], description: 'Uploaded cover (API route, same permission) or external URL', x-dart: ArticleSummary.coverUrl }
+        author_name: { type: string, description: Displayed author (the real creator id is not exposed), x-dart: ArticleSummary.authorName }
+        categories:
+          type: array
+          items: { type: object, properties: { id: { type: string }, name: { type: string } } }
+        visibility: { type: string, enum: [public, members, restricted] }
+        is_featured: { type: boolean, x-dart: ArticleSummary.isFeatured }
+        published_at: { type: [string, 'null'], format: date-time, x-dart: ArticleSummary.publishedAt }
+        like_count: { type: integer, x-dart: ArticleSummary.likeCount }
+        view_count: { type: integer, x-dart: ArticleSummary.viewCount }
+    ArticleDetail:
+      x-dart: ArticleDetail (ArticleDetail.fromJson)
+      allOf:
+        - { $ref: '#/components/schemas/ArticleSummary' }
+        - type: object
+          properties:
+            body_html: { type: string, description: Sanitized HTML, x-dart: ArticleDetail.bodyHtml }
+            blocks:
+              type: array
+              description: Native rendering blocks derived from body_html
+              items:
+                type: object
+                x-dart: ArticleBlock
+                properties:
+                  type: { type: string, enum: [heading, paragraph, list_item, quote, image, code] }
+                  text: { type: string }
+                  level: { type: integer, description: heading only }
+                  ordered: { type: boolean, description: list_item only }
+                  src: { type: string, description: image only (http/https) }
+            share_url: { type: string, description: 'Web link /articles/{slug}; member articles show only a login prompt', x-dart: ArticleDetail.shareUrl }
+            liked_by_me: { type: boolean, x-dart: ArticleDetail.likedByMe }
+            comment_count: { type: integer, x-dart: ArticleDetail.commentCount }
+            can_interact: { type: boolean, description: Logged-in member who satisfies the verification policy, x-dart: ArticleDetail.canInteract }
+    ArticleComment:
+      x-dart: ArticleComment (ArticleComment.fromJson)
+      type: object
+      properties:
+        id: { type: string }
+        nickname: { type: string, description: Current public nickname of the author }
+        body: { type: string }
+        created_at: { type: [string, 'null'], format: date-time, x-dart: ArticleComment.createdAt }
+        is_mine: { type: boolean, x-dart: ArticleComment.isMine }
+    ArticleLikeList:
+      x-dart: ArticleLikeList (ArticleLikeList.fromJson)
+      type: object
+      properties:
+        total: { type: integer }
+        listed:
+          type: array
+          maxItems: 200
+          items: { type: object, properties: { nickname: { type: string } } }
+        unlisted_count: { type: integer, x-dart: ArticleLikeList.unlistedCount }
     Error:
       x-dart: App ApiException (code, message, fields, requestId, statusCode)
       type: object
@@ -1117,6 +1463,59 @@ components:
             type: object
             properties:
               data: { $ref: '#/components/schemas/Notice' }
+    ArticlePage:
+      description: Article page
+      content:
+        application/json:
+          schema:
+            type: object
+            x-dart: ArticlePage
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/ArticleSummary' } }
+              meta:
+                type: object
+                properties:
+                  current_page: { type: integer }
+                  last_page: { type: integer }
+                  total: { type: integer }
+    ArticleCommentPage:
+      description: Comment page
+      content:
+        application/json:
+          schema:
+            type: object
+            x-dart: ArticleCommentPage
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/ArticleComment' } }
+              meta:
+                type: object
+                properties:
+                  current_page: { type: integer }
+                  last_page: { type: integer }
+                  total: { type: integer }
+    ArticleLikeState:
+      description: My like state
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                x-dart: ArticleLikeState
+                properties:
+                  liked: { type: boolean }
+                  like_count: { type: integer, x-dart: ArticleLikeState.likeCount }
+    ArticleLoginRequired:
+      description: '401 ARTICLE_LOGIN_REQUIRED (member article without a token)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ArticleForbidden:
+      description: '403 VERIFICATION_REQUIRED / ARTICLE_FORBIDDEN (membership level or role not allowed)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Message:
       description: Generic answer (does not reveal whether an account exists)
       content:

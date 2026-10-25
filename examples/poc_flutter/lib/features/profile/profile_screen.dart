@@ -22,6 +22,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late final _displayName = TextEditingController(
     text: ref.read(authControllerProvider).profile?.displayName ?? '',
   );
+  late final _nickname = TextEditingController(
+    text: ref.read(authControllerProvider).profile?.nickname ?? '',
+  );
   bool _busy = false;
   Object? _error;
   String? _message;
@@ -30,6 +33,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _name.dispose();
     _displayName.dispose();
+    _nickname.dispose();
     super.dispose();
   }
 
@@ -71,6 +75,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ref.read(authControllerProvider.notifier).updateProfile(profile);
     }, '【已儲存】個人資料已更新。');
   }
+
+  /// S8: one public nickname for likes and comments (2–20 characters).
+  Future<void> _saveNickname() async {
+    final value = _nickname.text.trim();
+    if (value.length < 2 || value.length > 20) {
+      setState(() {
+        _error = null;
+        _message = '【請修正】公開暱稱需為 2–20 字。';
+      });
+      return;
+    }
+    await _run(() async {
+      final profile = await ref
+          .read(profileApiProvider)
+          .updatePublicProfile(nickname: value);
+      ref.read(authControllerProvider.notifier).updateProfile(profile);
+    }, '【已儲存】公開暱稱已更新，過去的留言與按讚也會顯示新暱稱。');
+  }
+
+  Future<void> _setShowInLikeList(bool value) => _run(() async {
+    final profile = await ref
+        .read(profileApiProvider)
+        .updatePublicProfile(showInLikeList: value);
+    ref.read(authControllerProvider.notifier).updateProfile(profile);
+  }, value ? '【已儲存】按讚名單會顯示您的暱稱。' : '【已儲存】按讚名單不顯示您的暱稱。');
 
   Future<void> _pickAvatar() async {
     final picked = await ref.read(avatarPickerProvider)();
@@ -152,91 +181,161 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  List<Widget> _status() => [
+    if (_message != null) StatusBox(label: _message!, detail: ''),
+    if (_error != null) ErrorBox(error: _error!),
+  ];
+
+  Widget _publicNicknameTab(MemberProfile? profile) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      ..._status(),
+      StatusBox(
+        key: const Key('nickname-current'),
+        label: profile?.hasNickname == true
+            ? '【公開暱稱】${profile!.nickname}'
+            : '【尚未設定公開暱稱】',
+        detail: '按讚名單與文章留言只顯示此暱稱，不會顯示您的姓名。設定後才能留言。',
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        key: const Key('profile-nickname'),
+        controller: _nickname,
+        maxLength: 20,
+        decoration: const InputDecoration(
+          labelText: '公開暱稱（2–20 字，不可與他人重複）',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      FilledButton(
+        key: const Key('profile-nickname-save'),
+        onPressed: _busy ? null : _saveNickname,
+        child: const Text('儲存暱稱'),
+      ),
+    ],
+  );
+
+  Widget _privacyTab(MemberProfile? profile) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      ..._status(),
+      SwitchListTile(
+        key: const Key('privacy-like-list'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('在文章按讚名單顯示我的暱稱'),
+        subtitle: const Text('預設不顯示；不顯示時仍會計入按讚總數。'),
+        value: profile?.showInLikeList ?? false,
+        onChanged: _busy || profile == null ? null : _setShowInLikeList,
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authControllerProvider).profile;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('個人資料')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_message != null) StatusBox(label: _message!, detail: ''),
-          if (_error != null) ErrorBox(error: _error!),
-          if (profile != null && !profile.profileComplete)
-            StatusBox(
-              key: const Key('profile-incomplete'),
-              label: '【請補齊資料】',
-              detail:
-                  '尚缺：${profile.missingFields.map((f) => _fieldLabels[f] ?? f).join('、')}',
-            ),
-          _avatar(),
-          const SizedBox(height: 16),
-          _membership(),
-          if (profile != null) ...[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Email：${profile.email ?? '未設定'}'),
-              subtitle: Text(
-                profile.email == null
-                    ? '請新增 Email'
-                    : 'Email 驗證：${_verified(profile.emailVerified)}',
-              ),
-              trailing: TextButton(
-                key: const Key('profile-change-email'),
-                onPressed: _busy ? null : () => context.push('/profile/email'),
-                child: Text(profile.email == null ? '新增' : '變更'),
-              ),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('手機：${profile.phone ?? '未設定'}'),
-              subtitle: Text(
-                profile.phone == null
-                    ? '請新增手機號碼'
-                    : '手機驗證：${_verified(profile.phoneVerified)}',
-              ),
-              trailing: TextButton(
-                key: const Key('profile-change-phone'),
-                onPressed: _busy ? null : () => context.push('/profile/phone'),
-                child: Text(profile.phone == null ? '新增' : '變更'),
-              ),
-            ),
-            const SizedBox(height: 8),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('個人資料'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(key: Key('profile-tab-basic'), text: '基本資料'),
+              Tab(key: Key('profile-tab-nickname'), text: '公開暱稱'),
+              Tab(key: Key('profile-tab-privacy'), text: '隱私設定'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _basicTab(profile),
+            _publicNicknameTab(profile),
+            _privacyTab(profile),
           ],
-          TextField(
-            key: const Key('profile-name'),
-            controller: _name,
-            decoration: const InputDecoration(
-              labelText: '姓名（必填）',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('profile-display-name'),
-            controller: _displayName,
-            decoration: const InputDecoration(
-              labelText: '顯示名稱',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            key: const Key('profile-save'),
-            onPressed: _busy ? null : _save,
-            child: const Text('儲存'),
-          ),
-          const Divider(height: 32),
-          OutlinedButton(
-            key: const Key('logout'),
-            onPressed: _busy
-                ? null
-                : () => ref.read(authControllerProvider.notifier).logout(),
-            child: const Text('登出'),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _basicTab(MemberProfile? profile) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ..._status(),
+        if (profile != null && !profile.profileComplete)
+          StatusBox(
+            key: const Key('profile-incomplete'),
+            label: '【請補齊資料】',
+            detail:
+                '尚缺：${profile.missingFields.map((f) => _fieldLabels[f] ?? f).join('、')}',
+          ),
+        _avatar(),
+        const SizedBox(height: 16),
+        _membership(),
+        if (profile != null) ...[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Email：${profile.email ?? '未設定'}'),
+            subtitle: Text(
+              profile.email == null
+                  ? '請新增 Email'
+                  : 'Email 驗證：${_verified(profile.emailVerified)}',
+            ),
+            trailing: TextButton(
+              key: const Key('profile-change-email'),
+              onPressed: _busy ? null : () => context.push('/profile/email'),
+              child: Text(profile.email == null ? '新增' : '變更'),
+            ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('手機：${profile.phone ?? '未設定'}'),
+            subtitle: Text(
+              profile.phone == null
+                  ? '請新增手機號碼'
+                  : '手機驗證：${_verified(profile.phoneVerified)}',
+            ),
+            trailing: TextButton(
+              key: const Key('profile-change-phone'),
+              onPressed: _busy ? null : () => context.push('/profile/phone'),
+              child: Text(profile.phone == null ? '新增' : '變更'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        TextField(
+          key: const Key('profile-name'),
+          controller: _name,
+          decoration: const InputDecoration(
+            labelText: '姓名（必填）',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('profile-display-name'),
+          controller: _displayName,
+          decoration: const InputDecoration(
+            labelText: '顯示名稱',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          key: const Key('profile-save'),
+          onPressed: _busy ? null : _save,
+          child: const Text('儲存'),
+        ),
+        const Divider(height: 32),
+        OutlinedButton(
+          key: const Key('logout'),
+          onPressed: _busy
+              ? null
+              : () => ref.read(authControllerProvider.notifier).logout(),
+          child: const Text('登出'),
+        ),
+      ],
     );
   }
 }

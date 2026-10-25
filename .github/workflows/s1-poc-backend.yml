@@ -136,9 +136,9 @@ jobs:
           set -o pipefail
           {
             php artisan migrate:rollback --step=1 --force --no-interaction
-            php artisan tinker --execute='$gone = ! Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && ! Illuminate\Support\Facades\Schema::hasColumn("calendar_events", "event_series_id") && Illuminate\Support\Facades\Schema::hasTable("event_bookings"); echo $gone ? "rolled back" : "ROLLBACK INCOMPLETE", PHP_EOL; exit($gone ? 0 : 1);'
+            php artisan tinker --execute='$gone = ! Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && ! Illuminate\Support\Facades\Schema::hasColumn("calendar_events", "event_series_id") && Illuminate\Support\Facades\Schema::hasTable("event_bookings"); echo $gone ? "ROLLBACK_OK" : "ROLLBACK_INCOMPLETE", PHP_EOL;' | tee /dev/stderr | grep -q ROLLBACK_OK
             php artisan migrate --force --no-interaction
-            php artisan tinker --execute='$ok = Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && App\Models\EventBooking::query()->count() === App\Models\EventBookingGroup::query()->whereNotNull("legacy_booking_id")->count(); echo $ok ? "re-migrated, legacy bookings backfilled" : "BACKFILL MISMATCH", PHP_EOL; exit($ok ? 0 : 1);'
+            php artisan tinker --execute='$ok = Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && App\Models\EventBooking::query()->count() === App\Models\EventBookingGroup::query()->whereNotNull("legacy_booking_id")->count(); echo $ok ? "REMIGRATE_OK" : "BACKFILL_MISMATCH", PHP_EOL;' | tee /dev/stderr | grep -q REMIGRATE_OK
           } 2>&1 | tee "$RUNNER_TEMP/rollback.log"
 
       - name: Publish failure details as annotations

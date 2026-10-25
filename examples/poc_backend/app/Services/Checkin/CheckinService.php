@@ -366,11 +366,21 @@ class CheckinService
         } catch (QueryException $e) {
             // UNIQUE(calendar_event_id, event_booking_attendee_id) from a parallel scan:
             // the other request's row exists. Any other failure is not hidden.
-            $attendance = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
+            // Only an actual unique-key race can be treated as a duplicate scan.
+            // An audit INSERT failure must propagate even if a revoked row exists.
+            $duplicateKey = ($e->errorInfo[1] ?? null) === 1062
+                || (in_array((string) $e->getCode(), ['23000', '19'], true)
+                    && str_contains(strtolower($e->getMessage()), 'unique'));
+            if (! $duplicateKey) {
+                throw $e;
+            }
+            $attendance = EventAttendance::query()->where('calendar_event_id', $event->id)
+                ->where('event_booking_attendee_id', $attendee->id)->first();
             if ($attendance === null) {
                 throw $e;
             }
-            $result = 'already_checked_in';
+            $result = $attendance->status === EventAttendance::CHECKED_OUT
+                ? 'already_checked_out' : 'already_checked_in';
         }
 
         return ['attendee_id' => (string) $attendee->id, 'result' => $result, 'attendance' => $attendance];

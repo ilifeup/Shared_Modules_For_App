@@ -650,6 +650,14 @@ final class BookingEngine
             'name' => mb_substr(trim($attendee['name']), 0, 80),
             'member_user_id' => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
         ], $request->attendees);
+        // The booker's own display name may change between retries. Their stable
+        // member ID identifies that seat; proxy/guest attendee names remain immutable.
+        foreach ($stored as $index => $attendee) {
+            if ($request->booker !== null && $attendee['member_user_id'] === $request->booker->id
+                && isset($incoming[$index]) && $incoming[$index]['member_user_id'] === $request->booker->id) {
+                $incoming[$index]['name'] = $attendee['name'];
+            }
+        }
         if (! $same || $existing->seat_count !== count($incoming) || $stored !== $incoming) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }

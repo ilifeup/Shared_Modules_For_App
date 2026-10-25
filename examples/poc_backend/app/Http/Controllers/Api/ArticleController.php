@@ -7,11 +7,15 @@ use App\Models\Article;
 use App\Models\ArticleCategory;
 use App\Models\ArticleComment;
 use App\Models\ArticleLike;
+use App\Models\Bookmark;
+use App\Models\MemberVerification;
 use App\Models\User;
 use App\Services\ArticleAccess;
 use App\Services\ArticleInteractionService;
+use App\Services\Content\TagService;
 use App\Support\Api\ApiException;
 use App\Support\ArticleHtml;
+use App\Support\ContentRegistry;
 use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +34,8 @@ class ArticleController extends Controller
         private readonly ArticleInteractionService $interactions,
         private readonly ArticleHtml $html,
         private readonly Settings $settings,
+        private readonly ContentRegistry $registry,
+        private readonly TagService $tags,
     ) {}
 
     /**
@@ -84,7 +90,11 @@ class ArticleController extends Controller
         return new JsonResponse(['data' => $this->summary($article) + [
             'body_html' => $article->body_html,
             'blocks' => $this->html->toBlocks($article->body_html),
-            'share_url' => rtrim((string) config('articles.share_base_url'), '/').'/articles/'.$article->slug,
+            // S9 M14: fixed content id URL (title changes never change the link).
+            'share_url' => $this->registry->webUrl('article', (int) $article->id),
+            'shareable' => $this->settings->allows('content_share_types', 'article'),
+            'tags' => $this->tags->tagsOf('article', (int) $article->id)->map(fn ($t) => ['id' => (string) $t->id, 'name' => $t->name, 'color' => $t->displayColor()])->values()->all(),
+            'bookmarked' => $viewer !== null && Bookmark::query()->where('user_id', $viewer->id)->where('content_type', 'article')->where('content_id', $article->id)->exists(),
             'liked_by_me' => $viewer !== null && ArticleLike::query()->where('article_id', $article->id)->where('user_id', $viewer->id)->exists(),
             'comment_count' => $article->comments()->where('status', ArticleComment::STATUS_VISIBLE)->count(),
             // Likes, comments and reports need a logged-in member who satisfies the policy.
@@ -306,6 +316,9 @@ class ArticleController extends Controller
         return [
             'id' => (string) $c->id,
             'nickname' => $c->user?->nickname ?? '會員',
+            // S9 M03: public badges only (members may hide them, D03).
+            'badges' => $c->user_id === null ? [] : MemberVerification::query()->valid()->with('type:id,name')
+                ->where('user_id', $c->user_id)->where('is_public', true)->get()->map(fn (MemberVerification $b) => $b->type->name)->unique()->values()->all(),
             'body' => $c->body,
             'created_at' => $c->created_at?->toIso8601ZuluString(),
             'is_mine' => $viewer !== null && $c->user_id === $viewer->id,

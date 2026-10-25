@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  S9 M14 Universal Links template (NOT active). See docs/s9_ios_universal_links.md.
+  Activate only after the App ID has the Associated Domains capability:
+    1. copy to ios/Runner/Runner.entitlements
+    2. set CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements and
+       APP_LINK_HOST = <the App's own HTTPS domain> in the Runner target build settings
+  The server side (/.well-known/apple-app-site-association) is served only when
+  IOS_APP_ID (TEAMID.bundle.id) is configured.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(APP_LINK_HOST)</string>
+	</array>
+</dict>
+</plist>

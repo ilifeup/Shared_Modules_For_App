@@ -85,3 +85,33 @@ final bookingApiProvider = Provider<BookingApi>(
 final articleApiProvider = Provider<ArticleApi>(
   (ref) => ArticleApi(ref.watch(apiTransportProvider)),
 );
+
+// ---- S9 shared clients ----
+
+final bookingGroupApiProvider = Provider<BookingGroupApi>(
+  (ref) => BookingGroupApi(ref.watch(apiTransportProvider)),
+);
+
+final calendarApiProvider = Provider<CalendarApi>(
+  (ref) => CalendarApi(ref.watch(apiTransportProvider)),
+);
+
+final checkinApiProvider = Provider<CheckinApi>(
+  (ref) => CheckinApi(ref.watch(apiTransportProvider)),
+);
+
+final discoveryApiProvider = Provider<DiscoveryApi>(
+  (ref) => DiscoveryApi(ref.watch(apiTransportProvider)),
+);
+
+final verificationApiProvider = Provider<VerificationApi>(
+  (ref) => VerificationApi(ref.watch(apiTransportProvider)),
+);
+
+final marketingApiProvider = Provider<MarketingApi>(
+  (ref) => MarketingApi(ref.watch(apiTransportProvider)),
+);
+
+final linkApiProvider = Provider<LinkApi>(
+  (ref) => LinkApi(ref.watch(apiTransportProvider)),
+);

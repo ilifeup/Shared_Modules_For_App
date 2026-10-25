@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
 import '../bookings/booking_section.dart';
+import '../s9/discovery_screens.dart';
 import 'calendar_providers.dart';
 
 class EventDetailScreen extends ConsumerWidget {
@@ -15,14 +18,17 @@ class EventDetailScreen extends ConsumerWidget {
     final event = ref.watch(eventDetailProvider(id));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('活動內容')),
+      appBar: AppBar(
+        title: const Text('活動內容'),
+        actions: [ContentActions(contentType: 'event', contentId: id)],
+      ),
       body: event.when(
         loading: () => const LoadingView(),
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ErrorRetry(
-              error: ErrorBox(error: error),
+            ContentUnavailable(
+              error: error,
               onRetry: () => ref.invalidate(eventDetailProvider(id)),
             ),
           ],
@@ -42,6 +48,35 @@ class EventDetailScreen extends ConsumerWidget {
             if (item.location != null) Text('地點：${item.location}'),
             const SizedBox(height: 12),
             BookingSection(eventId: item.id),
+            // S9: group booking / waitlist and check-in entries.
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                  key: const Key('open-group-booking'),
+                  onPressed: () =>
+                      context.push('/events/${item.id}/group-booking'),
+                  child: const Text('多人報名／候補'),
+                ),
+                TextButton(
+                  key: const Key('open-checkin'),
+                  onPressed: () => context.push('/events/${item.id}/checkin'),
+                  child: const Text('簽到'),
+                ),
+                TextButton(
+                  key: const Key('open-pass'),
+                  onPressed: () =>
+                      context.push('/events/${item.id}/checkin/pass'),
+                  child: const Text('入場 QR Code'),
+                ),
+                TextButton(
+                  key: const Key('open-staff'),
+                  onPressed: () =>
+                      context.push('/events/${item.id}/checkin/staff'),
+                  child: const Text('工作人員'),
+                ),
+              ],
+            ),
             if (item.description != null) ...[
               const Divider(height: 24),
               SelectableText(item.description!),

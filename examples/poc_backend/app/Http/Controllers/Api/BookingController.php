@@ -19,6 +19,7 @@ class BookingController extends Controller
 
     /**
      * GET /api/v1/events/{id}/booking — capacity, remaining seats and my booking.
+     * Since S9 booked_count / remaining count real attendees (same as rows for single bookings).
      */
     public function show(Request $request, int $id): JsonResponse
     {
@@ -97,8 +98,8 @@ class BookingController extends Controller
             'remaining' => $capacity === null ? null : max(0, $capacity - $confirmed),
             'opens_at' => $event->booking_opens_at?->toIso8601ZuluString(),
             'closes_at' => $event->booking_enabled ? $event->bookingClosesAt()->toIso8601ZuluString() : null,
-            // Null when a new booking is possible now (and I have none).
-            'unavailable_reason' => $mine !== null ? 'already_booked' : $reason,
+            // Null when a new booking is possible now (and I have none, by any entry point).
+            'unavailable_reason' => $mine !== null || $this->bookings->hasActivePlace($event, $request->user()) ? 'already_booked' : $reason,
             'my_booking' => $mine === null ? null : $this->booking($mine),
         ];
     }

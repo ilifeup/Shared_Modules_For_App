@@ -3,13 +3,20 @@
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;
+use App\Http\Controllers\Api\CheckinController;
+use App\Http\Controllers\Api\ContentDiscoveryController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\LinkAnalyticsController;
+use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MembershipController;
+use App\Http\Controllers\Api\MyCalendarController;
 use App\Http\Controllers\Api\NoticeController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\VerificationController;
 use Illuminate\Support\Facades\Route;
 
 // Prefix /api/v1 is set in bootstrap/app.php (apiPrefix).
@@ -30,6 +37,18 @@ Route::middleware('throttle:auth-60')->group(function () {
 });
 Route::get('/article-categories', [ArticleController::class, 'categories']);
 Route::get('/article-report-reasons', [ArticleController::class, 'reportReasons']);
+// S9 public / optional-login reads (content permission is decided per item on the server).
+Route::get('/event-categories', [MyCalendarController::class, 'categories']);
+Route::get('/verification-types', [VerificationController::class, 'types']);
+Route::middleware('throttle:auth-60')->group(function () {
+    Route::get('/tags', [ContentDiscoveryController::class, 'tags']);
+    Route::get('/search', [ContentDiscoveryController::class, 'search']);
+    Route::get('/content/{type}/{id}/share', [ContentDiscoveryController::class, 'share'])->whereIn('type', ['article', 'event', 'notice'])->whereNumber('id');
+    Route::get('/marketing/placements/{code}', [MarketingController::class, 'placement']);
+    Route::get('/marketing/campaigns/{id}/image', [MarketingController::class, 'image'])->whereNumber('id');
+    Route::post('/links/clicks', [LinkAnalyticsController::class, 'click']);
+    Route::post('/links/opens', [LinkAnalyticsController::class, 'open']);
+});
 Route::get('/public/events', [CalendarEventController::class, 'publicIndex'])->middleware('throttle:auth-60');
 Route::get('/public/events/{id}', [CalendarEventController::class, 'publicShow'])->whereNumber('id')->middleware('throttle:auth-60');
 
@@ -95,4 +114,43 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/me/notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::get('/me/notifications/{id}', [NotificationController::class, 'show'])->whereUuid('id');
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
+
+    // S9 M08 group bookings, waitlist and guest-booking claim (one seat engine with S6).
+    Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/me/booking-groups', [BookingGroupController::class, 'mine']);
+    Route::post('/me/booking-groups/{id}/cancel', [BookingGroupController::class, 'cancel'])->whereNumber('id');
+    Route::get('/me/guest-bookings', [BookingGroupController::class, 'claimable']);
+    Route::post('/me/guest-bookings/{id}/claim', [BookingGroupController::class, 'claim'])->whereNumber('id')->middleware('throttle:auth-10');
+
+    // S9 M09 my calendar, VIP private entries, Google Calendar (one-way).
+    Route::get('/me/calendar', [MyCalendarController::class, 'index']);
+    Route::post('/me/private-events', [MyCalendarController::class, 'store']);
+    Route::patch('/me/private-events/{id}', [MyCalendarController::class, 'update'])->whereNumber('id');
+    Route::delete('/me/private-events/{id}', [MyCalendarController::class, 'destroy'])->whereNumber('id');
+    Route::get('/me/google-calendar', [MyCalendarController::class, 'googleStatus']);
+    Route::post('/me/google-calendar/connect', [MyCalendarController::class, 'googleConnect'])->middleware('throttle:auth-10');
+    Route::delete('/me/google-calendar', [MyCalendarController::class, 'googleDisconnect']);
+
+    // S9 M11 check-in (online only).
+    Route::get('/events/{id}/checkin', [CheckinController::class, 'show'])->whereNumber('id');
+    Route::post('/events/{id}/checkin', [CheckinController::class, 'checkIn'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::post('/events/{id}/checkout', [CheckinController::class, 'checkOut'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/events/{id}/checkin/pass', [CheckinController::class, 'pass'])->whereNumber('id');
+    Route::get('/checkin/locations/{token}', [CheckinController::class, 'location'])->where('token', '[A-Za-z0-9]{16,40}');
+    Route::get('/events/{id}/checkin/qr', [CheckinController::class, 'qr'])->whereNumber('id');
+    Route::post('/events/{id}/checkin/staff', [CheckinController::class, 'staff'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/events/{id}/attendance', [CheckinController::class, 'attendance'])->whereNumber('id');
+
+    // S9 M19 bookmarks (own only).
+    Route::get('/me/bookmarks', [ContentDiscoveryController::class, 'bookmarks']);
+    Route::post('/me/bookmarks', [ContentDiscoveryController::class, 'addBookmark'])->middleware('throttle:auth-60');
+    Route::delete('/me/bookmarks', [ContentDiscoveryController::class, 'clearBookmarks']);
+    Route::delete('/me/bookmarks/{type}/{id}', [ContentDiscoveryController::class, 'removeBookmark'])->whereIn('type', ['article', 'event', 'notice'])->whereNumber('id');
+
+    // S9 M03 identity verification (member side).
+    Route::get('/me/verifications', [VerificationController::class, 'mine']);
+    Route::patch('/me/verifications/{id}', [VerificationController::class, 'updateBadge'])->whereNumber('id');
+    Route::post('/me/verification-requests', [VerificationController::class, 'apply'])->middleware('throttle:auth-10');
+    Route::post('/me/verification-requests/{id}/withdraw', [VerificationController::class, 'withdraw'])->whereNumber('id');
+    Route::get('/me/verification-evidence/{id}', [VerificationController::class, 'evidence'])->whereNumber('id');
 });

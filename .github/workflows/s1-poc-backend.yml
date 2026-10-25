@@ -125,16 +125,45 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/booking_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/booking_concurrency.log"
 
+      - name: S9 booking concurrency (100 parallel S6 + S9 requests, FIFO, idempotency)
+        id: s9_concurrency
+        timeout-minutes: 8
+        run: bash scripts/s9_booking_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/s9_concurrency.log"
+
+      - name: S9 migration rollback drill (down, verify, up again; disposable CI database)
+        id: rollback
+        run: |
+          set -o pipefail
+          {
+            # Earlier steps left S9 data behind: the guard must refuse without explicit acceptance.
+            php artisan s9:data-report
+            if php artisan migrate:rollback --step=1 --force --no-interaction > "$RUNNER_TEMP/refused.log" 2>&1; then
+              echo "::error title=rollback drill::rollback ran although S9 data exists"; exit 1
+            fi
+            grep -q "S9 rollback refused" "$RUNNER_TEMP/refused.log" || { cat "$RUNNER_TEMP/refused.log"; echo "::error title=rollback drill::rollback failed for another reason"; exit 1; }
+            echo "ROLLBACK_GUARD_OK: refused while S9 data exists"
+            php artisan tinker --execute='echo Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") ? "TABLES_INTACT" : "TABLES_GONE", PHP_EOL;' | tee /dev/stderr | grep -q TABLES_INTACT
+            # Disposable CI database: accept the loss and run the real rollback.
+            S9_ROLLBACK_ACCEPT_DATA_LOSS=yes php artisan migrate:rollback --step=1 --force --no-interaction
+            php artisan tinker --execute='$gone = ! Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && ! Illuminate\Support\Facades\Schema::hasColumn("calendar_events", "event_series_id") && Illuminate\Support\Facades\Schema::hasTable("event_bookings"); echo $gone ? "ROLLBACK_OK" : "ROLLBACK_INCOMPLETE", PHP_EOL;' | tee /dev/stderr | grep -q ROLLBACK_OK
+            php artisan migrate --force --no-interaction
+            php artisan tinker --execute='$ok = Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && App\Models\EventBooking::query()->count() === App\Models\EventBookingGroup::query()->whereNotNull("legacy_booking_id")->count(); echo $ok ? "REMIGRATE_OK" : "BACKFILL_MISMATCH", PHP_EOL;' | tee /dev/stderr | grep -q REMIGRATE_OK
+          } 2>&1 | tee "$RUNNER_TEMP/rollback.log"
+
       - name: Publish failure details as annotations
         if: failure() || steps.pint.outcome == 'failure'
         working-directory: .
         run: |
           set +e
           [ "${{ steps.pint.outcome }}" = failure ] && (cd examples/poc_backend && vendor/bin/pint --test -v > "$RUNNER_TEMP/pint.log" 2>&1; true)
-          for f in pint pest e2e concurrency booking_concurrency; do
+          for f in pint pest e2e concurrency booking_concurrency s9_concurrency rollback; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 400
           done
-          [ -f examples/poc_backend/storage/logs/laravel.log ] && bash .github/scripts/annotate_failure.sh examples/poc_backend/storage/logs/laravel.log laravel.log 60 1
+          if [ -f examples/poc_backend/storage/logs/laravel.log ]; then
+            grep -E '^\[[0-9-]+ [0-9:]+\] [a-z]+\.(ERROR|CRITICAL)' examples/poc_backend/storage/logs/laravel.log | cut -c1-1200 | head -n 8 > "$RUNNER_TEMP/errors.log"
+            [ -s "$RUNNER_TEMP/errors.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/errors.log" laravel-errors 8 3 tail
+            bash .github/scripts/annotate_failure.sh examples/poc_backend/storage/logs/laravel.log laravel.log 60 1
+          fi
           true
 
       - name: Summary
@@ -157,6 +186,8 @@ jobs:
             echo "| HTTP E2E | ${{ steps.e2e.outcome }} |"
             echo "| OTP concurrency | ${{ steps.concurrency.outcome }} |"
             echo "| Booking concurrency | ${{ steps.booking_concurrency.outcome }} |"
+            echo "| S9 booking concurrency | ${{ steps.s9_concurrency.outcome }} |"
+            echo "| S9 rollback drill | ${{ steps.rollback.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Gate (fail unless every check succeeded)
@@ -175,6 +206,8 @@ jobs:
             e2e=${{ steps.e2e.outcome }}
             concurrency=${{ steps.concurrency.outcome }}
             booking_concurrency=${{ steps.booking_concurrency.outcome }}
+            s9_concurrency=${{ steps.s9_concurrency.outcome }}
+            rollback=${{ steps.rollback.outcome }}
         run: |
           failed=0
           for item in $OUTCOMES; do

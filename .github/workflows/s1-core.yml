@@ -46,7 +46,7 @@ jobs:
           dart format lib test
           git diff -- . > "$RUNNER_TEMP/format.diff"
           if [ -s "$RUNNER_TEMP/format.diff" ]; then
-            bash ../../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 400
+            bash ../../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 4000 30 tail
             exit 1
           fi
       - name: Dart analyze and smoke
@@ -69,3 +69,4 @@ jobs:
           dart run test/event_api_smoke.dart
           dart run test/booking_api_smoke.dart
           dart run test/article_api_smoke.dart
+          dart run test/s9_api_smoke.dart

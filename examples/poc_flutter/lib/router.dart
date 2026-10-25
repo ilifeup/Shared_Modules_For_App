@@ -1,3 +1,4 @@
+import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +24,11 @@ import 'features/notifications/notifications_screen.dart';
 import 'features/profile/change_email_screen.dart';
 import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/s9/checkin_screens.dart';
+import 'features/s9/discovery_screens.dart';
+import 'features/s9/group_booking_screen.dart';
+import 'features/s9/my_calendar_screen.dart';
+import 'features/s9/verification_marketing.dart';
 
 const _publicPaths = {
   '/login',
@@ -61,9 +67,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isPublic =
           _publicPaths.contains(path) ||
           path == '/articles' ||
-          path.startsWith('/articles/');
+          path.startsWith('/articles/') ||
+          path == '/search';
       if (status == AuthStatus.signedOut) {
-        return isPublic ? null : '/login';
+        if (isPublic) return null;
+        // S9 M14: come back to a shared link after logging in (in-App paths only).
+        final back = safeReturnPath(state.uri.path);
+        return back == null
+            ? '/login'
+            : '/login?from=${Uri.encodeComponent(back)}';
       }
       // Signed in but the verification policy is not satisfied yet.
       final profile = ref.read(authControllerProvider).profile;
@@ -71,6 +83,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return _verificationPaths.contains(path) ? null : '/verify-account';
       }
       // Signed in: leave the splash / auth / gate screens for the notice list.
+      final from = safeReturnPath(state.uri.queryParameters['from']);
+      if (path == '/login' && from != null) return from;
       if (path == '/splash' ||
           path == '/login' ||
           path == '/register' ||
@@ -113,6 +127,53 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/events/:id',
         builder: (context, state) =>
             EventDetailScreen(id: state.pathParameters['id']!),
+      ),
+      // ---- S9 ----
+      GoRoute(
+        path: '/events/:id/group-booking',
+        builder: (context, state) =>
+            GroupBookingScreen(eventId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/events/:id/checkin',
+        builder: (context, state) =>
+            CheckinScreen(eventId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/events/:id/checkin/pass',
+        builder: (context, state) =>
+            CheckinPassScreen(eventId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/events/:id/checkin/staff',
+        builder: (context, state) =>
+            StaffCheckinScreen(eventId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/checkin/location/:token',
+        builder: (context, state) =>
+            CheckinLocationScreen(token: state.pathParameters['token']!),
+      ),
+      GoRoute(
+        path: '/me/booking-groups',
+        builder: (context, state) => const MyBookingGroupsScreen(),
+      ),
+      GoRoute(
+        path: '/me/calendar',
+        builder: (context, state) => const MyCalendarScreen(),
+      ),
+      GoRoute(
+        path: '/search',
+        builder: (context, state) =>
+            SearchScreen(initialTagId: state.uri.queryParameters['tag']),
+      ),
+      GoRoute(
+        path: '/me/bookmarks',
+        builder: (context, state) => const BookmarksScreen(),
+      ),
+      GoRoute(
+        path: '/me/verifications',
+        builder: (context, state) => const VerificationScreen(),
       ),
       GoRoute(
         path: '/notifications',

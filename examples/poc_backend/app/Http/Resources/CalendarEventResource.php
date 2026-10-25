@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\CalendarEvent;
+use App\Support\ContentRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -29,6 +30,18 @@ class CalendarEventResource extends JsonResource
             'audience' => $this->audience,
             'cancelled_at' => $this->cancelled_at?->toIso8601ZuluString(),
             'cancel_reason' => $this->cancel_reason,
+            // S9 (additive): venue (one set per occurrence), zone, category colour, series.
+            'floor' => $this->floor,
+            'studio' => $this->studio,
+            'timezone' => $this->timezone ?? 'Asia/Taipei',
+            'category' => $this->category === null ? null : [
+                'id' => (string) $this->category->id,
+                'name' => $this->category->name,
+                'color' => $this->category->color,
+            ],
+            'series_id' => $this->event_series_id !== null ? (string) $this->event_series_id : null,
+            'checkin_enabled' => (bool) $this->checkin_enabled,
+            'share_url' => app(ContentRegistry::class)->webUrl('event', (int) $this->id),
         ];
     }
 }

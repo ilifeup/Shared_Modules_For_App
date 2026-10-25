@@ -8,4 +8,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateCalendarEvent extends CreateRecord
 {
     protected static string $resource = CalendarEventResource::class;
+
+    protected function afterCreate(): void
+    {
+        CalendarEventResource::saveTags($this->record, $this->form->getRawState());
+    }
 }

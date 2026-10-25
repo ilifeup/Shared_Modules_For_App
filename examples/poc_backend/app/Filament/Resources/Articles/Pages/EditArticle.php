@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Articles\Pages;
 use App\Filament\Resources\Articles\ArticleResource;
 use App\Models\Article;
 use App\Models\ArticleAccessRule;
+use App\Services\Content\TagService;
 use Filament\Resources\Pages\EditRecord;
 
 class EditArticle extends EditRecord
@@ -21,6 +22,7 @@ class EditArticle extends EditRecord
         $article = $this->record;
         $data['access_levels'] = $article->accessRules->where('type', ArticleAccessRule::TYPE_LEVEL)->pluck('value')->values()->all();
         $data['access_roles'] = $article->accessRules->where('type', ArticleAccessRule::TYPE_ROLE)->pluck('value')->values()->all();
+        $data['tag_ids'] = app(TagService::class)->tagsOf('article', (int) $article->id, false)->pluck('id')->all();
 
         return $data;
     }
@@ -28,5 +30,6 @@ class EditArticle extends EditRecord
     protected function afterSave(): void
     {
         ArticleResource::saveAccessRules($this->record, $this->form->getRawState());
+        ArticleResource::saveTags($this->record, $this->form->getRawState());
     }
 }

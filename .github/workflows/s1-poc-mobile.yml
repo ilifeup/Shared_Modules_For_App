@@ -54,9 +54,9 @@ jobs:
         run: |
           if ! flutter pub get --enforce-lockfile; then
             # Still a failure: publish what the resolved lock would be, for review and commit.
-            flutter pub get > /dev/null 2>&1 || true
+            flutter pub get > "$RUNNER_TEMP/pubget.log" 2>&1 || bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/pubget.log" "pub get" 120 3 tail
             git diff -- pubspec.lock > "$RUNNER_TEMP/lock.diff"
-            bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/lock.diff" "pubspec.lock out of date" 3000 10
+            bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/lock.diff" "pubspec.lock out of date" 8000 30 tail
             exit 1
           fi
 
@@ -65,7 +65,7 @@ jobs:
           dart format lib test
           git diff -- . > "$RUNNER_TEMP/format.diff"
           if [ -s "$RUNNER_TEMP/format.diff" ]; then
-            bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 400
+            bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 4000 30 tail
             exit 1
           fi
 
@@ -189,4 +189,6 @@ jobs:
 
       - name: Server log on failure
         if: failure()
-        run: tail -n 100 "$RUNNER_TEMP/serve.log" || true
+        run: |
+          tail -n 100 "$RUNNER_TEMP/serve.log" || true
+          [ -s "$RUNNER_TEMP/e2e.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/e2e.log" "e2e" 200 4 || true

@@ -539,7 +539,10 @@ void main() {
     // Week view: Monday to Sunday of the selected day's week, its own range.
     await tester.tap(find.text('週'));
     await tester.pumpAndSettle();
-    expect(backend.calls.last, startsWith('GET /api/v1/me/calendar?from=2026-11-30'));
+    expect(
+      backend.calls.last,
+      startsWith('GET /api/v1/me/calendar?from=2026-11-30'),
+    );
     expect(find.text('2026-11-30 – 2026-12-06'), findsOneWidget);
     expect(find.byKey(const Key('my-day-2026-12-02')), findsOneWidget);
     expect(find.byKey(const Key('my-day-2026-12-06')), findsOneWidget);
@@ -562,14 +565,30 @@ void main() {
     addTearDown(tester.view.reset);
     final backend = S9Backend();
     backend.routes['GET /api/v1/events/7/checkin/qr'] = (_) => {
-      'data': {'event_id': '7', 'token': 'e.7.1.0123456789abcdef01234567', 'expires_in': 30, 'window_seconds': 60},
+      'data': {
+        'event_id': '7',
+        'token': 'e.7.1.0123456789abcdef01234567',
+        'expires_in': 30,
+        'window_seconds': 60,
+      },
     };
     var guestIn = false;
     backend.routes['GET /api/v1/events/7/attendance'] = (_) => {
       'data': {
-        'summary': {'booked': 2, 'checked_in': guestIn ? 1 : 0, 'absent': guestIn ? 1 : 2, 'checked_out': 0, 'checkout_enabled': false},
+        'summary': {
+          'booked': 2,
+          'checked_in': guestIn ? 1 : 0,
+          'absent': guestIn ? 1 : 2,
+          'checked_out': 0,
+          'checkout_enabled': false,
+        },
         'attendees': [
-          {'id': '11', 'name': '會員', 'booking_status': 'confirmed', 'is_guest': false},
+          {
+            'id': '11',
+            'name': '會員',
+            'booking_status': 'confirmed',
+            'is_guest': false,
+          },
           {
             'id': '12',
             'name': '訪客',
@@ -585,7 +604,11 @@ void main() {
     backend.routes['POST /api/v1/events/7/checkin/staff'] = (body) {
       guestIn = true;
       return {
-        'data': {'attendee_id': '12', 'result': 'checked_in', 'checkin_status': 'checked_in'},
+        'data': {
+          'attendee_id': '12',
+          'result': 'checked_in',
+          'checkin_status': 'checked_in',
+        },
       };
     };
     await pumpScreen(tester, backend, const StaffCheckinScreen(eventId: '7'));
@@ -594,12 +617,20 @@ void main() {
     await tester.tap(find.byKey(const Key('staff-manual-12')));
     await tester.pumpAndSettle();
     expect(find.text('報名資料：g***@example.com'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('staff-contact')), 'guest@example.com');
+    await tester.enterText(
+      find.byKey(const Key('staff-contact')),
+      'guest@example.com',
+    );
     await tester.tap(find.byKey(const Key('staff-contact-ok')));
     await tester.pumpAndSettle();
 
-    final body = backend.bodies[backend.calls.indexOf('POST /api/v1/events/7/checkin/staff')]!;
-    expect(body, {'attendee_id': 12, 'contact': 'guest@example.com', 'action': 'checkin'});
+    final body = backend
+        .bodies[backend.calls.indexOf('POST /api/v1/events/7/checkin/staff')]!;
+    expect(body, {
+      'attendee_id': 12,
+      'contact': 'guest@example.com',
+      'action': 'checkin',
+    });
     expect(find.textContaining('訪客：簽到成功'), findsOneWidget);
     expect(find.byKey(const Key('staff-manual-12')), findsNothing);
 
@@ -671,11 +702,15 @@ void main() {
       }
     }
 
-    await show(const ApiException(code: 'NOT_FOUND', message: 'x', statusCode: 404));
+    await show(
+      const ApiException(code: 'NOT_FOUND', message: 'x', statusCode: 404),
+    );
     expect(find.text('【連結已失效】'), findsOneWidget);
     expect(find.byKey(const Key('content-retry')), findsNothing);
 
-    await show(const ApiException(code: 'FORBIDDEN', message: 'x', statusCode: 403));
+    await show(
+      const ApiException(code: 'FORBIDDEN', message: 'x', statusCode: 403),
+    );
     expect(find.text('【沒有權限】'), findsOneWidget);
 
     await show(const ApiException(code: 'NETWORK_ERROR', message: 'x'));
@@ -685,7 +720,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('首頁'), findsOneWidget);
 
-    await show(const ApiException(code: 'UNAUTHENTICATED', message: 'x', statusCode: 401));
+    await show(
+      const ApiException(
+        code: 'UNAUTHENTICATED',
+        message: 'x',
+        statusCode: 401,
+      ),
+    );
     await tester.tap(find.byKey(const Key('content-login')));
     await tester.pumpAndSettle();
     expect(find.text('登入頁'), findsOneWidget);

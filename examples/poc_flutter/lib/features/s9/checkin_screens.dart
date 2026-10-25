@@ -427,7 +427,8 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
                     ?a.contactHint,
                   ].join('・'),
                 ),
-                trailing: a.checkinStatus == 'checked_in' ||
+                trailing:
+                    a.checkinStatus == 'checked_in' ||
                         a.checkinStatus == 'checked_out'
                     ? null
                     : TextButton(

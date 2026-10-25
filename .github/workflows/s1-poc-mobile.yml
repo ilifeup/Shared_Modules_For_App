@@ -189,4 +189,6 @@ jobs:
 
       - name: Server log on failure
         if: failure()
-        run: tail -n 100 "$RUNNER_TEMP/serve.log" || true
+        run: |
+          tail -n 100 "$RUNNER_TEMP/serve.log" || true
+          [ -s "$RUNNER_TEMP/e2e.log" ] && bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/e2e.log" "e2e" 200 4 || true

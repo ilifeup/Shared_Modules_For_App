@@ -123,7 +123,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               // Inclusive end day -> exclusive bound.
               to: _dates == null
                   ? null
-                  : DateTime(_dates!.end.year, _dates!.end.month, _dates!.end.day + 1),
+                  : DateTime(
+                      _dates!.end.year,
+                      _dates!.end.month,
+                      _dates!.end.day + 1,
+                    ),
               location: _location.text,
               sort: _sort,
               page: more ? _page + 1 : 1,
@@ -224,9 +228,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: TextField(
                   key: const Key('search-location'),
                   controller: _location,
-                  decoration: const InputDecoration(
-                    labelText: '地點（行政區或場所名稱）',
-                  ),
+                  decoration: const InputDecoration(labelText: '地點（行政區或場所名稱）'),
                 ),
               ),
               TextButton(

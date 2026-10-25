@@ -273,18 +273,30 @@ Future<void> main() async {
 
   // M17-D20: optional UTM on share links; unknown keys are dropped.
   fake.responses['GET /api/v1/content/event/7/share'] = {
-    'data': {'content_type': 'event', 'content_id': '7', 'shareable': true, 'is_public': true, 'url': 'https://app.example/events/7?utm_source=line'},
+    'data': {
+      'content_type': 'event',
+      'content_id': '7',
+      'shareable': true,
+      'is_public': true,
+      'url': 'https://app.example/events/7?utm_source=line',
+    },
   };
   fake.responses['POST /api/v1/events/7/checkin/staff'] = {
-    'data': {'attendee_id': '12', 'result': 'checked_in', 'checkin_status': 'checked_in'},
+    'data': {
+      'attendee_id': '12',
+      'result': 'checked_in',
+      'checkin_status': 'checked_in',
+    },
   };
-  await LinkApi(fake).share('event', '7', utm: {'utm_source': 'line', 'x': 'y'});
+  await LinkApi(fake)
+      .share('event', '7', utm: {'utm_source': 'line', 'x': 'y'});
   check(
     fake.calls.last == 'GET /api/v1/content/event/7/share?utm_source=line',
     'share utm',
   );
   // M11-D11: manual guest check-in sends the stated contact.
-  await CheckinApi(fake).staffScan('7', attendeeId: '12', contact: 'g@example.com');
+  await CheckinApi(fake)
+      .staffScan('7', attendeeId: '12', contact: 'g@example.com');
   check(fake.bodies.last!['contact'] == 'g@example.com', 'staff contact');
 
   final failing = _Throwing();

@@ -12,7 +12,8 @@ UnavailableKind unavailableKind(Object error) {
   return switch (error.code) {
     'NETWORK_ERROR' => UnavailableKind.offline,
     'NOT_FOUND' => UnavailableKind.gone,
-    'UNAUTHENTICATED' || 'ARTICLE_LOGIN_REQUIRED' => UnavailableKind.loginRequired,
+    'UNAUTHENTICATED' ||
+    'ARTICLE_LOGIN_REQUIRED' => UnavailableKind.loginRequired,
     'FORBIDDEN' ||
     'ARTICLE_FORBIDDEN' ||
     'VERIFICATION_REQUIRED' => UnavailableKind.forbidden,

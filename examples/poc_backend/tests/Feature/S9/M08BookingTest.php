@@ -183,7 +183,7 @@ it('rolls back the booking and frees its idempotency key when the audit insert f
     $member = User::factory()->create();
     $missingActor = User::factory()->make(['id' => 999999999]);
     $id = (string) Str::uuid();
-    $request = fn (User $actor) => new \\App\\Services\\Booking\\BookingRequest(
+    $request = fn (User $actor) => new \App\Services\Booking\BookingRequest(
         booker: $member,
         contactName: $member->name,
         contactEmail: $member->email,
@@ -194,7 +194,7 @@ it('rolls back the booking and frees its idempotency key when the audit insert f
     );
 
     expect(fn () => app(BookingEngine::class)->book($event, $request($missingActor)))
-        ->toThrow(\\Illuminate\\Database\\QueryException::class);
+        ->toThrow(\Illuminate\Database\QueryException::class);
     expect(EventBookingGroup::query()->where('client_request_id', $id)->count())->toBe(0)
         ->and(EventBookingAttendee::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(seats($event))->toBe(0);

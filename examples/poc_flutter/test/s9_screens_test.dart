@@ -157,12 +157,11 @@ void main() {
     backend.routes['POST /api/v1/events/7/booking-groups'] = (_) {
       attempts++;
       if (attempts == 1) {
-        throw const ApiException(
-          code: 'NETWORK_ERROR',
-          message: '連線中斷',
-        );
+        throw const ApiException(code: 'NETWORK_ERROR', message: '連線中斷');
       }
-      return {'data': group('confirmed', ['我', '家人'])};
+      return {
+        'data': group('confirmed', ['我', '家人']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
     await tester.tap(find.byKey(const Key('group-add-name')));
@@ -178,7 +177,8 @@ void main() {
       isFalse,
     );
     expect(
-      tester.widget<SwitchListTile>(find.byKey(const Key('group-include-self')))
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('group-include-self')))
           .onChanged,
       isNull,
     );
@@ -189,9 +189,10 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final secondBody = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final secondBody =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(attempts, 2);
     expect(secondBody, firstBody);
     expect(find.text('【正式報名】'), findsOneWidget);
@@ -212,7 +213,9 @@ void main() {
           statusCode: 422,
         );
       }
-      return {'data': group('confirmed', ['我', '新同行者'])};
+      return {
+        'data': group('confirmed', ['我', '新同行者']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
     await tester.tap(find.byKey(const Key('group-add-name')));
@@ -220,9 +223,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('group-name-0')), '舊同行者');
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final first = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final first =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(
       tester.widget<TextField>(find.byKey(const Key('group-name-0'))).enabled,
       isTrue,
@@ -230,9 +234,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('group-name-0')), '新同行者');
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final second = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final second =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(first['client_request_id'], isNot(second['client_request_id']));
     expect(second['attendees'], [
       {'name': '新同行者'},

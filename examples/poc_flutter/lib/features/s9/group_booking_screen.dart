@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
 import '../../ui/status_box.dart';
 import '../calendar/calendar_providers.dart';
@@ -56,6 +57,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   Object? _error;
   BookingGroup? _result;
   String _requestId = newRequestId();
+  // Keep the exact original payload for retries whose server outcome is unknown.
+  List<String>? _pendingNames;
+  bool? _pendingIncludeSelf;
 
   @override
   void dispose() {
@@ -67,17 +71,18 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
 
   Future<void> _submit() async {
     if (_busy) return;
-    final names = _names
-        .map((c) => c.text.trim())
-        .where((n) => n.isNotEmpty)
-        .toList();
-    if (!_includeSelf && names.isEmpty) {
+    final names = _pendingNames ??
+        _names.map((c) => c.text.trim()).where((n) => n.isNotEmpty).toList();
+    final includeSelf = _pendingIncludeSelf ?? _includeSelf;
+    if (!includeSelf && names.isEmpty) {
       setState(() => _error = '請至少填寫一位參加者。');
       return;
     }
     setState(() {
       _busy = true;
       _error = null;
+      _pendingNames ??= List<String>.unmodifiable(names);
+      _pendingIncludeSelf ??= includeSelf;
     });
     try {
       final group = await ref
@@ -85,17 +90,34 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           .book(
             widget.eventId,
             clientRequestId: _requestId,
-            includeSelf: _includeSelf,
-            attendeeNames: names,
+            includeSelf: _pendingIncludeSelf!,
+            attendeeNames: _pendingNames!,
           );
       if (!mounted) return;
       setState(() {
         _result = group;
+        _pendingNames = null;
+        _pendingIncludeSelf = null;
         _requestId = newRequestId(); // the next booking is a new request
       });
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (!mounted) return;
+      setState(() {
+        _error = error;
+        // Only a definitive client rejection can release the old request ID.
+        // Timeout, disconnection, 5xx and malformed responses may follow a commit.
+        if (error is ApiException &&
+            error.statusCode != null &&
+            error.statusCode! >= 400 &&
+            error.statusCode! < 500 &&
+            error.statusCode != 408 &&
+            error.statusCode != 429) {
+          _pendingNames = null;
+          _pendingIncludeSelf = null;
+          _requestId = newRequestId();
+        }
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -134,7 +156,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               key: const Key('group-include-self'),
               title: const Text('我本人參加'),
               value: _includeSelf,
-              onChanged: _busy ? null : (v) => setState(() => _includeSelf = v),
+              onChanged: _busy || _pendingNames != null
+                  ? null
+                  : (v) => setState(() => _includeSelf = v),
             ),
             for (var i = 0; i < _names.length; i++)
               Padding(
@@ -142,6 +166,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                 child: TextField(
                   key: Key('group-name-$i'),
                   controller: _names[i],
+                  enabled: !_busy && _pendingNames == null,
                   maxLength: 80,
                   decoration: InputDecoration(
                     labelText: '同行者 ${i + 1} 姓名',
@@ -151,7 +176,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ),
             OutlinedButton(
               key: const Key('group-add-name'),
-              onPressed: _busy || _names.length >= 9
+              onPressed: _busy || _pendingNames != null || _names.length >= 9
                   ? null
                   : () => setState(() => _names.add(TextEditingController())),
               child: const Text('新增同行者'),
@@ -159,6 +184,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             const SizedBox(height: 8),
             const Text('名額不足時整組進入候補，依順序遞補；遞補成功會通知您。'),
             const SizedBox(height: 8),
+            if (_pendingNames != null && !_busy)
+              const StatusBox(
+                label: '【結果待確認】',
+                detail: '上次送出可能已成功。請重試原請求，或至「我的報名」確認；'
+                    '在結果確定前不可修改參加者資料。',
+              ),
             if (_error is String)
               StatusBox(label: '【提醒】', detail: _error as String)
             else if (_error != null)
@@ -166,7 +197,13 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             FilledButton(
               key: const Key('group-submit'),
               onPressed: _busy ? null : _submit,
-              child: Text(_busy ? '處理中…' : '送出報名'),
+              child: Text(
+                _busy
+                    ? '處理中…'
+                    : _pendingNames != null
+                    ? '重試原請求'
+                    : '送出報名',
+              ),
             ),
           ],
         ],

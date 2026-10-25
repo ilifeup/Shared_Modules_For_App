@@ -176,6 +176,35 @@ it('is idempotent for retried requests', function () {
     expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(2);
 });
 
+// An audit write must commit or roll back together with the booking, so a retry
+// after an audit DB failure cannot find a booking with no corresponding audit.
+it('rolls back the booking and frees its idempotency key when the audit insert fails', function () {
+    $event = s9Event();
+    $member = User::factory()->create();
+    $missingActor = User::factory()->make(['id' => 999999999]);
+    $id = (string) Str::uuid();
+    $request = fn (User $actor) => new \\App\\Services\\Booking\\BookingRequest(
+        booker: $member,
+        contactName: $member->name,
+        contactEmail: $member->email,
+        contactPhone: null,
+        attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
+        clientRequestId: $id,
+        actor: $actor,
+    );
+
+    expect(fn () => app(BookingEngine::class)->book($event, $request($missingActor)))
+        ->toThrow(\\Illuminate\\Database\\QueryException::class);
+    expect(EventBookingGroup::query()->where('client_request_id', $id)->count())->toBe(0)
+        ->and(EventBookingAttendee::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(seats($event))->toBe(0);
+
+    app(BookingEngine::class)->book($event, $request($member));
+    expect(EventBookingGroup::query()->where('client_request_id', $id)->count())->toBe(1)
+        ->and(AuditEvent::query()->where('event', 'booking.confirmed')->count())->toBe(1)
+        ->and(seats($event))->toBe(1);
+});
+
 // G12 / G13 / G14 — admin proxy booking, capacity reduction with chosen cancellations, event cancel.
 it('lets admins reduce capacity only by choosing whom to cancel', function () {
     $event = s9Event(['booking_capacity' => 4]);

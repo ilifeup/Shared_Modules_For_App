@@ -640,7 +640,7 @@ final class BookingEngine
             && ($request->booker !== null || $existing->contact_email === $request->contactEmail && $existing->contact_phone === $request->contactPhone);
         // A retry must represent the original booking, not a different attendee list.
         // Compare the persisted attendee snapshot rather than the current member profile.
-        $stored = $existing->attendees()->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
+        $stored = $existing->attendees()->orderBy('id')->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
             'name' => $attendee->name,
             'member_user_id' => $attendee->member_user_id === null ? null : (int) $attendee->member_user_id,
         ])->all();

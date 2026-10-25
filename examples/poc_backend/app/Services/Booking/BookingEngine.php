@@ -121,6 +121,7 @@ final class BookingEngine
                 $this->queueSync($member->id, $locked->id);
 
                 AuditEvent::record('booking.confirmed', $member->id, $booking, ['event_id' => $event->id]);
+
                 return $booking;
             });
         } catch (QueryException $e) {
@@ -162,6 +163,7 @@ final class BookingEngine
                 'event_id' => $locked->calendar_event_id,
                 'by' => $actor->id === $locked->user_id ? 'member' : 'admin',
             ]);
+
             return $locked->refresh();
         });
 
@@ -236,6 +238,7 @@ final class BookingEngine
                     'guest' => $group->is_guest,
                     'by' => $request->byAdmin ? 'admin' : ($group->is_guest ? 'guest' : 'member'),
                 ]);
+
                 return $group;
             });
         } catch (QueryException $e) {
@@ -282,6 +285,7 @@ final class BookingEngine
                 'by' => $byAdmin ? 'admin' : 'member',
                 'reason' => $reason,
             ]);
+
             return $locked->refresh();
         });
 
@@ -314,6 +318,7 @@ final class BookingEngine
                 ->get()->each(fn (EventBooking $b) => $this->cancelLegacyRow($b, $actor));
 
             AuditEvent::record('event.cancelled_with_bookings', $actor->id, $event, ['groups' => $groups->count()]);
+
             return $groups->count();
         });
 

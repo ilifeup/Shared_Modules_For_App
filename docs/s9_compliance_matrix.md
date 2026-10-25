@@ -35,7 +35,7 @@
 - **M09-D04**（BLOCKED）外部日曆：GoogleCalendarClient（直接 API）
 - **M11-D11**（部分）訪客核對：出席名單只給工作人員遮罩後的聯絡資料；**完整聯絡資料核對需管理員在後台查看**
 - **M11-D17**（部分）GPS 定位失敗：API /checkin/staff attendee_id；Filament 補登；**Flutter 工作人員手動簽到清單未做**
-- **M11-D24**（待決）紀錄保存期限：checkin_retention_days 可設定；**稽核紀錄保存期限與 M07 append-only 衝突，待使用者裁決**
+- **M11-D24**（已裁決 A，待程式複驗）：稽核 append-only 不刪不改；簽到個資與更正原因依期限清除；Claude 須驗證資料不可重新識別並更新測試與矩陣。
 - **M19-D03**（部分）搜尋篩選：API 支援類別、標籤、日期、地點、排序；**App 畫面只有類型、標籤、排序**
 - **M14-D01**（部分）支援平台：Android intent-filter＋assetlinks；iOS 只提供 AASA 檔，**iOS entitlements 未設定**
 - **M14-D02**（部分）連結內容：ContentRegistry：文章／活動／公告；場所、會員公開頁目前無此內容
@@ -185,7 +185,7 @@
 | M11-D21 | 活動 QR 更新週期：每 60 秒更新一次 | 符合＋測試 | WINDOW_SECONDS 60 | T/M11CheckinTest: accepts the current event token… |
 | M11-D22 | 地點 QR 與活動 QR：Location QR 可固定張貼；活動簽到 QR 定期動態更新 | 符合＋測試 | Location token 固定；event token 輪替 | T/M11CheckinTest |
 | M11-D23 | 簽退操作：沿用簽到 QR 入口，依狀態提供簽退 | 符合＋測試 | /checkout 同 QR | T/M11CheckinTest: checks out with the same QR… |
-| M11-D24 | 紀錄保存期限：各 App 後台可設定簽到及稽核紀錄保存期限 | 待決 | checkin_retention_days 可設定；**稽核紀錄保存期限與 M07 append-only 衝突，待使用者裁決** | T/M11CheckinTest: purges old check-ins without rewriting the append-only audit log |
+| M11-D24 | 2026-10-25 裁決 A：稽核 append-only，簽到個資到期清除 | 已裁決 A／待複驗 | 現有 purge/audit 實作待 Claude 依新裁決完成個資與責任追溯測試；不得改寫既有 AuditEvent | T/M11CheckinTest: purges old check-ins without rewriting the append-only audit log |
 | M11-D25 | 動態活動 QR 寬限：每 60 秒更新；過期後寬限 10 秒 | 符合＋測試 | GRACE_SECONDS 10 | T/M11CheckinTest: accepts … only within 10 seconds |
 | M11-D26 | GPS 設定優先：活動設定優先於各 App 預設，活動未設定才使用 App 預設 | 符合＋測試 | 活動設定優先，否則 App 預設 | T/M11CheckinTest: uses a fixed Location QR with optional GPS and the event setting first |
 | M11-D27 | 簽退後重新簽到：不可自行重新簽到，僅管理員可以更正並保留稽核 | 符合＋測試 | already_checked_out；僅 adminSet 可改 | T/M11CheckinTest: checks out … does not let members check in again |
@@ -367,3 +367,8 @@
 | M19-D28 | 無搜尋結果：顯示無結果並提供清除篩選；不自動推薦其他內容 | 符合（無自動測試） | 無結果提示；**複審修正：清除篩選按鈕** | —（按鈕無 Widget 測試） |
 | M19-D29 | 相關性技術：一般關鍵字相關性排序，不導入 AI 語意搜尋 | 符合（無自動測試） | LIKE 加權相關性，無 AI | — |
 | M19-D30 | 搜尋結果呈現：預設混合所有可搜尋內容類型，可切換指定類型 | 符合＋測試 | 預設混合類型，可切換 | T/M16M19DiscoveryTest: searches…（type=article） |
+
+
+## 2026-10-25 M11-D24 正式裁決 A
+
+使用者已核准：既有稽核紀錄不刪除、不改寫；簽到個資與管理員更正原因依各 App 保存期限清除；稽核只保留寫入時已去識別的必要資訊，清理另新增稽核事件。**本矩陣總覽「待決 1」為裁決前快照，並非仍待使用者選擇。Claude 應在程式複驗後重新統計 265 項，不得直接宣稱此項 PASS。**

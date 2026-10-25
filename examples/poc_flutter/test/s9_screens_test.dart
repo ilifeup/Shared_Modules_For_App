@@ -472,7 +472,11 @@ void main() {
         appBar: AppBar(
           actions: const [
             ContentActions(contentType: 'article', contentId: '9'),
-            ContentActions(contentType: 'event', contentId: '3', canBookmark: false),
+            ContentActions(
+              contentType: 'event',
+              contentId: '3',
+              canBookmark: false,
+            ),
           ],
         ),
       ),

@@ -195,7 +195,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           if (_page > 0 && _items.isEmpty)
             const StatusBox(label: '【找不到符合的內容】', detail: '請減少關鍵字或篩選條件。'),
           // M19-D28: offer to clear the filters, no automatic recommendations.
-          if (_page > 0 && _items.isEmpty && (_tags.isNotEmpty || _type != null))
+          if (_page > 0 &&
+              _items.isEmpty &&
+              (_tags.isNotEmpty || _type != null))
             OutlinedButton(
               key: const Key('search-clear-filters'),
               onPressed: () {
@@ -437,13 +439,9 @@ class ContentActions extends ConsumerWidget {
                     .read(discoveryApiProvider)
                     .addBookmark(contentType, contentId);
                 ref.invalidate(bookmarksProvider);
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('已加入收藏。')),
-                );
+                messenger.showSnackBar(const SnackBar(content: Text('已加入收藏。')));
               } catch (error) {
-                messenger.showSnackBar(
-                  SnackBar(content: Text('無法收藏：$error')),
-                );
+                messenger.showSnackBar(SnackBar(content: Text('無法收藏：$error')));
               }
             },
           ),
@@ -490,7 +488,10 @@ class ShareQrDialog extends ConsumerWidget {
           onPressed: () async {
             final messenger = ScaffoldMessenger.of(context);
             try {
-              await ref.read(shareImageProvider)(await qrPng(url), 'qrcode.png');
+              await ref.read(shareImageProvider)(
+                await qrPng(url),
+                'qrcode.png',
+              );
             } catch (_) {
               messenger.showSnackBar(
                 const SnackBar(content: Text('暫時無法分享圖片，請稍後再試。')),
@@ -509,14 +510,20 @@ Future<Uint8List> qrPng(String data, {double size = 600}) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   final margin = size * 0.06;
-  canvas.drawRect(Rect.fromLTWH(0, 0, size, size), Paint()..color = Colors.white);
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, size, size),
+    Paint()..color = Colors.white,
+  );
   canvas.translate(margin, margin);
   QrPainter(
     data: data,
     version: QrVersions.auto,
     gapless: true,
   ).paint(canvas, Size.square(size - 2 * margin));
-  final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+  final image = await recorder.endRecording().toImage(
+    size.toInt(),
+    size.toInt(),
+  );
   final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
   return bytes!.buffer.asUint8List();
 }

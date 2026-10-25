@@ -45,7 +45,7 @@ it('caps the seats one member books across several bookings', function () {
         booker: $member, contactName: $member->name, contactEmail: $member->email, contactPhone: null,
         attendees: [['name' => '加位', 'member_user_id' => null]], clientRequestId: (string) Str::uuid(), byAdmin: true, actor: makeAdmin(),
     ));
-    expect(EventBookingGroup::query()->where('booker_user_id', $member->id)->where('status', 'confirmed')->sum('seat_count'))->toBe(4);
+    expect(EventBookingGroup::query()->where('booker_user_id', $member->id)->where('status', 'confirmed')->sum('seat_count'))->toEqual(4);
 });
 
 it('caps the seats of one guest contact across several guest bookings', function () {

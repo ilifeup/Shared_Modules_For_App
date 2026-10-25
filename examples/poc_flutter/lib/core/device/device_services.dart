@@ -65,7 +65,9 @@ final shareImageProvider =
     Provider<Future<void> Function(Uint8List png, String name)>(
       (ref) => (png, name) async {
         await SharePlus.instance.share(
-          ShareParams(files: [XFile.fromData(png, mimeType: 'image/png', name: name)]),
+          ShareParams(
+            files: [XFile.fromData(png, mimeType: 'image/png', name: name)],
+          ),
         );
       },
     );

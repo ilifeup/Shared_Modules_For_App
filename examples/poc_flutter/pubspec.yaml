@@ -23,7 +23,7 @@ dependencies:
   # S9 M11 QR check-in, M14 share / App Links, M09 Google consent.
   mobile_scanner: ^7.0.0
   qr_flutter: ^4.1.0
-  share_plus: ^11.0.0
+  share_plus: ^13.3.1
   url_launcher: ^6.3.1
 
 dev_dependencies:

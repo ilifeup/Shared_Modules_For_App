@@ -97,7 +97,7 @@
 
 ## 5. 實作時追加的技術裁決
 
-- **Flutter 套件（新增 6 個，皆為 S9 決策必要功能）**：`mobile_scanner`（M11 掃 QR）、`qr_flutter`（M11 會員入場碼／工作人員活動碼）、`geolocator`（M11 選用 GPS）、`share_plus`（M14 分享）、`app_links`（M14 App Links 冷／熱啟動）、`url_launcher`（M09 Google 授權頁、M15 外部 https 連結）。全部透過 provider 包裝（`lib/core/device/device_services.dart`），Widget 測試以假實作覆寫，不需實機。
+- **Flutter 套件（新增 6 個，皆為 S9 決策必要功能）**：`mobile_scanner`（M11 掃 QR）、`qr_flutter`（M11 會員入場碼／工作人員活動碼）、`geolocator`（M11 選用 GPS）、`share_plus` ^13（M14 分享；^11 與 flutter_secure_storage 11 的 win32 版本衝突）、`app_links`（M14 App Links 冷／熱啟動）、`url_launcher`（M09 Google 授權頁、M15 外部 https 連結）。全部透過 provider 包裝（`lib/core/device/device_services.dart`），Widget 測試以假實作覆寫，不需實機。
 - **App Links 網域**：以編譯參數 `APP_LINK_HOST`（Dart）與 Gradle `-PappLinkHost=`（Manifest placeholder）設定；未設定時 App 不監聽外部連結、Manifest 使用 `app-links.invalid`，不會誤認領他人網域。
 - **登入後返回（M14-D20）**：只允許 App 內固定路徑（`/articles|events|notices/{id}`、`/checkin/location/{token}`），以 `safeReturnPath()` 檢查，外部網址一律忽略。
 - **併發重送冪等**：同一 `client_request_id` 的兩個請求同時抵達時，第二個在取得活動列鎖後重新查詢並回傳同一報名群組（不會出現 ALREADY_BOOKED）。CI 腳本以 10 組重送驗證。

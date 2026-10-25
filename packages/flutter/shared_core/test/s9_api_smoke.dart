@@ -295,7 +295,8 @@ Future<void> main() async {
     'share utm',
   );
   // M11-D11: manual guest check-in sends the stated contact.
-  fake.responses.remove('POST /api/v1/events/7/checkin'); // prefix of the staff path
+  // The check-in route is a prefix of the staff path.
+  fake.responses.remove('POST /api/v1/events/7/checkin');
   await CheckinApi(fake)
       .staffScan('7', attendeeId: '12', contact: 'g@example.com');
   check(fake.bodies.last!['contact'] == 'g@example.com', 'staff contact');

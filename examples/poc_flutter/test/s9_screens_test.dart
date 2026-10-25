@@ -12,7 +12,8 @@ import 'package:s1_poc_app/features/s9/discovery_screens.dart';
 import 'package:s1_poc_app/features/s9/group_booking_screen.dart';
 import 'package:s1_poc_app/features/s9/verification_marketing.dart';
 
-typedef Handler = FutureOr<Map<String, dynamic>> Function(Map<String, dynamic>? body);
+typedef Handler =
+    FutureOr<Map<String, dynamic>> Function(Map<String, dynamic>? body);
 
 /// Routes "METHOD path" (exact, or prefix when it ends with *) to handlers.
 class S9Backend implements ApiTransport {
@@ -92,17 +93,28 @@ Future<void> pumpScreen(
 void main() {
   test('request ids are random UUID v4', () {
     final a = newRequestId();
-    expect(a, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')));
+    expect(
+      a,
+      matches(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    );
     expect(newRequestId(), isNot(a));
   });
 
-  testWidgets('M08 books a group once and shows the waitlist position', (tester) async {
+  testWidgets('M08 books a group once and shows the waitlist position', (
+    tester,
+  ) async {
     final backend = S9Backend();
     final gate = Completer<void>();
     backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
     backend.routes['POST /api/v1/events/7/booking-groups'] = (body) async {
       await gate.future;
-      return {'data': group('waitlisted', ['我', '家人'])};
+      return {
+        'data': group('waitlisted', ['我', '家人']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
 
@@ -112,7 +124,10 @@ void main() {
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pump();
     expect(find.text('處理中…'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('group-submit')), warnIfMissed: false);
+    await tester.tap(
+      find.byKey(const Key('group-submit')),
+      warnIfMissed: false,
+    );
     gate.complete();
     await tester.pumpAndSettle();
 
@@ -128,20 +143,42 @@ void main() {
     expect(find.text('共 2 位：我、家人'), findsOneWidget);
   });
 
-  testWidgets('M11 scans the event QR and checks in the selected attendee', (tester) async {
+  testWidgets('M11 scans the event QR and checks in the selected attendee', (
+    tester,
+  ) async {
     final backend = S9Backend();
     backend.routes['GET /api/v1/events/7/checkin'] = (_) => {
       'data': {
-        'settings': {'enabled': true, 'open_now': true, 'checkout_enabled': false, 'gps_required': false, 'gps_radius_m': 100},
+        'settings': {
+          'enabled': true,
+          'open_now': true,
+          'checkout_enabled': false,
+          'gps_required': false,
+          'gps_radius_m': 100,
+        },
         'attendees': [
-          {'id': '10', 'name': '我', 'booking_status': 'confirmed', 'checkin_status': null},
-          {'id': '11', 'name': '候補者', 'booking_status': 'waitlisted', 'checkin_status': null},
+          {
+            'id': '10',
+            'name': '我',
+            'booking_status': 'confirmed',
+            'checkin_status': null,
+          },
+          {
+            'id': '11',
+            'name': '候補者',
+            'booking_status': 'waitlisted',
+            'checkin_status': null,
+          },
         ],
       },
     };
     backend.routes['POST /api/v1/events/7/checkin'] = (body) => {
       'data': [
-        {'attendee_id': '10', 'result': 'checked_in', 'checkin_status': 'checked_in'},
+        {
+          'attendee_id': '10',
+          'result': 'checked_in',
+          'checkin_status': 'checked_in',
+        },
       ],
     };
     await pumpScreen(
@@ -158,39 +195,50 @@ void main() {
     await tester.tap(find.byKey(const Key('checkin-scan')));
     await tester.pumpAndSettle();
 
-    final body = backend.bodies[backend.calls.indexOf('POST /api/v1/events/7/checkin')]!;
+    final body =
+        backend.bodies[backend.calls.indexOf('POST /api/v1/events/7/checkin')]!;
     expect(body['attendee_ids'], [10]);
     expect(body['event_token'], 'e.7.29999999.0123456789abcdef01234567');
     expect(find.textContaining('#10 簽到成功'), findsOneWidget);
   });
 
-  testWidgets('M11 Location QR needs GPS when required and explains a failure', (tester) async {
-    final backend = S9Backend();
-    backend.routes['GET /api/v1/events/7/checkin'] = (_) => {
-      'data': {
-        'settings': {'enabled': true, 'open_now': true, 'gps_required': true, 'gps_radius_m': 100},
-        'attendees': [
-          {'id': '10', 'name': '我', 'booking_status': 'confirmed'},
-        ],
-      },
-    };
-    await pumpScreen(
-      tester,
-      backend,
-      const CheckinScreen(eventId: '7', locationToken: 'ABCDEFGHIJKLMNOP'),
-      gps: () async => null,
-    );
+  testWidgets(
+    'M11 Location QR needs GPS when required and explains a failure',
+    (tester) async {
+      final backend = S9Backend();
+      backend.routes['GET /api/v1/events/7/checkin'] = (_) => {
+        'data': {
+          'settings': {
+            'enabled': true,
+            'open_now': true,
+            'gps_required': true,
+            'gps_radius_m': 100,
+          },
+          'attendees': [
+            {'id': '10', 'name': '我', 'booking_status': 'confirmed'},
+          ],
+        },
+      };
+      await pumpScreen(
+        tester,
+        backend,
+        const CheckinScreen(eventId: '7', locationToken: 'ABCDEFGHIJKLMNOP'),
+        gps: () async => null,
+      );
 
-    await tester.tap(find.byKey(const Key('checkin-attendee-10')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('checkin-scan')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('checkin-attendee-10')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('checkin-scan')));
+      await tester.pumpAndSettle();
 
-    expect(backend.calls, isNot(contains('POST /api/v1/events/7/checkin')));
-    expect(find.textContaining('無法取得定位'), findsOneWidget);
-  });
+      expect(backend.calls, isNot(contains('POST /api/v1/events/7/checkin')));
+      expect(find.textContaining('無法取得定位'), findsOneWidget);
+    },
+  );
 
-  testWidgets('M19 searches with AND keywords and loads the next page', (tester) async {
+  testWidgets('M19 searches with AND keywords and loads the next page', (
+    tester,
+  ) async {
     final backend = S9Backend();
     backend.routes['GET /api/v1/tags'] = (_) => {
       'data': [
@@ -208,7 +256,12 @@ void main() {
       final page = backend.calls.last.contains('page=2') ? 2 : 1;
       return {
         'data': [card('$page')],
-        'meta': {'current_page': page, 'last_page': 2, 'total': 21, 'types': ['article', 'event']},
+        'meta': {
+          'current_page': page,
+          'last_page': 2,
+          'total': 21,
+          'types': ['article', 'event'],
+        },
       };
     };
     await pumpScreen(tester, backend, const SearchScreen());
@@ -219,7 +272,10 @@ void main() {
     await tester.tap(find.byKey(const Key('search-submit')));
     await tester.pumpAndSettle();
 
-    expect(backend.calls.last, 'GET /api/v1/search?q=%E9%9D%9C%E5%9D%90+%E5%85%A5%E9%96%80&tags[]=1');
+    expect(
+      backend.calls.last,
+      'GET /api/v1/search?q=%E9%9D%9C%E5%9D%90+%E5%85%A5%E9%96%80&tags[]=1',
+    );
     expect(find.text('共 21 筆'), findsOneWidget);
     await tester.tap(find.byKey(const Key('search-more')));
     await tester.pumpAndSettle();
@@ -228,43 +284,61 @@ void main() {
     expect(find.byKey(const Key('search-more')), findsNothing);
   });
 
-  testWidgets('M19 shows placeholders and clears bookmarks after two confirmations', (tester) async {
-    final backend = S9Backend();
-    var cleared = false;
-    backend.routes['GET /api/v1/me/bookmarks'] = (_) => {
-      'data': cleared
-          ? const []
-          : [
-              {'content_type': 'article', 'content_id': '9', 'available': false, 'item': null},
-            ],
-      'meta': {'count': cleared ? 0 : 1, 'limit': 1000},
-    };
-    backend.routes['DELETE /api/v1/me/bookmarks'] = (_) {
-      cleared = true;
-      return {'data': {'deleted': 1}};
-    };
-    await pumpScreen(tester, backend, const BookmarksScreen());
+  testWidgets(
+    'M19 shows placeholders and clears bookmarks after two confirmations',
+    (tester) async {
+      final backend = S9Backend();
+      var cleared = false;
+      backend.routes['GET /api/v1/me/bookmarks'] = (_) => {
+        'data': cleared
+            ? const []
+            : [
+                {
+                  'content_type': 'article',
+                  'content_id': '9',
+                  'available': false,
+                  'item': null,
+                },
+              ],
+        'meta': {'count': cleared ? 0 : 1, 'limit': 1000},
+      };
+      backend.routes['DELETE /api/v1/me/bookmarks'] = (_) {
+        cleared = true;
+        return {
+          'data': {'deleted': 1},
+        };
+      };
+      await pumpScreen(tester, backend, const BookmarksScreen());
 
-    expect(find.text('【內容已無法開啟】'), findsOneWidget);
-    expect(find.text('1 / 1000'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('bookmarks-clear')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('confirm-yes')));
-    await tester.pumpAndSettle();
-    expect(backend.calls, isNot(contains('DELETE /api/v1/me/bookmarks')));
-    await tester.tap(find.byKey(const Key('confirm-yes')));
-    await tester.pumpAndSettle();
+      expect(find.text('【內容已無法開啟】'), findsOneWidget);
+      expect(find.text('1 / 1000'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('bookmarks-clear')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-yes')));
+      await tester.pumpAndSettle();
+      expect(backend.calls, isNot(contains('DELETE /api/v1/me/bookmarks')));
+      await tester.tap(find.byKey(const Key('confirm-yes')));
+      await tester.pumpAndSettle();
 
-    expect(backend.calls, contains('DELETE /api/v1/me/bookmarks'));
-    expect(find.text('【尚無收藏】'), findsOneWidget);
-  });
+      expect(backend.calls, contains('DELETE /api/v1/me/bookmarks'));
+      expect(find.text('【尚無收藏】'), findsOneWidget);
+    },
+  );
 
-  testWidgets('M15 banner renders nothing when the placement fails', (tester) async {
-    await pumpScreen(tester, S9Backend(), const Scaffold(body: MarketingBanner()));
+  testWidgets('M15 banner renders nothing when the placement fails', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      S9Backend(),
+      const Scaffold(body: MarketingBanner()),
+    );
     expect(find.byType(Card), findsNothing);
   });
 
-  testWidgets('M15 banner counts the tap and opens the campaign', (tester) async {
+  testWidgets('M15 banner counts the tap and opens the campaign', (
+    tester,
+  ) async {
     final second = S9Backend();
     second.routes['GET /api/v1/marketing/placements/home_banner'] = (_) => {
       'data': [
@@ -272,12 +346,19 @@ void main() {
           'id': '2',
           'title': '冬令營',
           'button_text': '查看',
-          'target': {'type': 'url', 'id': null, 'url': 'https://example.com/a', 'app_path': null},
+          'target': {
+            'type': 'url',
+            'id': null,
+            'url': 'https://example.com/a',
+            'app_path': null,
+          },
           'utm': {'utm_source': 'app'},
         },
       ],
     };
-    second.routes['POST /api/v1/links/clicks'] = (_) => {'data': {'click_id': null}};
+    second.routes['POST /api/v1/links/clicks'] = (_) => {
+      'data': {'click_id': null},
+    };
     final opened = <Uri>[];
     await pumpScreen(
       tester,
@@ -300,16 +381,33 @@ void main() {
     var hidden = false;
     backend.routes['GET /api/v1/verification-types'] = (_) => {
       'data': [
-        {'id': '1', 'name': '志工', 'requires_evidence': false, 'required_approvals': 2, 'allow_multiple': false},
+        {
+          'id': '1',
+          'name': '志工',
+          'requires_evidence': false,
+          'required_approvals': 2,
+          'allow_multiple': false,
+        },
       ],
     };
     backend.routes['GET /api/v1/me/verifications'] = (_) => {
       'data': {
         'requests': [
-          {'id': '5', 'type': {'name': '志工'}, 'status': 'pending', 'approvals': 1, 'required_approvals': 2},
+          {
+            'id': '5',
+            'type': {'name': '志工'},
+            'status': 'pending',
+            'approvals': 1,
+            'required_approvals': 2,
+          },
         ],
         'badges': [
-          {'id': '8', 'type': {'name': '教職'}, 'state': 'valid', 'is_public': !hidden},
+          {
+            'id': '8',
+            'type': {'name': '教職'},
+            'state': 'valid',
+            'is_public': !hidden,
+          },
         ],
       },
     };
@@ -319,7 +417,12 @@ void main() {
     backend.routes['PATCH /api/v1/me/verifications/8'] = (body) {
       hidden = body!['is_public'] == false;
       return {
-        'data': {'id': '8', 'type': {'name': '教職'}, 'state': 'valid', 'is_public': !hidden},
+        'data': {
+          'id': '8',
+          'type': {'name': '教職'},
+          'state': 'valid',
+          'is_public': !hidden,
+        },
       };
     };
     await pumpScreen(tester, backend, const VerificationScreen());

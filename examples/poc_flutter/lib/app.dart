@@ -26,20 +26,19 @@ class _S1PocAppState extends ConsumerState<S1PocApp> {
     final host = ref.read(appConfigProvider).appLinkHost;
     if (host.isEmpty) return;
     final parser = DeepLinkParser({host.toLowerCase()});
-    _links = ref.read(deepLinkStreamProvider).listen(
-      (uri) {
-        final target = parser.parse(uri);
-        if (target == null || _dedupe.isDuplicate(uri)) return;
-        ref.read(routerProvider).go(target.appPath);
-        if (target.type != 'checkin_location') {
-          // Counted only as an explicit open report (M17-D21); never blocks.
-          unawaited(
-            ref.read(linkApiProvider).opened(target.type, target.id, utm: target.utm),
-          );
-        }
-      },
-      onError: (Object _) {},
-    );
+    _links = ref.read(deepLinkStreamProvider).listen((uri) {
+      final target = parser.parse(uri);
+      if (target == null || _dedupe.isDuplicate(uri)) return;
+      ref.read(routerProvider).go(target.appPath);
+      if (target.type != 'checkin_location') {
+        // Counted only as an explicit open report (M17-D21); never blocks.
+        unawaited(
+          ref
+              .read(linkApiProvider)
+              .opened(target.type, target.id, utm: target.utm),
+        );
+      }
+    }, onError: (Object _) {});
   }
 
   @override

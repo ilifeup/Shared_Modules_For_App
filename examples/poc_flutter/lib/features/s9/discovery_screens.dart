@@ -120,7 +120,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           const SizedBox(height: 8),
           Wrap(
             children: [
-              for (final t in const [(null, '全部'), ('article', '文章'), ('event', '活動')])
+              for (final t in const [
+                (null, '全部'),
+                ('article', '文章'),
+                ('event', '活動'),
+              ])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(
@@ -205,7 +209,8 @@ class ContentCardTile extends StatelessWidget {
           [
             if (item.date != null) formatDate(item.date!.toLocal()),
             ?item.location,
-            if (item.tags.isNotEmpty) item.tags.map((t) => '#${t.name}').join(' '),
+            if (item.tags.isNotEmpty)
+              item.tags.map((t) => '#${t.name}').join(' '),
           ].join('・'),
         ),
         onTap: () => context.push(item.appPath),
@@ -230,7 +235,11 @@ class BookmarksScreen extends ConsumerWidget {
             onPressed: () async {
               final first = await _confirm(context, '清除全部收藏？', '此動作無法復原。');
               if (!first || !context.mounted) return;
-              final second = await _confirm(context, '再次確認', '確定要清除此 App 的全部收藏嗎？');
+              final second = await _confirm(
+                context,
+                '再次確認',
+                '確定要清除此 App 的全部收藏嗎？',
+              );
               if (!second) return;
               await ref.read(discoveryApiProvider).clearBookmarks();
               ref.invalidate(bookmarksProvider);
@@ -260,19 +269,25 @@ class BookmarksScreen extends ConsumerWidget {
                   ? Dismissible(
                       key: Key('bookmark-${b.contentType}-${b.contentId}'),
                       onDismissed: (_) async {
-                        await ref.read(discoveryApiProvider).removeBookmark(b.contentType, b.contentId);
+                        await ref
+                            .read(discoveryApiProvider)
+                            .removeBookmark(b.contentType, b.contentId);
                         ref.invalidate(bookmarksProvider);
                       },
                       child: ContentCardTile(item: b.item!),
                     )
                   : Card(
                       child: ListTile(
-                        key: Key('bookmark-gone-${b.contentType}-${b.contentId}'),
+                        key: Key(
+                          'bookmark-gone-${b.contentType}-${b.contentId}',
+                        ),
                         title: const Text('【內容已無法開啟】'),
                         subtitle: const Text('此內容已下架或您已無權限閱讀。'),
                         trailing: TextButton(
                           onPressed: () async {
-                            await ref.read(discoveryApiProvider).removeBookmark(b.contentType, b.contentId);
+                            await ref
+                                .read(discoveryApiProvider)
+                                .removeBookmark(b.contentType, b.contentId);
                             ref.invalidate(bookmarksProvider);
                           },
                           child: const Text('移除'),
@@ -333,14 +348,20 @@ class ContentActions extends ConsumerWidget {
           onPressed: () async {
             final messenger = ScaffoldMessenger.of(context);
             try {
-              final link = await ref.read(linkApiProvider).share(contentType, contentId);
+              final link = await ref
+                  .read(linkApiProvider)
+                  .share(contentType, contentId);
               if (!link.shareable || link.url == null) {
-                messenger.showSnackBar(const SnackBar(content: Text('此內容不開放分享。')));
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('此內容不開放分享。')),
+                );
                 return;
               }
               await ref.read(shareTextProvider)(link.url!);
             } catch (_) {
-              messenger.showSnackBar(const SnackBar(content: Text('暫時無法分享，請稍後再試。')));
+              messenger.showSnackBar(
+                const SnackBar(content: Text('暫時無法分享，請稍後再試。')),
+              );
             }
           },
         ),
@@ -352,7 +373,9 @@ class ContentActions extends ConsumerWidget {
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               try {
-                await ref.read(discoveryApiProvider).addBookmark(contentType, contentId);
+                await ref
+                    .read(discoveryApiProvider)
+                    .addBookmark(contentType, contentId);
                 ref.invalidate(bookmarksProvider);
                 messenger.showSnackBar(const SnackBar(content: Text('已加入收藏。')));
               } catch (error) {

@@ -134,9 +134,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               key: const Key('group-include-self'),
               title: const Text('我本人參加'),
               value: _includeSelf,
-              onChanged: _busy
-                  ? null
-                  : (v) => setState(() => _includeSelf = v),
+              onChanged: _busy ? null : (v) => setState(() => _includeSelf = v),
             ),
             for (var i = 0; i < _names.length; i++)
               Padding(
@@ -243,19 +241,21 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
           if (_error != null) ErrorBox(error: _error!),
           ...claimable.maybeWhen(
             data: (items) => [
-              if (items.isNotEmpty)
-                const Text('可認領的訪客報名（與您已驗證的 Email／手機相同）'),
+              if (items.isNotEmpty) const Text('可認領的訪客報名（與您已驗證的 Email／手機相同）'),
               for (final g in items)
                 Card(
                   child: ListTile(
                     title: Text(g.eventTitle),
-                    subtitle: Text('${formatDate(g.eventStartsAt)}・${g.seatCount} 位'),
+                    subtitle: Text(
+                      '${formatDate(g.eventStartsAt)}・${g.seatCount} 位',
+                    ),
                     trailing: TextButton(
                       key: Key('claim-${g.id}'),
                       onPressed: _busy
                           ? null
                           : () => _act(
-                              () => ref.read(bookingGroupApiProvider).claim(g.id),
+                              () =>
+                                  ref.read(bookingGroupApiProvider).claim(g.id),
                             ),
                       child: const Text('認領'),
                     ),

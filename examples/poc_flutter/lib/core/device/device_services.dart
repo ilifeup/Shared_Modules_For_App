@@ -15,9 +15,10 @@ typedef GpsFix = ({double lat, double lng, double accuracy});
 
 /// Opens the camera and returns the first QR code text (null = cancelled).
 final qrScannerProvider = Provider<Future<String?> Function(BuildContext)>(
-  (ref) => (context) => Navigator.of(
-    context,
-  ).push<String>(MaterialPageRoute(builder: (_) => const QrScanPage())),
+  (ref) =>
+      (context) => Navigator.of(
+        context,
+      ).push<String>(MaterialPageRoute(builder: (_) => const QrScanPage())),
 );
 
 /// Current position for GPS check-in. Null when permission is denied or the

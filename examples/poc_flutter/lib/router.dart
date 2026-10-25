@@ -73,7 +73,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (isPublic) return null;
         // S9 M14: come back to a shared link after logging in (in-App paths only).
         final back = safeReturnPath(state.uri.path);
-        return back == null ? '/login' : '/login?from=${Uri.encodeComponent(back)}';
+        return back == null
+            ? '/login'
+            : '/login?from=${Uri.encodeComponent(back)}';
       }
       // Signed in but the verification policy is not satisfied yet.
       final profile = ref.read(authControllerProvider).profile;

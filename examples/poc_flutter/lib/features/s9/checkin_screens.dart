@@ -261,7 +261,10 @@ class _CheckinPassScreenState extends ConsumerState<CheckinPassScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     children: [
-                      Text(p.name, style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        p.name,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       QrImageView(
                         key: Key('pass-${p.attendeeId}'),
                         data: p.token,
@@ -358,7 +361,11 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
         children: [
           if (_error != null) ErrorBox(error: _error!),
           if (_message != null)
-            StatusBox(key: const Key('staff-message'), label: '【掃描結果】', detail: _message!),
+            StatusBox(
+              key: const Key('staff-message'),
+              label: '【掃描結果】',
+              detail: _message!,
+            ),
           if (s != null)
             StatusBox(
               key: const Key('staff-summary'),
@@ -366,8 +373,17 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
               detail: s.checkoutEnabled ? '已簽退 ${s.checkedOut}' : '',
             ),
           if (qr != null) ...[
-            Center(child: QrImageView(key: const Key('event-qr'), data: qr.token, size: 240)),
-            const Text('請會員以 App 掃描此 QR Code（每分鐘更新）。', textAlign: TextAlign.center),
+            Center(
+              child: QrImageView(
+                key: const Key('event-qr'),
+                data: qr.token,
+                size: 240,
+              ),
+            ),
+            const Text(
+              '請會員以 App 掃描此 QR Code（每分鐘更新）。',
+              textAlign: TextAlign.center,
+            ),
           ],
           FilledButton(
             key: const Key('staff-scan'),

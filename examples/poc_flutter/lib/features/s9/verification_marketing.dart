@@ -30,7 +30,11 @@ class DioVerificationUploader implements VerificationUploader {
   final Dio _dio;
 
   @override
-  Future<void> apply(String typeId, String? note, List<PickedImage> files) async {
+  Future<void> apply(
+    String typeId,
+    String? note,
+    List<PickedImage> files,
+  ) async {
     try {
       await _dio.post<Object?>(
         VerificationApi.applyPath,
@@ -38,7 +42,8 @@ class DioVerificationUploader implements VerificationUploader {
           'type_id': typeId,
           'note': ?note,
           'evidence[]': [
-            for (final f in files) MultipartFile.fromBytes(f.bytes, filename: f.filename),
+            for (final f in files)
+              MultipartFile.fromBytes(f.bytes, filename: f.filename),
           ],
         }),
       );
@@ -94,9 +99,14 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   Future<void> _apply(VerificationType type) => _run(() async {
     if (type.requiresEvidence) {
       if (_files.isEmpty) {
-        throw const ApiException(code: 'VALIDATION_FAILED', message: '此認證需要上傳證明文件。');
+        throw const ApiException(
+          code: 'VALIDATION_FAILED',
+          message: '此認證需要上傳證明文件。',
+        );
       }
-      await ref.read(verificationUploaderProvider).apply(type.id, null, List.of(_files));
+      await ref
+          .read(verificationUploaderProvider)
+          .apply(type.id, null, List.of(_files));
     } else {
       await ref.read(verificationApiProvider).applyWithoutEvidence(type.id);
     }
@@ -118,17 +128,29 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
               for (final b in m.badges)
                 SwitchListTile(
                   key: Key('badge-${b.id}'),
-                  title: Text('${b.typeName}${b.isValid ? '' : b.state == 'expired' ? '（已過期）' : '（已撤銷）'}'),
+                  title: Text(
+                    '${b.typeName}${b.isValid
+                        ? ''
+                        : b.state == 'expired'
+                        ? '（已過期）'
+                        : '（已撤銷）'}',
+                  ),
                   subtitle: Text(b.isPublic ? '公開顯示於留言' : '不公開'),
                   value: b.isPublic,
                   onChanged: _busy || !b.isValid
                       ? null
-                      : (v) => _run(() => ref.read(verificationApiProvider).setBadgePublic(b.id, v)),
+                      : (v) => _run(
+                          () => ref
+                              .read(verificationApiProvider)
+                              .setBadgePublic(b.id, v),
+                        ),
                 ),
               for (final r in m.requests)
                 ListTile(
                   key: Key('request-${r.id}'),
-                  title: Text('${r.typeName} ${verificationStatusLabel(r.status)}'),
+                  title: Text(
+                    '${r.typeName} ${verificationStatusLabel(r.status)}',
+                  ),
                   subtitle: Text(
                     r.isPending
                         ? '核准 ${r.approvals} / ${r.requiredApprovals}'
@@ -137,7 +159,13 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   trailing: r.isPending
                       ? TextButton(
                           key: Key('withdraw-${r.id}'),
-                          onPressed: _busy ? null : () => _run(() => ref.read(verificationApiProvider).withdraw(r.id)),
+                          onPressed: _busy
+                              ? null
+                              : () => _run(
+                                  () => ref
+                                      .read(verificationApiProvider)
+                                      .withdraw(r.id),
+                                ),
                           child: const Text('撤回'),
                         )
                       : null,
@@ -153,7 +181,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                 ? null
                 : () async {
                     final picked = await ref.read(avatarPickerProvider)();
-                    if (picked != null && mounted) setState(() => _files.add(picked));
+                    if (picked != null && mounted)
+                      setState(() => _files.add(picked));
                   },
             child: const Text('選擇證明文件'),
           ),
@@ -170,7 +199,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                       [
                         ?t.description,
                         if (t.requiresEvidence) '需上傳證明文件',
-                        if (t.requiredApprovals > 1) '需 ${t.requiredApprovals} 位審核人員核准',
+                        if (t.requiredApprovals > 1)
+                          '需 ${t.requiredApprovals} 位審核人員核准',
                         if (t.validityDays != null) '有效 ${t.validityDays} 天',
                       ].join('・'),
                     ),
@@ -216,7 +246,9 @@ class MarketingBanner extends ConsumerWidget {
               trailing: TextButton(
                 onPressed: () async {
                   final router = GoRouter.maybeOf(context);
-                  await ref.read(linkApiProvider).click('campaign', item.id, utm: item.utm);
+                  await ref
+                      .read(linkApiProvider)
+                      .click('campaign', item.id, utm: item.utm);
                   if (item.isExternal) {
                     await ref.read(openUrlProvider)(Uri.parse(item.url));
                   } else if (item.appPath != null && router != null) {

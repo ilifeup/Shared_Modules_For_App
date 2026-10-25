@@ -160,7 +160,11 @@ class _PrivateTile extends ConsumerWidget {
         subtitle: Text(
           '${formatDate(item.startsAt.toLocal())} '
           '${formatTime(item.startsAt.toLocal())}'
-          '${item.recurrence == 'weekly' ? '・每週' : item.recurrence == 'monthly' ? '・每月' : ''}',
+          '${item.recurrence == 'weekly'
+              ? '・每週'
+              : item.recurrence == 'monthly'
+              ? '・每月'
+              : ''}',
         ),
         trailing: IconButton(
           tooltip: '刪除',
@@ -193,9 +197,7 @@ class _GoogleCard extends ConsumerWidget {
         return Card(
           child: ListTile(
             key: const Key('google-card'),
-            title: Text(
-              s.connected ? '【已連結 Google 日曆】' : '【未連結 Google 日曆】',
-            ),
+            title: Text(s.connected ? '【已連結 Google 日曆】' : '【未連結 Google 日曆】'),
             subtitle: Text(
               s.connected
                   ? '單向同步我的報名與私人行程。'
@@ -290,7 +292,10 @@ class _PrivateEventDialogState extends ConsumerState<_PrivateEventDialog> {
                 lastDate: DateTime(_day.year + 2),
               );
               if (picked != null) {
-                setState(() => _day = DateTime(picked.year, picked.month, picked.day, 9));
+                setState(
+                  () =>
+                      _day = DateTime(picked.year, picked.month, picked.day, 9),
+                );
               }
             },
             child: Text('日期：${formatDate(_day)} 09:00（1 小時）'),

@@ -175,8 +175,9 @@ final class BookingEngine
     /**
      * S9 group booking (member, guest or admin on the member's behalf).
      */
-    public function book(CalendarEvent $event, BookingRequest $request): EventBookingGroup
+    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
     {
+        $created = false;
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -251,6 +252,7 @@ final class BookingEngine
             return $this->replay($replayed, $event, $request);
         }
 
+        $created = true;
         $this->flush();
 
         return $group->refresh()->load('attendees', 'waitlistEntry');
@@ -643,8 +645,26 @@ final class BookingEngine
         $same = $existing->calendar_event_id === $event->id
             && $existing->booker_user_id === $request->booker?->id
             && ($request->booker !== null || $existing->contact_email === $request->contactEmail && $existing->contact_phone === $request->contactPhone);
-        if (! $same) {
-            throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於其他報名。');
+        // A retry must represent the original booking, not a different attendee list.
+        // Compare the persisted attendee snapshot rather than the current member profile.
+        $stored = $existing->attendees()->orderBy('id')->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
+            'name' => $attendee->name,
+            'member_user_id' => $attendee->member_user_id === null ? null : (int) $attendee->member_user_id,
+        ])->all();
+        $incoming = array_map(fn (array $attendee): array => [
+            'name' => mb_substr(trim($attendee['name']), 0, 80),
+            'member_user_id' => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
+        ], $request->attendees);
+        // The booker's own display name may change between retries. Their stable
+        // member ID identifies that seat; proxy/guest attendee names remain immutable.
+        foreach ($stored as $index => $attendee) {
+            if ($request->booker !== null && $attendee['member_user_id'] === $request->booker->id
+                && isset($incoming[$index]) && $incoming[$index]['member_user_id'] === $request->booker->id) {
+                $incoming[$index]['name'] = $attendee['name'];
+            }
+        }
+        if (! $same || $existing->seat_count !== count($incoming) || $stored !== $incoming) {
+            throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
         return $existing->load('attendees', 'waitlistEntry');

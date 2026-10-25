@@ -148,6 +148,103 @@ void main() {
     expect(find.text('共 2 位：我、家人'), findsOneWidget);
   });
 
+  testWidgets('M08 timeout retry preserves the exact payload and request ID', (
+    tester,
+  ) async {
+    final backend = S9Backend();
+    var attempts = 0;
+    backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
+    backend.routes['POST /api/v1/events/7/booking-groups'] = (_) {
+      attempts++;
+      if (attempts == 1) {
+        throw const ApiException(code: 'NETWORK_ERROR', message: '連線中斷');
+      }
+      return {
+        'data': group('confirmed', ['我', '家人']),
+      };
+    };
+    await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
+    await tester.tap(find.byKey(const Key('group-add-name')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('group-name-0')), '家人');
+    await tester.tap(find.byKey(const Key('group-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('重試原請求'), findsOneWidget);
+    expect(find.text('【結果待確認】'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('group-name-0'))).enabled,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('group-include-self')))
+          .onChanged,
+      isNull,
+    );
+    final firstBody = Map<String, dynamic>.from(
+      backend.bodies[backend.calls.lastIndexOf(
+        'POST /api/v1/events/7/booking-groups',
+      )]!,
+    );
+    await tester.tap(find.byKey(const Key('group-submit')));
+    await tester.pumpAndSettle();
+    final secondBody =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
+    expect(attempts, 2);
+    expect(secondBody, firstBody);
+    expect(find.text('【正式報名】'), findsOneWidget);
+  });
+
+  testWidgets('M08 definitive validation error permits corrected new request', (
+    tester,
+  ) async {
+    final backend = S9Backend();
+    var attempts = 0;
+    backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
+    backend.routes['POST /api/v1/events/7/booking-groups'] = (_) {
+      attempts++;
+      if (attempts == 1) {
+        throw const ApiException(
+          code: 'VALIDATION_FAILED',
+          message: '資料不完整',
+          statusCode: 422,
+        );
+      }
+      return {
+        'data': group('confirmed', ['我', '新同行者']),
+      };
+    };
+    await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
+    await tester.tap(find.byKey(const Key('group-add-name')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('group-name-0')), '舊同行者');
+    await tester.tap(find.byKey(const Key('group-submit')));
+    await tester.pumpAndSettle();
+    final first =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('group-name-0'))).enabled,
+      isTrue,
+    );
+    await tester.enterText(find.byKey(const Key('group-name-0')), '新同行者');
+    await tester.tap(find.byKey(const Key('group-submit')));
+    await tester.pumpAndSettle();
+    final second =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
+    expect(first['client_request_id'], isNot(second['client_request_id']));
+    expect(second['attendees'], [
+      {'name': '新同行者'},
+    ]);
+    expect(find.text('【正式報名】'), findsOneWidget);
+  });
+
   testWidgets('M11 scans the event QR and checks in the selected attendee', (
     tester,
   ) async {

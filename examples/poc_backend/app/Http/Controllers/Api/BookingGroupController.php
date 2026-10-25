@@ -47,7 +47,8 @@ class BookingGroupController extends Controller
             $attendees[] = ['name' => trim($a['name']), 'member_user_id' => null];
         }
 
-        $before = EventBookingGroup::query()->where('client_request_id', $data['client_request_id'])->exists();
+        // The engine determines whether this was created or replayed under its event lock.
+        $created = false;
         $group = $this->engine->book($event, new BookingRequest(
             booker: $member,
             contactName: $member->name,
@@ -56,9 +57,9 @@ class BookingGroupController extends Controller
             attendees: $attendees,
             clientRequestId: $data['client_request_id'],
             actor: $member,
-        ));
+        ), $created);
 
-        return new JsonResponse(['data' => BookingGroupPresenter::present($group, $member)], $before ? 200 : 201);
+        return new JsonResponse(['data' => BookingGroupPresenter::present($group, $member)], $created ? 201 : 200);
     }
 
     /**

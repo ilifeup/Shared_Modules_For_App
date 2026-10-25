@@ -1237,9 +1237,13 @@ paths:
       parameters:
         - { name: type, in: path, required: true, schema: { type: string, enum: [article, event, notice] } }
         - { $ref: '#/components/parameters/Id' }
+        - { name: utm_source, in: query, required: false, description: 'Optional (M17-D20)', schema: { type: string, pattern: '^[A-Za-z0-9_.\-]{1,40}$' } }
+        - { name: utm_medium, in: query, required: false, schema: { type: string, pattern: '^[A-Za-z0-9_.\-]{1,40}$' } }
+        - { name: utm_campaign, in: query, required: false, schema: { type: string, pattern: '^[A-Za-z0-9_.\-]{1,80}$' } }
       responses:
         '200': { $ref: '#/components/responses/ShareLinkResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /marketing/placements/{code}:
@@ -1557,7 +1561,7 @@ paths:
       operationId: staffCheckIn
       x-verification: required
       x-dart: CheckinApi.staffScan -> CheckinResult
-      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?}.'
+      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?, contact?}. Manual check-in of an unclaimed guest needs the booking Email or phone in contact (D11): 422 CONTACT_REQUIRED / CONTACT_MISMATCH.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultResponse' }

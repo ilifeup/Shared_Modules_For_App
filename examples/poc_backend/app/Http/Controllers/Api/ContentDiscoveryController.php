@@ -134,7 +134,8 @@ class ContentDiscoveryController extends Controller
     }
 
     /**
-     * GET /api/v1/content/{type}/{id}/share — share URL when the content may be shared (M14-D23).
+     * GET /api/v1/content/{type}/{id}/share?utm_source=&utm_medium=&utm_campaign= — share URL when
+     * the content may be shared (M14-D23); UTM parameters are optional (M17-D20).
      */
     public function share(Request $request, string $type, int $id): JsonResponse
     {
@@ -146,12 +147,18 @@ class ContentDiscoveryController extends Controller
             throw new ApiException(404, 'NOT_FOUND', '找不到此內容。');
         }
         $enabled = $this->settings->allows('content_share_types', $type);
+        // M17-D20 / D27: optional campaign source, only the standard utm_* names in a safe format.
+        $utm = $request->validate([
+            'utm_source' => ['sometimes', 'nullable', 'string', 'regex:/^[A-Za-z0-9_.\-]{1,40}$/'],
+            'utm_medium' => ['sometimes', 'nullable', 'string', 'regex:/^[A-Za-z0-9_.\-]{1,40}$/'],
+            'utm_campaign' => ['sometimes', 'nullable', 'string', 'regex:/^[A-Za-z0-9_.\-]{1,80}$/'],
+        ]);
 
         return new JsonResponse(['data' => [
             'content_type' => $type,
             'content_id' => (string) $id,
             'shareable' => $enabled,
-            'url' => $enabled ? $this->registry->webUrl($type, $id) : null,
+            'url' => $enabled ? $this->registry->webUrl($type, $id, array_filter($utm)) : null,
             'is_public' => $this->registry->isPublic($type, $content),
         ]]);
     }

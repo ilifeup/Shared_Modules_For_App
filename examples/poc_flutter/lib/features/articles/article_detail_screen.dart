@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
+import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
 import '../auth/auth_controller.dart';
 import '../s9/discovery_screens.dart';
@@ -98,8 +99,8 @@ class _ArticleDenied extends ConsumerWidget {
         label: '【無法閱讀】',
         detail: '這篇文章僅限特定會員等級或身分閱讀。',
       ),
-      _ => ErrorRetry(
-        error: ErrorBox(error: error),
+      _ => ContentUnavailable(
+        error: error,
         onRetry: () => ref.invalidate(articleDetailProvider(id)),
       ),
     };

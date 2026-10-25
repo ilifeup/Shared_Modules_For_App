@@ -101,7 +101,7 @@
 - **App Links 網域**：以編譯參數 `APP_LINK_HOST`（Dart）與 Gradle `-PappLinkHost=`（Manifest placeholder）設定；未設定時 App 不監聽外部連結、Manifest 使用 `app-links.invalid`，不會誤認領他人網域。
 - **登入後返回（M14-D20）**：只允許 App 內固定路徑（`/articles|events|notices/{id}`、`/checkin/location/{token}`），以 `safeReturnPath()` 檢查，外部網址一律忽略。
 - **併發重送冪等**：同一 `client_request_id` 的兩個請求同時抵達時，第二個在取得活動列鎖後重新查詢並回傳同一報名群組（不會出現 ALREADY_BOOKED）。CI 腳本以 10 組重送驗證。
-- **稽核去識別（M11-D28，2026-10-25 複審修正）**：M07 稽核表維持 append-only，**沒有任何例外**。簽到相關稽核在寫入時就不含個資：不記 `attendee_id`；會員自行簽到時 `actor_id` 為空（只記 `actor_role=member`），工作人員與管理員才記 actor；管理員更正的原因存放在 `event_attendance_corrections`（屬簽到個資，保存期限到時與簽到紀錄一起刪除），稽核只記錄 `reason_recorded`、`correction_id`、前後狀態。清除作業只刪除 `event_attendances` 與 `event_attendance_corrections`，並寫一筆 `checkin.retention_purge`（筆數、保存天數、截止時間）作為執行證據。M11-D24 提到的「稽核紀錄保存期限」若要刪除稽核列，會與 M07 append-only 衝突，**待使用者裁決**，本批不刪除任何稽核列。
+- **稽核去識別（M11-D28，2026-10-25 複審修正）**：M07 稽核表維持 append-only，**沒有任何例外**。簽到相關稽核在寫入時就不含個資：不記 `attendee_id`；會員自行簽到時 `actor_id` 為空（只記 `actor_role=member`），工作人員與管理員才記 actor；管理員更正的原因存放在 `event_attendance_corrections`（屬簽到個資，保存期限到時與簽到紀錄一起刪除），稽核只記錄 `reason_recorded`、`correction_id`、前後狀態。清除作業只刪除 `event_attendances` 與 `event_attendance_corrections`，並寫一筆 `checkin.retention_purge`（筆數、保存天數、截止時間）作為執行證據。使用者 2026-10-25 確認 **M11-D24-A**：稽核維持 append-only，不刪除、不改寫；保存期限只清除簽到個資。
 - **MySQL 索引名稱**：超過 64 字元的複合索引／外鍵改用明確短名稱（`gcal_mappings_*`、`booking_attendees_member_active_unique`、`event_attendances_attendee_unique`）。
 
 ## 6. 資料庫遷移、備份、回退與資料恢復方案（2026-10-25 複審修訂）

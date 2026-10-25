@@ -9,6 +9,7 @@ use App\Models\EventAttendance;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Booking\GuestClaimService;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Database\QueryException;
@@ -98,7 +99,7 @@ class CheckinService
      *
      * @return array{attendee_id: string, result: string, attendance: EventAttendance}
      */
-    public function staffCheckIn(CalendarEvent $event, User $staff, ?string $attendeeToken, ?int $attendeeId): array
+    public function staffCheckIn(CalendarEvent $event, User $staff, ?string $attendeeToken, ?int $attendeeId, ?string $contact = null): array
     {
         $this->assertStaff($staff);
 
@@ -112,9 +113,15 @@ class CheckinService
             $source = self::SOURCE_STAFF_MANUAL;
         }
 
-        $attendee = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->find($attendeeId);
+        $attendee = EventBookingAttendee::query()->with('group')->where('calendar_event_id', $event->id)->find($attendeeId);
         if ($attendee === null) {
             throw new ApiException(404, 'NOT_FOUND', '此參加者不屬於這個場次。');
+        }
+
+        // D11: a guest checked in by hand (no pass to scan) must give the Email or
+        // phone used for the booking; staff never see the full contact (D29).
+        if ($source === self::SOURCE_STAFF_MANUAL && $attendee->group->is_guest && $attendee->group->booker_user_id === null) {
+            self::assertGuestContact($attendee->group, $contact);
         }
 
         return $this->checkIn($event, $attendee, $staff, $source);
@@ -393,6 +400,24 @@ class CheckinService
         $distance = self::distanceMeters((float) $gps['lat'], (float) $gps['lng'], $location->latitude, $location->longitude);
         if ($distance > $radius) {
             throw new ApiException(422, 'GPS_OUT_OF_RANGE', '您不在簽到範圍內（約 '.(int) round($distance).' 公尺）；如有問題請洽現場工作人員。');
+        }
+    }
+
+    /**
+     * The contact a guest states must equal the booking's email or phone (normalised).
+     */
+    public static function assertGuestContact(EventBookingGroup $group, ?string $contact): void
+    {
+        $contact = trim((string) $contact);
+        if ($contact === '') {
+            throw new ApiException(422, 'CONTACT_REQUIRED', '訪客請提供報名時填寫的 Email 或手機。', ['contact' => ['請輸入訪客報名時的 Email 或手機。']]);
+        }
+        $email = GuestClaimService::normalizeEmail($contact);
+        $phone = GuestClaimService::normalizePhone($contact);
+        $matches = ($group->contact_email !== null && hash_equals($group->contact_email, (string) $email))
+            || ($group->contact_phone !== null && $phone !== null && hash_equals($group->contact_phone, $phone));
+        if (! $matches) {
+            throw new ApiException(422, 'CONTACT_MISMATCH', '聯絡資料與報名不符，請再確認。', ['contact' => ['與報名的 Email 或手機不符。']]);
         }
     }
 

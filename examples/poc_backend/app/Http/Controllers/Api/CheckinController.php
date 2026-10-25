@@ -138,6 +138,7 @@ class CheckinController extends Controller
             'attendee_token' => ['required_without:attendee_id', 'nullable', 'string', 'max:100'],
             'attendee_id' => ['required_without:attendee_token', 'nullable', 'integer', 'min:1'],
             'action' => ['sometimes', 'in:checkin,checkout'],
+            'contact' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
         $event = CalendarEvent::query()->listed()->findOrFail($id);
 
@@ -152,7 +153,9 @@ class CheckinController extends Controller
             return new JsonResponse(['data' => $this->result($this->checkins->checkOut($event, $attendee, $request->user()))]);
         }
 
-        return new JsonResponse(['data' => $this->result($this->checkins->staffCheckIn($event, $request->user(), $data['attendee_token'] ?? null, isset($data['attendee_id']) ? (int) $data['attendee_id'] : null))]);
+        return new JsonResponse(['data' => $this->result($this->checkins->staffCheckIn(
+            $event, $request->user(), $data['attendee_token'] ?? null, isset($data['attendee_id']) ? (int) $data['attendee_id'] : null, $data['contact'] ?? null,
+        ))]);
     }
 
     /**
@@ -171,7 +174,7 @@ class CheckinController extends Controller
                 'contact_name' => $a->group->contact_name,
                 'contact_email' => $a->group->contact_email !== null ? self::maskEmail($a->group->contact_email) : null,
                 'contact_phone' => $a->group->contact_phone !== null ? Phone::mask($a->group->contact_phone) : null,
-                'is_guest' => $a->group->is_guest,
+                'is_guest' => $a->group->is_guest && $a->group->booker_user_id === null, // unclaimed guest: contact check (D11)
             ])->values()->all(),
         ]]);
     }

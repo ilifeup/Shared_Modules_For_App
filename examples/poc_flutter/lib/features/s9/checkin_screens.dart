@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/device/device_services.dart';
 import '../../core/providers.dart';
+import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
 
 final checkinStatusProvider = FutureProvider.autoDispose
@@ -350,6 +351,28 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
     await _refresh();
   }
 
+  /// M11-D17 / D11: manual check-in after the staff member checked the person
+  /// (e.g. GPS failed). An unclaimed guest must state the booking Email or phone.
+  Future<void> _manual(CheckinAttendee a) async {
+    String? contact;
+    if (a.isGuest) {
+      contact = await showDialog<String>(
+        context: context,
+        builder: (_) => _ContactDialog(attendee: a),
+      );
+      if (contact == null || !mounted) return;
+    }
+    try {
+      final r = await ref
+          .read(checkinApiProvider)
+          .staffScan(widget.eventId, attendeeId: a.id, contact: contact);
+      if (mounted) setState(() => _message = '${a.name}：${resultLabel(r)}');
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
+    await _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final qr = _qr;
@@ -390,8 +413,80 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
             onPressed: _scanPass,
             child: const Text('掃描參加者 QR Code'),
           ),
+          if (_attendance != null) ...[
+            const Divider(height: 24),
+            const Text('手動簽到（掃描或定位失敗時，核對身分後使用）'),
+            for (final a in _attendance!.attendees)
+              ListTile(
+                key: Key('staff-attendee-${a.id}'),
+                title: Text('${a.name}${a.isGuest ? '（訪客）' : ''}'),
+                subtitle: Text(
+                  [
+                    checkinLabel(a.checkinStatus),
+                    if (a.contactName != null) '聯絡人 ${a.contactName}',
+                    ?a.contactHint,
+                  ].join('・'),
+                ),
+                trailing: a.checkinStatus == 'checked_in' ||
+                        a.checkinStatus == 'checked_out'
+                    ? null
+                    : TextButton(
+                        key: Key('staff-manual-${a.id}'),
+                        onPressed: () => _manual(a),
+                        child: const Text('手動簽到'),
+                      ),
+              ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// Asks for the Email or phone the guest used when booking (never shown in full).
+class _ContactDialog extends StatefulWidget {
+  const _ContactDialog({required this.attendee});
+
+  final CheckinAttendee attendee;
+
+  @override
+  State<_ContactDialog> createState() => _ContactDialogState();
+}
+
+class _ContactDialogState extends State<_ContactDialog> {
+  final _contact = TextEditingController();
+
+  @override
+  void dispose() {
+    _contact.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('核對訪客：${widget.attendee.name}'),
+      content: TextField(
+        key: const Key('staff-contact'),
+        controller: _contact,
+        decoration: InputDecoration(
+          labelText: '請訪客說出報名時的 Email 或手機',
+          helperText: widget.attendee.contactHint == null
+              ? null
+              : '報名資料：${widget.attendee.contactHint}',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          key: const Key('staff-contact-ok'),
+          onPressed: () => Navigator.of(context).pop(_contact.text.trim()),
+          child: const Text('核對並簽到'),
+        ),
+      ],
     );
   }
 }
@@ -411,7 +506,12 @@ class CheckinLocationScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
-          children: [ErrorBox(error: error)],
+          children: [
+            ContentUnavailable(
+              error: error,
+              onRetry: () => ref.invalidate(_locationProvider(token)),
+            ),
+          ],
         ),
         data: (l) => ListView(
           padding: const EdgeInsets.all(16),

@@ -4,13 +4,16 @@ import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:s1_poc_app/core/device/device_services.dart';
 import 'package:s1_poc_app/core/network/api_exception.dart';
 import 'package:s1_poc_app/core/providers.dart';
 import 'package:s1_poc_app/features/s9/checkin_screens.dart';
 import 'package:s1_poc_app/features/s9/discovery_screens.dart';
 import 'package:s1_poc_app/features/s9/group_booking_screen.dart';
+import 'package:s1_poc_app/features/s9/my_calendar_screen.dart';
 import 'package:s1_poc_app/features/s9/verification_marketing.dart';
+import 'package:s1_poc_app/ui/content_unavailable.dart';
 
 typedef Handler =
     FutureOr<Map<String, dynamic>> Function(Map<String, dynamic>? body);
@@ -74,6 +77,7 @@ Future<void> pumpScreen(
   Future<String?> Function(BuildContext)? qr,
   Future<GpsFix?> Function()? gps,
   Future<bool> Function(Uri)? openUrl,
+  DateTime Function()? clock,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -83,6 +87,7 @@ Future<void> pumpScreen(
         if (qr != null) qrScannerProvider.overrideWithValue(qr),
         if (gps != null) gpsProvider.overrideWithValue(gps),
         if (openUrl != null) openUrlProvider.overrideWithValue(openUrl),
+        if (clock != null) clockProvider.overrideWithValue(clock),
       ],
       child: MaterialApp(home: screen),
     ),
@@ -490,5 +495,199 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('share-qr')), findsOneWidget);
     expect(find.text('https://app.example/articles/9'), findsOneWidget);
+  });
+
+  testWidgets('M09 shows my calendar as month grid, week and list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final backend = S9Backend();
+    backend.routes['GET /api/v1/me/calendar*'] = (_) => {
+      'data': {
+        'events': [
+          {
+            ...event,
+            'id': '7',
+            'title': '週三共修',
+            'starts_at': '2026-12-02T10:00:00Z',
+            'ends_at': '2026-12-02T11:00:00Z',
+            'my_booking_status': 'confirmed',
+          },
+        ],
+        'private_events': const [],
+        'vip': false,
+      },
+      'meta': {'truncated': false},
+    };
+    await pumpScreen(
+      tester,
+      backend,
+      const MyCalendarScreen(),
+      clock: () => DateTime(2026, 12, 2, 9),
+    );
+
+    // Month grid: the day shows its count as text; the selected day lists it.
+    expect(find.byKey(const Key('my-cell-2026-12-02')), findsOneWidget);
+    expect(find.text('1 項'), findsOneWidget);
+    expect(find.text('【已報名】週三共修'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('my-cell-2026-12-05')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026-12-05（六）　沒有行程'), findsOneWidget);
+
+    // Week view: Monday to Sunday of the selected day's week, its own range.
+    await tester.tap(find.text('週'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, startsWith('GET /api/v1/me/calendar?from=2026-11-30'));
+    expect(find.text('2026-11-30 – 2026-12-06'), findsOneWidget);
+    expect(find.byKey(const Key('my-day-2026-12-02')), findsOneWidget);
+    expect(find.byKey(const Key('my-day-2026-12-06')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('my-calendar-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('2026-12-07 – 2026-12-13'), findsOneWidget);
+
+    // List view.
+    await tester.tap(find.text('列表'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 12 月'), findsOneWidget);
+    expect(find.text('【已報名】週三共修'), findsOneWidget);
+  });
+
+  testWidgets('M11 staff check a guest in by hand after the contact check', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final backend = S9Backend();
+    backend.routes['GET /api/v1/events/7/checkin/qr'] = (_) => {
+      'data': {'event_id': '7', 'token': 'e.7.1.0123456789abcdef01234567', 'expires_in': 30, 'window_seconds': 60},
+    };
+    var guestIn = false;
+    backend.routes['GET /api/v1/events/7/attendance'] = (_) => {
+      'data': {
+        'summary': {'booked': 2, 'checked_in': guestIn ? 1 : 0, 'absent': guestIn ? 1 : 2, 'checked_out': 0, 'checkout_enabled': false},
+        'attendees': [
+          {'id': '11', 'name': '會員', 'booking_status': 'confirmed', 'is_guest': false},
+          {
+            'id': '12',
+            'name': '訪客',
+            'booking_status': 'confirmed',
+            'checkin_status': guestIn ? 'checked_in' : null,
+            'is_guest': true,
+            'contact_name': '訪客',
+            'contact_email': 'g***@example.com',
+          },
+        ],
+      },
+    };
+    backend.routes['POST /api/v1/events/7/checkin/staff'] = (body) {
+      guestIn = true;
+      return {
+        'data': {'attendee_id': '12', 'result': 'checked_in', 'checkin_status': 'checked_in'},
+      };
+    };
+    await pumpScreen(tester, backend, const StaffCheckinScreen(eventId: '7'));
+
+    expect(find.text('訪客（訪客）'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('staff-manual-12')));
+    await tester.pumpAndSettle();
+    expect(find.text('報名資料：g***@example.com'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('staff-contact')), 'guest@example.com');
+    await tester.tap(find.byKey(const Key('staff-contact-ok')));
+    await tester.pumpAndSettle();
+
+    final body = backend.bodies[backend.calls.indexOf('POST /api/v1/events/7/checkin/staff')]!;
+    expect(body, {'attendee_id': 12, 'contact': 'guest@example.com', 'action': 'checkin'});
+    expect(find.textContaining('訪客：簽到成功'), findsOneWidget);
+    expect(find.byKey(const Key('staff-manual-12')), findsNothing);
+
+    // Dispose the screen so its refresh timer stops.
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('M19 filters by category and place', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final backend = S9Backend();
+    backend.routes['GET /api/v1/tags'] = (_) => {'data': const []};
+    backend.routes['GET /api/v1/event-categories'] = (_) => {
+      'data': [
+        {'id': '4', 'name': '共修', 'color': '#43A047'},
+      ],
+    };
+    backend.routes['GET /api/v1/search?*'] = (_) => {
+      'data': const [],
+      'meta': {'current_page': 1, 'last_page': 1, 'total': 0},
+    };
+    await pumpScreen(tester, backend, const SearchScreen());
+
+    await tester.tap(find.byKey(const Key('search-type-event')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('search-category')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('共修').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search-location')), '台北');
+    await tester.tap(find.byKey(const Key('search-submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      backend.calls.last,
+      'GET /api/v1/search?type=event&event_category_id=4&location=%E5%8F%B0%E5%8C%97',
+    );
+    // No results: the filters can be cleared (M19-D28).
+    await tester.tap(find.byKey(const Key('search-clear-filters')));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'GET /api/v1/search');
+  });
+
+  testWidgets('M14 explains gone, forbidden and offline links and goes home', (
+    tester,
+  ) async {
+    Future<void> show(ApiException error) async {
+      var retried = 0;
+      final router = GoRouter(
+        initialLocation: '/events/9',
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => const Text('首頁')),
+          GoRoute(
+            path: '/events/:id',
+            builder: (_, _) => Scaffold(
+              body: ContentUnavailable(error: error, onRetry: () => retried++),
+            ),
+          ),
+          GoRoute(path: '/login', builder: (_, _) => const Text('登入頁')),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      if (find.byKey(const Key('content-retry')).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const Key('content-retry')));
+        expect(retried, 1);
+      }
+    }
+
+    await show(const ApiException(code: 'NOT_FOUND', message: 'x', statusCode: 404));
+    expect(find.text('【連結已失效】'), findsOneWidget);
+    expect(find.byKey(const Key('content-retry')), findsNothing);
+
+    await show(const ApiException(code: 'FORBIDDEN', message: 'x', statusCode: 403));
+    expect(find.text('【沒有權限】'), findsOneWidget);
+
+    await show(const ApiException(code: 'NETWORK_ERROR', message: 'x'));
+    expect(find.text('【目前離線】'), findsOneWidget);
+    expect(find.byKey(const Key('content-retry')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('content-home')));
+    await tester.pumpAndSettle();
+    expect(find.text('首頁'), findsOneWidget);
+
+    await show(const ApiException(code: 'UNAUTHENTICATED', message: 'x', statusCode: 401));
+    await tester.tap(find.byKey(const Key('content-login')));
+    await tester.pumpAndSettle();
+    expect(find.text('登入頁'), findsOneWidget);
   });
 }

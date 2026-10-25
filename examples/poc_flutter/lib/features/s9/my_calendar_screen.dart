@@ -8,26 +8,57 @@ import '../../core/providers.dart';
 import '../../ui/status_box.dart';
 import '../calendar/calendar_providers.dart';
 
-/// First day (local) of the month shown in "my calendar".
-class MyCalendarMonth extends Notifier<DateTime> {
+/// M09-D01: month grid, week and list views.
+enum CalendarMode { month, week, list }
+
+typedef MyCalendarView = ({CalendarMode mode, DateTime anchor, DateTime day});
+
+DateTime _dayOf(DateTime t) => DateTime(t.year, t.month, t.day);
+
+/// Monday of the week containing [day] (local).
+DateTime weekStart(DateTime day) =>
+    _dayOf(day).subtract(Duration(days: day.weekday - 1));
+
+class MyCalendarViewNotifier extends Notifier<MyCalendarView> {
   @override
-  DateTime build() {
-    final now = ref.watch(clockProvider)();
-    return DateTime(now.year, now.month);
+  MyCalendarView build() {
+    final today = _dayOf(ref.watch(clockProvider)());
+    return (mode: CalendarMode.month, anchor: today, day: today);
   }
 
-  void move(int delta) => state = DateTime(state.year, state.month + delta);
+  void setMode(CalendarMode mode) =>
+      state = (mode: mode, anchor: state.day, day: state.day);
+
+  void selectDay(DateTime day) =>
+      state = (mode: state.mode, anchor: state.anchor, day: _dayOf(day));
+
+  /// One month (month, list) or one week back / forward.
+  void move(int delta) {
+    final a = state.anchor;
+    final next = state.mode == CalendarMode.week
+        ? a.add(Duration(days: 7 * delta))
+        : DateTime(a.year, a.month + delta);
+    state = (mode: state.mode, anchor: next, day: next);
+  }
 }
 
-final myCalendarMonthProvider = NotifierProvider<MyCalendarMonth, DateTime>(
-  MyCalendarMonth.new,
-);
+final myCalendarViewProvider =
+    NotifierProvider<MyCalendarViewNotifier, MyCalendarView>(
+      MyCalendarViewNotifier.new,
+    );
+
+/// Local [from, to) range shown by the view.
+(DateTime, DateTime) viewRange(MyCalendarView v) => v.mode == CalendarMode.week
+    ? (weekStart(v.anchor), weekStart(v.anchor).add(const Duration(days: 7)))
+    : (
+        DateTime(v.anchor.year, v.anchor.month),
+        DateTime(v.anchor.year, v.anchor.month + 1),
+      );
 
 final myCalendarProvider = FutureProvider.autoDispose
-    .family<MyCalendar, DateTime>(
-      (ref, month) => ref
-          .watch(calendarApiProvider)
-          .myCalendar(month, DateTime(month.year, month.month + 1)),
+    .family<MyCalendar, (DateTime, DateTime)>(
+      (ref, range) =>
+          ref.watch(calendarApiProvider).myCalendar(range.$1, range.$2),
     );
 
 final googleStatusProvider = FutureProvider.autoDispose<GoogleCalendarStatus>(
@@ -39,15 +70,25 @@ Color? parseHexColor(String? hex) {
   return Color(int.parse('FF${hex.substring(1)}', radix: 16));
 }
 
-/// S9 M09 list view of my month: events with category colour and my booking
-/// status (as text), VIP private entries, and the Google sync status.
+/// One entry of the view (event or private entry) with its local start.
+typedef _Entry = ({DateTime at, DateTime end, Widget tile});
+
+/// S9 M09 my calendar: events with category colour and my booking status (as
+/// text), VIP private entries and the Google sync status, in month, week or
+/// list view.
 class MyCalendarScreen extends ConsumerWidget {
   const MyCalendarScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = ref.watch(myCalendarMonthProvider);
-    final data = ref.watch(myCalendarProvider(month));
+    final view = ref.watch(myCalendarViewProvider);
+    final notifier = ref.read(myCalendarViewProvider.notifier);
+    final range = viewRange(view);
+    final data = ref.watch(myCalendarProvider(range));
+    final weekEnd = range.$2.subtract(const Duration(days: 1));
+    final title = view.mode == CalendarMode.week
+        ? '${formatDate(range.$1)} – ${formatDate(weekEnd)}'
+        : '${view.anchor.year} 年 ${view.anchor.month} 月';
 
     return Scaffold(
       appBar: AppBar(title: const Text('我的行事曆')),
@@ -56,7 +97,7 @@ class MyCalendarScreen extends ConsumerWidget {
               key: const Key('private-add'),
               onPressed: () => showDialog<void>(
                 context: context,
-                builder: (_) => _PrivateEventDialog(month: month),
+                builder: (_) => _PrivateEventDialog(day: view.day),
               ),
               label: const Text('新增私人行程'),
             )
@@ -64,26 +105,34 @@ class MyCalendarScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          SegmentedButton<CalendarMode>(
+            key: const Key('my-calendar-mode'),
+            segments: const [
+              ButtonSegment(value: CalendarMode.month, label: Text('月')),
+              ButtonSegment(value: CalendarMode.week, label: Text('週')),
+              ButtonSegment(value: CalendarMode.list, label: Text('列表')),
+            ],
+            selected: {view.mode},
+            onSelectionChanged: (s) => notifier.setMode(s.first),
+          ),
           Row(
             children: [
               TextButton(
                 key: const Key('my-calendar-prev'),
-                onPressed: () =>
-                    ref.read(myCalendarMonthProvider.notifier).move(-1),
-                child: const Text('‹ 上個月'),
+                onPressed: () => notifier.move(-1),
+                child: Text(view.mode == CalendarMode.week ? '‹ 上週' : '‹ 上個月'),
               ),
               Expanded(
                 child: Text(
-                  '${month.year} 年 ${month.month} 月',
+                  title,
                   key: const Key('my-calendar-month'),
                   textAlign: TextAlign.center,
                 ),
               ),
               TextButton(
                 key: const Key('my-calendar-next'),
-                onPressed: () =>
-                    ref.read(myCalendarMonthProvider.notifier).move(1),
-                child: const Text('下個月 ›'),
+                onPressed: () => notifier.move(1),
+                child: Text(view.mode == CalendarMode.week ? '下週 ›' : '下個月 ›'),
               ),
             ],
           ),
@@ -93,22 +142,133 @@ class MyCalendarScreen extends ConsumerWidget {
             error: (error, _) => [
               ErrorRetry(
                 error: ErrorBox(error: error),
-                onRetry: () => ref.invalidate(myCalendarProvider(month)),
+                onRetry: () => ref.invalidate(myCalendarProvider(range)),
               ),
             ],
             data: (cal) {
-              final items = <({DateTime at, Widget tile})>[
+              final items = <_Entry>[
                 for (final e in cal.events)
-                  (at: e.event.startsAt, tile: _EventTile(item: e)),
+                  (
+                    at: e.event.startsAt.toLocal(),
+                    end: e.event.endsAt.toLocal(),
+                    tile: _EventTile(item: e),
+                  ),
                 for (final p in cal.privateEvents)
-                  (at: p.startsAt, tile: _PrivateTile(item: p, month: month)),
+                  (
+                    at: p.startsAt.toLocal(),
+                    end: p.endsAt.toLocal(),
+                    tile: _PrivateTile(item: p),
+                  ),
               ]..sort((a, b) => a.at.compareTo(b.at));
-              return items.isEmpty
-                  ? const [StatusBox(label: '【本月沒有行程】', detail: '')]
-                  : items.map((i) => i.tile).toList();
+              return switch (view.mode) {
+                CalendarMode.list =>
+                  items.isEmpty
+                      ? const [StatusBox(label: '【本月沒有行程】', detail: '')]
+                      : items.map((i) => i.tile).toList(),
+                CalendarMode.week => [
+                  for (var i = 0; i < 7; i++)
+                    ..._daySection(range.$1.add(Duration(days: i)), items),
+                ],
+                CalendarMode.month => [
+                  _MonthGrid(
+                    month: range.$1,
+                    selected: view.day,
+                    counts: {
+                      for (
+                        var d = range.$1;
+                        d.isBefore(range.$2);
+                        d = DateTime(d.year, d.month, d.day + 1)
+                      )
+                        d: items.where((i) => _overlaps(i, d)).length,
+                    },
+                    onSelect: notifier.selectDay,
+                  ),
+                  ..._daySection(view.day, items),
+                ],
+              };
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+bool _overlaps(_Entry e, DateTime day) {
+  final next = DateTime(day.year, day.month, day.day + 1);
+  return e.at.isBefore(next) && e.end.isAfter(day);
+}
+
+List<Widget> _daySection(DateTime day, List<_Entry> items) {
+  final mine = items.where((i) => _overlaps(i, day)).toList();
+  return [
+    Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: Text(
+        '${formatDate(day)}（${weekdayLabels[day.weekday - 1]}）'
+        '${mine.isEmpty ? '　沒有行程' : '　${mine.length} 項'}',
+        key: Key('my-day-${formatDate(day)}'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+    ),
+    ...mine.map((i) => i.tile),
+  ];
+}
+
+/// Month grid (Monday first). Days show their number and the item count as text,
+/// the selected day has a thick border — never colour alone.
+class _MonthGrid extends StatelessWidget {
+  const _MonthGrid({
+    required this.month,
+    required this.selected,
+    required this.counts,
+    required this.onSelect,
+  });
+
+  final DateTime month;
+  final DateTime selected;
+  final Map<DateTime, int> counts;
+  final ValueChanged<DateTime> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = DateTime(month.year, month.month);
+    final lead = first.weekday - 1;
+    final days = DateTime(month.year, month.month + 1, 0).day;
+    final cells = <Widget>[
+      for (final w in weekdayLabels) Center(child: Text(w)),
+      for (var i = 0; i < lead; i++) const SizedBox.shrink(),
+      for (var d = 1; d <= days; d++)
+        _cell(context, DateTime(month.year, month.month, d)),
+    ];
+    return GridView.count(
+      crossAxisCount: 7,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 1.1,
+      children: cells,
+    );
+  }
+
+  Widget _cell(BuildContext context, DateTime day) {
+    final count = counts[day] ?? 0;
+    final isSelected = day == selected;
+    return InkWell(
+      key: Key('my-cell-${formatDate(day)}'),
+      onTap: () => onSelect(day),
+      child: Container(
+        margin: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          border: Border.all(width: isSelected ? 3 : 1),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('${day.day}'),
+            if (count > 0)
+              Text('$count 項', style: const TextStyle(fontSize: 11)),
+          ],
+        ),
       ),
     );
   }
@@ -145,10 +305,9 @@ class _EventTile extends StatelessWidget {
 }
 
 class _PrivateTile extends ConsumerWidget {
-  const _PrivateTile({required this.item, required this.month});
+  const _PrivateTile({required this.item});
 
   final PrivateEvent item;
-  final DateTime month;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -174,7 +333,7 @@ class _PrivateTile extends ConsumerWidget {
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () async {
                   await ref.read(calendarApiProvider).deletePrivate(item.id);
-                  ref.invalidate(myCalendarProvider(month));
+                  ref.invalidate(myCalendarProvider);
                 },
               ),
       ),
@@ -230,9 +389,9 @@ class _GoogleCard extends ConsumerWidget {
 }
 
 class _PrivateEventDialog extends ConsumerStatefulWidget {
-  const _PrivateEventDialog({required this.month});
+  const _PrivateEventDialog({required this.day});
 
-  final DateTime month;
+  final DateTime day;
 
   @override
   ConsumerState<_PrivateEventDialog> createState() =>
@@ -241,7 +400,12 @@ class _PrivateEventDialog extends ConsumerStatefulWidget {
 
 class _PrivateEventDialogState extends ConsumerState<_PrivateEventDialog> {
   final _title = TextEditingController();
-  late DateTime _day = DateTime(widget.month.year, widget.month.month, 1, 9);
+  late DateTime _day = DateTime(
+    widget.day.year,
+    widget.day.month,
+    widget.day.day,
+    9,
+  );
   String? _recurrence;
   Object? _error;
   bool _busy = false;
@@ -264,7 +428,7 @@ class _PrivateEventDialogState extends ConsumerState<_PrivateEventDialog> {
             endsAt: _day.add(const Duration(hours: 1)),
             recurrence: _recurrence,
           );
-      ref.invalidate(myCalendarProvider(widget.month));
+      ref.invalidate(myCalendarProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (mounted) setState(() => _error = error);

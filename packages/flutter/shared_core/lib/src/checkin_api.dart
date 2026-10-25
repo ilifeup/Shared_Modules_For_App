@@ -40,10 +40,19 @@ class CheckinAttendee {
     this.checkinStatus,
     this.checkedInAt,
     this.checkedOutAt,
+    this.isGuest = false,
+    this.contactName,
+    this.contactHint,
   });
 
   final String id;
   final String name;
+
+  /// Staff attendance list only: unclaimed guest booking (D11 contact check),
+  /// booking contact name and masked email / phone (D29).
+  final bool isGuest;
+  final String? contactName;
+  final String? contactHint;
 
   /// `confirmed` or `waitlisted` (waitlisted cannot check in).
   final String bookingStatus;
@@ -68,6 +77,10 @@ class CheckinAttendee {
         checkinStatus: s9OptStr(json['checkin_status']),
         checkedInAt: s9Date(json['checked_in_at']),
         checkedOutAt: s9Date(json['checked_out_at']),
+        isGuest: s9Bool(json['is_guest']),
+        contactName: s9OptStr(json['contact_name']),
+        contactHint:
+            s9OptStr(json['contact_email']) ?? s9OptStr(json['contact_phone']),
       );
 }
 
@@ -376,6 +389,7 @@ class CheckinApi {
     String eventId, {
     String? attendeeToken,
     String? attendeeId,
+    String? contact,
     bool checkout = false,
   }) async {
     final json = await transport.request(
@@ -384,6 +398,7 @@ class CheckinApi {
       body: {
         if (attendeeToken != null) 'attendee_token': attendeeToken,
         if (attendeeId != null) 'attendee_id': int.tryParse(attendeeId),
+        if (contact != null) 'contact': contact,
         'action': checkout ? 'checkout' : 'checkin',
       },
     );

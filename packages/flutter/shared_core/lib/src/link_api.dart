@@ -99,11 +99,27 @@ class LinkApi {
 
   final ApiTransport transport;
 
-  Future<ShareLink> share(String contentType, String contentId) async {
+  /// [utm] optional utm_source / utm_medium / utm_campaign (M17-D20).
+  Future<ShareLink> share(
+    String contentType,
+    String contentId, {
+    Map<String, String> utm = const {},
+  }) async {
     final data = s9Data(
       await transport.request(
         'GET',
-        '/api/v1/content/${s9Seg(contentType)}/${s9Seg(contentId)}/share',
+        s9Path(
+          '/api/v1/content/${s9Seg(contentType)}/${s9Seg(contentId)}/share',
+          {
+            for (final e in utm.entries)
+              if (const {
+                'utm_source',
+                'utm_medium',
+                'utm_campaign',
+              }.contains(e.key))
+                e.key: e.value,
+          },
+        ),
       ),
     );
     return ShareLink(

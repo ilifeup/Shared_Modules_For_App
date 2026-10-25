@@ -29,6 +29,21 @@ final bookmarkTypeProvider = NotifierProvider<BookmarkTypeFilter, String?>(
   BookmarkTypeFilter.new,
 );
 
+/// Categories for the search filter of one content type (id, name).
+final searchCategoriesProvider = FutureProvider.autoDispose
+    .family<List<({String id, String name})>, String>((ref, type) async {
+      if (type == 'event') {
+        return [
+          for (final c in await ref.watch(calendarApiProvider).categories())
+            (id: c.id, name: c.name),
+        ];
+      }
+      return [
+        for (final c in await ref.watch(articleApiProvider).categories())
+          (id: c.id, name: c.name),
+      ];
+    });
+
 final bookmarksProvider = FutureProvider.autoDispose<BookmarkPage>(
   (ref) => ref
       .watch(discoveryApiProvider)
@@ -63,7 +78,10 @@ class SearchScreen extends ConsumerStatefulWidget {
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _q = TextEditingController();
   late final Set<String> _tags = {?widget.initialTagId};
+  final _location = TextEditingController();
   String? _type;
+  String? _categoryId;
+  DateTimeRange? _dates;
   String _sort = 'relevance';
   final _items = <ContentCard>[];
   int _page = 0;
@@ -81,6 +99,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   @override
   void dispose() {
     _q.dispose();
+    _location.dispose();
     super.dispose();
   }
 
@@ -98,6 +117,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               q: _q.text,
               type: _type,
               tagIds: _tags.toList(),
+              articleCategoryId: _type == 'article' ? _categoryId : null,
+              eventCategoryId: _type == 'event' ? _categoryId : null,
+              from: _dates?.start,
+              // Inclusive end day -> exclusive bound.
+              to: _dates == null
+                  ? null
+                  : DateTime(_dates!.end.year, _dates!.end.month, _dates!.end.day + 1),
+              location: _location.text,
               sort: _sort,
               page: more ? _page + 1 : 1,
             ),
@@ -116,6 +143,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  bool get _hasFilters =>
+      _tags.isNotEmpty ||
+      _type != null ||
+      _dates != null ||
+      _location.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +182,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     key: Key('search-type-${t.$1 ?? 'all'}'),
                     label: Text(t.$2),
                     selected: _type == t.$1,
-                    onSelected: (_) => setState(() => _type = t.$1),
+                    onSelected: (_) => setState(() {
+                      _type = t.$1;
+                      _categoryId = null;
+                    }),
                   ),
                 ),
               DropdownButton<String>(
@@ -162,6 +198,62 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ],
                 onChanged: (v) => setState(() => _sort = v ?? 'relevance'),
               ),
+            ],
+          ),
+          // M19-D03 / D11: category, date range and district / venue name.
+          if (_type != null)
+            ref
+                .watch(searchCategoriesProvider(_type!))
+                .maybeWhen(
+                  data: (cats) => DropdownButton<String?>(
+                    key: const Key('search-category'),
+                    value: _categoryId,
+                    hint: const Text('全部類別'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('全部類別')),
+                      for (final c in cats)
+                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    ],
+                    onChanged: (v) => setState(() => _categoryId = v),
+                  ),
+                  orElse: () => const SizedBox.shrink(),
+                ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('search-location'),
+                  controller: _location,
+                  decoration: const InputDecoration(
+                    labelText: '地點（行政區或場所名稱）',
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const Key('search-dates'),
+                onPressed: () async {
+                  final now = ref.read(clockProvider)();
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(now.year - 5),
+                    lastDate: DateTime(now.year + 2),
+                    initialDateRange: _dates,
+                  );
+                  if (picked != null) setState(() => _dates = picked);
+                },
+                child: Text(
+                  _dates == null
+                      ? '日期：不限'
+                      : '日期：${formatDate(_dates!.start)}～${formatDate(_dates!.end)}',
+                ),
+              ),
+              if (_dates != null)
+                IconButton(
+                  key: const Key('search-dates-clear'),
+                  tooltip: '清除日期',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(() => _dates = null),
+                ),
             ],
           ),
           tags.maybeWhen(
@@ -195,15 +287,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           if (_page > 0 && _items.isEmpty)
             const StatusBox(label: '【找不到符合的內容】', detail: '請減少關鍵字或篩選條件。'),
           // M19-D28: offer to clear the filters, no automatic recommendations.
-          if (_page > 0 &&
-              _items.isEmpty &&
-              (_tags.isNotEmpty || _type != null))
+          if (_page > 0 && _items.isEmpty && _hasFilters)
             OutlinedButton(
               key: const Key('search-clear-filters'),
               onPressed: () {
                 setState(() {
                   _tags.clear();
                   _type = null;
+                  _categoryId = null;
+                  _dates = null;
+                  _location.clear();
                 });
                 _search();
               },

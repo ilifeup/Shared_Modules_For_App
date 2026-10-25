@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
 import 'notice_providers.dart';
 
@@ -19,7 +20,12 @@ class NoticeDetailScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
-          children: [ErrorBox(error: error)],
+          children: [
+            ContentUnavailable(
+              error: error,
+              onRetry: () => ref.invalidate(noticeDetailProvider(id)),
+            ),
+          ],
         ),
         data: (item) => ListView(
           padding: const EdgeInsets.all(16),

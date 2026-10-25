@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
 import '../bookings/booking_section.dart';
 import '../s9/discovery_screens.dart';
@@ -26,8 +27,8 @@ class EventDetailScreen extends ConsumerWidget {
         error: (error, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ErrorRetry(
-              error: ErrorBox(error: error),
+            ContentUnavailable(
+              error: error,
               onRetry: () => ref.invalidate(eventDetailProvider(id)),
             ),
           ],

@@ -205,3 +205,36 @@ it('syncs a guest booking to Google once the member claims it', function () {
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/me/guest-bookings/{$group->id}/claim")->assertOk();
     expect(googleEventCalls('PUT'))->toHaveCount(1);
 });
+
+// M09-D24: the first sync after connecting covers current and future bookings only.
+it('syncs only current and future bookings when a member connects', function () {
+    fakeGoogle();
+    $member = User::factory()->create();
+    $past = s9Event(['starts_at' => now()->addDay(), 'ends_at' => now()->addDay()->addHour()]);
+    $future = s9Event();
+    groupBook($past, $member)->assertCreated();
+    groupBook($future, $member)->assertCreated();
+    $past->update(['starts_at' => now()->subDays(3), 'ends_at' => now()->subDays(3)->addHour()]);
+
+    $connection = connectGoogle($member);
+    $put = collect(googleEventCalls('PUT'))->map->url();
+    expect($put)->toHaveCount(1)
+        ->and($put->first())->toEndWith('/events/'.GoogleCalendarSync::googleEventId($connection, 'booking', $future->id));
+});
+
+// M09-D12: a changed occurrence updates the member's Google event (same event id).
+it('updates the Google event when the occurrence changes', function () {
+    fakeGoogle();
+    $member = User::factory()->create();
+    connectGoogle($member);
+    $event = s9Event(['location' => '舊地點']);
+    groupBook($event, $member)->assertCreated();
+
+    $event->update(['location' => '新地點']);
+    app(BookingEngine::class)->notifyChange($event->refresh(), '活動異動', '地點改為新地點');
+
+    $put = googleEventCalls('PUT');
+    expect($put)->toHaveCount(2)
+        ->and($put[0]->url())->toBe($put[1]->url())
+        ->and($put[1]['location'])->toStartWith('新地點');
+});

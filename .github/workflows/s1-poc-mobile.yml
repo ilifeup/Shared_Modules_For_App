@@ -54,7 +54,7 @@ jobs:
         run: |
           if ! flutter pub get --enforce-lockfile; then
             # Still a failure: publish what the resolved lock would be, for review and commit.
-            flutter pub get > /dev/null 2>&1 || true
+            flutter pub get > "$RUNNER_TEMP/pubget.log" 2>&1 || bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/pubget.log" "pub get" 120 3 tail
             git diff -- pubspec.lock > "$RUNNER_TEMP/lock.diff"
             bash ../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/lock.diff" "pubspec.lock out of date" 8000 30 tail
             exit 1

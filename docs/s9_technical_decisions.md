@@ -94,3 +94,20 @@
 - 真實 Google OAuth、Android App Links（`assetlinks.json` 需正式網域與簽章）、iOS Universal Links（需 Team ID）、實機掃碼／GPS：程式與設定位置已完成，**實機與真實憑證驗收 BLOCKED**，需使用者提供網域／憑證後驗收。
 - 重複活動「改變週期本身」（例如每週改每月）不在 MVP：需結束系列再建立新系列；單次／此次及未來／全部可修改時間、地點、內容、報名設定。
 - M15/M17 依 D30 上線後觀察驗證；CI 仍跑自動化測試。
+
+## 5. 實作時追加的技術裁決
+
+- **Flutter 套件（新增 6 個，皆為 S9 決策必要功能）**：`mobile_scanner`（M11 掃 QR）、`qr_flutter`（M11 會員入場碼／工作人員活動碼）、`geolocator`（M11 選用 GPS）、`share_plus`（M14 分享）、`app_links`（M14 App Links 冷／熱啟動）、`url_launcher`（M09 Google 授權頁、M15 外部 https 連結）。全部透過 provider 包裝（`lib/core/device/device_services.dart`），Widget 測試以假實作覆寫，不需實機。
+- **App Links 網域**：以編譯參數 `APP_LINK_HOST`（Dart）與 Gradle `-PappLinkHost=`（Manifest placeholder）設定；未設定時 App 不監聽外部連結、Manifest 使用 `app-links.invalid`，不會誤認領他人網域。
+- **登入後返回（M14-D20）**：只允許 App 內固定路徑（`/articles|events|notices/{id}`、`/checkin/location/{token}`），以 `safeReturnPath()` 檢查，外部網址一律忽略。
+- **併發重送冪等**：同一 `client_request_id` 的兩個請求同時抵達時，第二個在取得活動列鎖後重新查詢並回傳同一報名群組（不會出現 ALREADY_BOOKED）。CI 腳本以 10 組重送驗證。
+- **稽核去識別（M11-D28）**：稽核資料表維持 append-only；保留期清除是唯一例外，以 query builder 移除 `attendee_id`、`reason`、`actor_id`、`subject_id` 並標記 `deidentified`。
+- **MySQL 索引名稱**：超過 64 字元的複合索引／外鍵改用明確短名稱（`gcal_mappings_*`、`booking_attendees_member_active_unique`、`event_attendances_attendee_unique`）。
+
+## 6. 資料庫遷移與回退方案（交付給使用者）
+
+1. **遷移**：單一 migration `2026_11_01_000100_s9_modules.php`，只新增資料表與 `calendar_events` 可為 NULL／有預設值的欄位；不改名、不刪既有欄位、不改既有資料語意。
+2. **舊資料回填**：同一 migration 內呼叫 `LegacyBookingBackfill::run()`，把每筆 S6 `event_bookings` 建成一個 1 人報名群組＋參加者席次（以 `legacy_booking_id` 唯一鍵保證可重跑、不重複），並核對筆數；不一致即中止。
+3. **部署前**：備份資料庫 → `php artisan migrate --force`（已核准的 migration）→ 確認 `event_bookings` 筆數＝`event_booking_groups.legacy_booking_id` 筆數。
+4. **回退**：`php artisan migrate:rollback --step=1 --force` 刪除 S9 新表與 `calendar_events` 新欄位，S1–S8 資料不受影響；S9 期間新增的團體報名、候補、簽到、收藏、標籤、統計、行銷資料會一併刪除（需先備份）。回退後部署 S8 版本程式。
+5. **CI 演練**：`S1 PoC Backend` workflow 的「S9 migration rollback drill」在拋棄式 MySQL 8.4 上實際執行 rollback → 結構檢查 → 重新 migrate → 回填筆數檢查。

@@ -116,7 +116,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 
     // S9 M08 group bookings, waitlist and guest-booking claim (one seat engine with S6).
-    Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/booking-groups', [BookingGroupController::class, 'mine']);
     Route::post('/me/booking-groups/{id}/cancel', [BookingGroupController::class, 'cancel'])->whereNumber('id');
     Route::get('/me/guest-bookings', [BookingGroupController::class, 'claimable']);

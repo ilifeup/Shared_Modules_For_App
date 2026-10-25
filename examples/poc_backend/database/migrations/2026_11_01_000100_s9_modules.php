@@ -174,7 +174,7 @@ return new class extends Migration
 
         Schema::create('google_calendar_event_mappings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('google_calendar_connection_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('google_calendar_connection_id')->constrained('google_calendar_connections', 'id', 'gcal_mappings_connection_foreign')->cascadeOnDelete();
             $table->string('source_type', 20);      // booking (calendar_events.id) | private
             $table->unsignedBigInteger('source_id');
             $table->string('google_event_id', 64);
@@ -184,7 +184,7 @@ return new class extends Migration
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['google_calendar_connection_id', 'source_type', 'source_id']); // D25
+            $table->unique(['google_calendar_connection_id', 'source_type', 'source_id'], 'gcal_mappings_source_unique'); // D25
             $table->index('status');
         });
 
@@ -226,7 +226,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('active')->nullable()->default(1);
             $table->timestamps();
 
-            $table->unique(['calendar_event_id', 'member_user_id', 'active']);
+            $table->unique(['calendar_event_id', 'member_user_id', 'active'], 'booking_attendees_member_active_unique');
             $table->index(['calendar_event_id', 'status']);
         });
 
@@ -258,7 +258,7 @@ return new class extends Migration
         Schema::create('checkin_location_events', function (Blueprint $table) {
             $table->foreignId('checkin_location_id')->constrained()->cascadeOnDelete();
             $table->foreignId('calendar_event_id')->constrained()->cascadeOnDelete();
-            $table->primary(['checkin_location_id', 'calendar_event_id']);
+            $table->primary(['checkin_location_id', 'calendar_event_id'], 'checkin_location_events_primary');
         });
 
         Schema::create('event_attendances', function (Blueprint $table) {
@@ -272,7 +272,7 @@ return new class extends Migration
             $table->foreignId('checked_in_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
-            $table->unique(['calendar_event_id', 'event_booking_attendee_id']); // D14 / G07
+            $table->unique(['calendar_event_id', 'event_booking_attendee_id'], 'event_attendances_attendee_unique'); // D14 / G07
             $table->index(['calendar_event_id', 'status']);
             $table->index('updated_at');
         });

@@ -73,7 +73,7 @@
 
 - 沿用既有 GitHub Actions（PR 觸發，`contents: read`），新增：S9 併發腳本（100 並行搶席、舊＋新入口混合、FIFO）、migration rollback 演練（`migrate:rollback` 本批後再 `migrate`）。
 - **不新增部署 workflow、不使用任何正式憑證**。INT-D06 B（自動合併部署）需要的部署目標、Secrets、分支保護尚未核實，因此本批只交付 PR＋CI；部署與合併由使用者決定。
-- 回退：各 App 以 `php artisan migrate:rollback --step=1`（只回退 S9 migration）回到 S8 結構；新表資料會被刪除，舊 S5/S6/S8 資料不受影響。正式環境執行前需備份。
+- 回退：見 §6。回退會永久刪除 S9 期間產生的資料，不是無損回退；`down()` 在有 S9 資料時拒絕執行，除非明確設定 `S9_ROLLBACK_ACCEPT_DATA_LOSS=yes`。
 
 ## 3. 資料主責（INT-D09）
 
@@ -165,3 +165,7 @@
 
 - 自動化的 S9 資料匯出與匯入、合併工具（6.5 B 第 2–4 步）。目前只有文件流程，**NOT TESTED**。
 - 正式環境備份、還原的實際演練：需正式或預備環境，**BLOCKED**。
+
+## 7. 決策符合性
+
+逐項對照見 `docs/s9_compliance_matrix.md`（265 項，含未完成、BLOCKED 與待決項目）。

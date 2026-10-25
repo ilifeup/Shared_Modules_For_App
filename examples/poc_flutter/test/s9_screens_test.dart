@@ -289,7 +289,7 @@ void main() {
     (tester) async {
       final backend = S9Backend();
       var cleared = false;
-      backend.routes['GET /api/v1/me/bookmarks'] = (_) => {
+      backend.routes['GET /api/v1/me/bookmarks*'] = (_) => {
         'data': cleared
             ? const []
             : [
@@ -312,6 +312,10 @@ void main() {
 
       expect(find.text('【內容已無法開啟】'), findsOneWidget);
       expect(find.text('1 / 1000'), findsOneWidget);
+      // Grouped by content type (M19-D08 / D17).
+      await tester.tap(find.byKey(const Key('bookmark-type-article')));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('GET /api/v1/me/bookmarks?type=article'));
       await tester.tap(find.byKey(const Key('bookmarks-clear')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-yes')));
@@ -437,5 +441,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(hidden, isTrue);
     expect(find.text('不公開'), findsOneWidget);
+  });
+
+  testWidgets('M14 shows share and QR only for shareable content', (
+    tester,
+  ) async {
+    final backend = S9Backend();
+    backend.routes['GET /api/v1/content/article/9/share'] = (_) => {
+      'data': {
+        'content_type': 'article',
+        'content_id': '9',
+        'shareable': true,
+        'is_public': true,
+        'url': 'https://app.example/articles/9',
+      },
+    };
+    backend.routes['GET /api/v1/content/event/3/share'] = (_) => {
+      'data': {
+        'content_type': 'event',
+        'content_id': '3',
+        'shareable': false,
+        'is_public': true,
+        'url': null,
+      },
+    };
+    await pumpScreen(
+      tester,
+      backend,
+      Scaffold(
+        appBar: AppBar(
+          actions: const [
+            ContentActions(contentType: 'article', contentId: '9'),
+            ContentActions(contentType: 'event', contentId: '3', canBookmark: false),
+          ],
+        ),
+      ),
+    );
+
+    // Only the article may be shared (M14-D23).
+    expect(find.byKey(const Key('content-share')), findsOneWidget);
+    expect(find.byKey(const Key('content-qr')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('content-qr')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('share-qr')), findsOneWidget);
+    expect(find.text('https://app.example/articles/9'), findsOneWidget);
   });
 }

@@ -144,7 +144,7 @@ class CheckinService
 
         $result = $attendance->wasChanged('status') ? 'checked_out' : 'already_checked_out';
         if ($result === 'checked_out') {
-            AuditEvent::record('checkin.checked_out', $actor->id, $attendance, ['event_id' => $event->id, 'attendee_id' => $attendee->id]);
+            $this->audit('checkin.checked_out', $actor, $attendance, ['event_id' => $event->id]);
         }
 
         return ['attendee_id' => (string) $attendee->id, 'result' => $result, 'attendance' => $attendance];
@@ -193,13 +193,24 @@ class CheckinService
             return $row;
         });
 
+        // The reason is personal check-in data: it lives with the attendance and is
+        // deleted at retention; the audit entry only records the de-identified facts.
+        $correctionId = DB::table('event_attendance_corrections')->insertGetId([
+            'event_attendance_id' => $attendance->id,
+            'admin_id' => $admin->id,
+            'from_status' => $before['status'] ?? null,
+            'to_status' => $attendance->status,
+            'late' => $outsideWindow,
+            'reason' => $reason !== null ? mb_substr(trim($reason), 0, 255) : null,
+            'created_at' => now(),
+        ]);
         AuditEvent::record('checkin.admin_'.$status, $admin->id, $attendance, [
             'event_id' => $event->id,
-            'attendee_id' => $attendee->id,
             'before' => $before === null ? null : ['status' => $before['status']],
             'after' => ['status' => $attendance->status],
             'late' => $outsideWindow,
-            'reason' => $reason,
+            'reason_recorded' => trim((string) $reason) !== '',
+            'correction_id' => $correctionId,
         ]);
 
         return $attendance;
@@ -259,40 +270,50 @@ class CheckinService
     }
 
     /**
-     * Deletes check-in records past the App's retention (D24, D28) and keeps only
-     * de-identified audit entries (attendee ids removed).
+     * Deletes check-in records (attendances and their admin corrections) past the
+     * App's retention (D24, D28). The audit log stays append-only: check-in audit
+     * entries never contain attendee identifiers or reasons (see audit()), so
+     * nothing has to be rewritten; the run itself is recorded as evidence.
      *
-     * @return array{attendances_deleted: int, audits_deidentified: int}
+     * @return array{attendances_deleted: int, corrections_deleted: int, retention_days: int, cutoff: string}
      */
     public function purge(): array
     {
-        $cutoff = now()->subDays($this->settings->int('checkin_retention_days'));
+        $days = $this->settings->int('checkin_retention_days');
+        $cutoff = now()->subDays($days);
         $ids = EventAttendance::query()->where('updated_at', '<', $cutoff)
             ->whereHas('event', fn ($q) => $q->where('ends_at', '<', $cutoff))->pluck('id');
 
-        $audits = 0;
+        $corrections = 0;
         foreach ($ids->chunk(500) as $chunk) {
-            // The one sanctioned change to audit rows (D28 retention): remove the person
-            // link, keep the event. Done with the query builder because the model is
-            // append-only for every other purpose.
-            AuditEvent::query()->where('subject_type', 'EventAttendance')->whereIn('subject_id', $chunk)->get()
-                ->each(function (AuditEvent $audit) use (&$audits): void {
-                    $details = (array) $audit->details;
-                    unset($details['attendee_id'], $details['reason']);
-                    DB::table('audit_events')->where('id', $audit->id)->update([
-                        'details' => json_encode($details + ['deidentified' => true], JSON_UNESCAPED_UNICODE),
-                        'subject_id' => null,
-                        'actor_id' => null,
-                    ]);
-                    $audits++;
-                });
-            EventAttendance::query()->whereIn('id', $chunk)->delete();
+            DB::transaction(function () use ($chunk, &$corrections): void {
+                $corrections += DB::table('event_attendance_corrections')->whereIn('event_attendance_id', $chunk)->delete();
+                EventAttendance::query()->whereIn('id', $chunk)->delete();
+            });
         }
 
-        $result = ['attendances_deleted' => $ids->count(), 'audits_deidentified' => $audits];
+        $result = [
+            'attendances_deleted' => $ids->count(),
+            'corrections_deleted' => $corrections,
+            'retention_days' => $days,
+            'cutoff' => $cutoff->toIso8601ZuluString(),
+        ];
         AuditEvent::record('checkin.retention_purge', null, null, $result);
 
         return $result;
+    }
+
+    /**
+     * Check-in audit entry without personal data (D28): staff and admins are named
+     * as actors (accountability), a member checking in themselves is not; the
+     * subject is the attendance row, which is deleted at retention.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function audit(string $event, User $actor, EventAttendance $attendance, array $details): void
+    {
+        $staff = $actor->can('checkin.staff') || $actor->can('checkin.manage');
+        AuditEvent::record($event, $staff ? $actor->id : null, $attendance, $details + ['actor_role' => $staff ? 'staff' : 'member']);
     }
 
     /**
@@ -341,7 +362,7 @@ class CheckinService
         }
 
         if ($result === 'checked_in') {
-            AuditEvent::record('checkin.checked_in', $actor->id, $attendance, ['event_id' => $event->id, 'attendee_id' => $attendee->id, 'source' => $source]);
+            $this->audit('checkin.checked_in', $actor, $attendance, ['event_id' => $event->id, 'source' => $source]);
         }
 
         return ['attendee_id' => (string) $attendee->id, 'result' => $result, 'attendance' => $attendance];
@@ -363,9 +384,14 @@ class CheckinService
             throw new ApiException(422, 'GPS_REQUIRED', '此場次需要定位才能簽到；定位失敗請洽現場工作人員協助。');
         }
 
+        // The allowed distance is the configured radius (D20). A fix less precise than
+        // the radius cannot prove presence: ask for a better fix or staff help (D17).
+        $accuracy = (float) ($gps['accuracy'] ?? 0);
+        if ($accuracy > $radius) {
+            throw new ApiException(422, 'GPS_INACCURATE', '定位精確度不足（約 '.(int) round($accuracy).' 公尺），請到空曠處重試或洽現場工作人員協助簽到。');
+        }
         $distance = self::distanceMeters((float) $gps['lat'], (float) $gps['lng'], $location->latitude, $location->longitude);
-        $accuracy = min(max(0.0, (float) ($gps['accuracy'] ?? 0)), (float) $radius);
-        if ($distance > $radius + $accuracy) {
+        if ($distance > $radius) {
             throw new ApiException(422, 'GPS_OUT_OF_RANGE', '您不在簽到範圍內（約 '.(int) round($distance).' 公尺）；如有問題請洽現場工作人員。');
         }
     }

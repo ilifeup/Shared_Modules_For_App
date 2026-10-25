@@ -1,18 +1,22 @@
 <?php
 
+use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\EventCategory;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\MembershipLevel;
 use App\Models\PrivateCalendarEvent;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingRequest;
 use App\Services\Calendar\GoogleCalendarSync;
 use App\Services\MembershipService;
 use App\Support\Settings;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /** Status the fake Calendar event endpoint answers (changeable inside one test). */
 function googleEventStatus(?int $set = null): int
@@ -168,4 +172,36 @@ it('marks failed items for an admin retry without touching the booking', functio
     googleEventStatus(200);
     app(GoogleCalendarSync::class)->retry($mapping, makeAdmin());
     expect($mapping->refresh()->status)->toBe('synced');
+});
+
+// Review fix: an event may exist in Google although the last call failed, so a later
+// cancellation still deletes it (404 = already gone is fine).
+it('deletes the Google event after a cancellation even when the last sync had failed', function () {
+    fakeGoogle(500);
+    $member = User::factory()->create();
+    connectGoogle($member);
+    groupBook(s9Event(), $member)->assertCreated();
+    expect(GoogleCalendarEventMapping::query()->sole()->status)->toBe('failed');
+
+    googleEventStatus(200);
+    app(BookingEngine::class)->cancelGroup(EventBookingGroup::query()->sole(), $member);
+    expect(googleEventCalls('DELETE'))->toHaveCount(1)
+        ->and(GoogleCalendarEventMapping::query()->sole()->status)->toBe('removed');
+});
+
+// Review fix: a claimed guest booking becomes "my booking" and is synced (M09-D07).
+it('syncs a guest booking to Google once the member claims it', function () {
+    fakeGoogle();
+    $category = EventCategory::query()->create(['name' => '開放', 'allow_guest_booking' => true, 'allow_proxy_booking' => true]);
+    $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC], $category);
+    $member = User::factory()->create(['email' => 'claim@example.com']);
+    connectGoogle($member);
+    $group = app(BookingEngine::class)->book($event, new BookingRequest(
+        booker: null, contactName: '訪客', contactEmail: 'claim@example.com', contactPhone: null,
+        attendees: [['name' => '訪客', 'member_user_id' => null]], clientRequestId: (string) Str::uuid(),
+    ));
+    expect(googleEventCalls('PUT'))->toHaveCount(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/me/guest-bookings/{$group->id}/claim")->assertOk();
+    expect(googleEventCalls('PUT'))->toHaveCount(1);
 });

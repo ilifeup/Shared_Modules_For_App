@@ -3,9 +3,11 @@
 namespace App\Services\Booking;
 
 use App\Models\AuditEvent;
+use App\Models\CalendarEvent;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Calendar\GoogleCalendarSync;
 use App\Support\Api\ApiException;
 use App\Support\Phone;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,6 +42,9 @@ class GuestClaimService
     public function claim(EventBookingGroup $group, User $member): EventBookingGroup
     {
         $claimed = DB::transaction(function () use ($group, $member): EventBookingGroup {
+            // Same lock order as the booking engine (occurrence first), so a booking of
+            // the same occurrence by this member cannot slip in between check and claim.
+            CalendarEvent::query()->whereKey($group->calendar_event_id)->lockForUpdate()->first();
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
             [$email, $phone] = $this->verifiedContacts($member);
@@ -64,6 +69,10 @@ class GuestClaimService
         });
 
         AuditEvent::record('booking.guest_claimed', $member->id, $claimed, ['event_id' => $claimed->calendar_event_id]);
+        // Now "my booking": sync it to the member's Google calendar like any other (M09-D07).
+        if ($claimed->status === EventBookingGroup::STATUS_CONFIRMED) {
+            app(GoogleCalendarSync::class)->queueBooking($member->id, $claimed->calendar_event_id);
+        }
 
         return $claimed;
     }

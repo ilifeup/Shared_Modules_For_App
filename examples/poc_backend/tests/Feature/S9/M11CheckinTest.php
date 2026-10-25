@@ -10,6 +10,7 @@ use App\Services\Checkin\CheckinService;
 use App\Services\Checkin\CheckinTokens;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
 /** An occurrence open for check-in now, with the member's confirmed group (self + one guest name). */
@@ -163,28 +164,57 @@ it('requires a reason for admin late check-in and corrections', function () {
         ->and($audits[0]->details['late'])->toBeTrue()
         ->and($audits[1]->details['before'])->toBe(['status' => 'checked_in'])
         ->and($audits[1]->details['after'])->toBe(['status' => 'revoked'])
-        ->and($audits[1]->details['reason'])->toBe('誤登');
+        ->and($audits[1]->details)->not->toHaveKeys(['reason', 'attendee_id'])
+        ->and($audits[1]->details['reason_recorded'])->toBeTrue()
+        ->and($audits[1]->actor_id)->toBe($admin->id);
+
+    // The reasons are kept with the attendance (personal check-in data, purged at retention).
+    $corrections = DB::table('event_attendance_corrections')->orderBy('id')->get();
+    expect($corrections->pluck('reason')->all())->toBe(['現場核對後補登', '誤登'])
+        ->and($corrections[1]->from_status)->toBe('checked_in')
+        ->and((int) $audits[1]->details['correction_id'])->toBe((int) $corrections[1]->id);
 
     // Members cannot do this; staff check-in also respects the window.
     $staff = staffMember();
     expect(fn () => $service->staffCheckIn($event, $staff, null, $attendees[1]->id))->toThrow(ApiException::class);
 });
 
-// G17 / D28 — retention: delete check-in records, keep de-identified audit only.
-it('purges old check-ins and de-identifies their audit entries', function () {
+// G17 / D24 / D28 — retention deletes check-in personal data; the audit log stays
+// append-only (never rewritten) because check-in audits never hold attendee data.
+it('purges old check-ins without rewriting the append-only audit log', function () {
     [$event, $member, $attendees] = checkinEvent();
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
+    $staff = staffMember();
+    $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[1]->id])->assertOk();
+    $event->update(['starts_at' => now()->subHours(5), 'ends_at' => now()->subHours(4)]);
+    app(CheckinService::class)->adminSet($event, $attendees[1], EventAttendance::REVOKED, makeAdmin(), '王小明誤刷');
     app(Settings::class)->put(['checkin_retention_days' => 30]);
+
+    $audits = AuditEvent::query()->where('event', 'like', 'checkin.%')->orderBy('id')->get();
+    $before = $audits->map(fn (AuditEvent $a) => $a->getAttributes())->all();
+    // Written de-identified: no attendee id or reason; a member checking in is not named.
+    expect($audits)->toHaveCount(3)
+        ->and($audits->every(fn (AuditEvent $a) => ! array_key_exists('attendee_id', (array) $a->details) && ! array_key_exists('reason', (array) $a->details)))->toBeTrue()
+        ->and($audits[0]->actor_id)->toBeNull()->and($audits[0]->details['actor_role'])->toBe('member')
+        ->and($audits[1]->actor_id)->toBe($staff->id)->and($audits[1]->details['actor_role'])->toBe('staff')
+        ->and(json_encode($before, JSON_UNESCAPED_UNICODE))->not->toContain('王小明');
+
+    // Not yet expired: nothing is deleted.
+    expect(app(CheckinService::class)->purge()['attendances_deleted'])->toBe(0);
 
     $this->travel(40)->days();
     $result = app(CheckinService::class)->purge();
 
-    $audit = AuditEvent::query()->where('event', 'checkin.checked_in')->sole();
-    expect($result['attendances_deleted'])->toBe(1)
+    expect($result)->toMatchArray(['attendances_deleted' => 2, 'corrections_deleted' => 1, 'retention_days' => 30])
         ->and(EventAttendance::query()->count())->toBe(0)
-        ->and($audit->details)->not->toHaveKey('attendee_id')
-        ->and($audit->details['deidentified'])->toBeTrue()
-        ->and($audit->subject_id)->toBeNull();
+        ->and(DB::table('event_attendance_corrections')->count())->toBe(0)
+        // Existing audit rows are byte-for-byte unchanged ...
+        ->and(AuditEvent::query()->whereIn('id', $audits->pluck('id'))->orderBy('id')->get()->map(fn (AuditEvent $a) => $a->getAttributes())->all())->toBe($before)
+        // ... and the run itself is recorded as evidence.
+        ->and(AuditEvent::query()->where('event', 'checkin.retention_purge')->latest('id')->firstOrFail()->details)->toMatchArray(['attendances_deleted' => 2, 'corrections_deleted' => 1]);
+
+    // The model still refuses any change to audit rows.
+    expect(fn () => $audits[0]->forceFill(['details' => []])->save())->toThrow(LogicException::class);
 });
 
 // G05 — every occurrence of a series has its own attendance.

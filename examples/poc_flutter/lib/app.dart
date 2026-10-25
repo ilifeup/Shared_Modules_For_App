@@ -18,6 +18,7 @@ class S1PocApp extends ConsumerStatefulWidget {
 class _S1PocAppState extends ConsumerState<S1PocApp> {
   StreamSubscription<Uri>? _links;
   final _dedupe = DeepLinkDeduper();
+  bool _coldStart = true;
 
   @override
   void initState() {
@@ -26,10 +27,20 @@ class _S1PocAppState extends ConsumerState<S1PocApp> {
     final host = ref.read(appConfigProvider).appLinkHost;
     if (host.isEmpty) return;
     final parser = DeepLinkParser({host.toLowerCase()});
+    // Only a link delivered right at start-up is a cold start.
+    Timer(const Duration(seconds: 3), () => _coldStart = false);
     _links = ref.read(deepLinkStreamProvider).listen((uri) {
       final target = parser.parse(uri);
       if (target == null || _dedupe.isDuplicate(uri)) return;
-      ref.read(routerProvider).go(target.appPath);
+      // M14-D25: a cold-start link opens on top of the home page (back returns
+      // home instead of closing the App); a warm-start link is pushed on top of
+      // the current page (back returns there).
+      final router = ref.read(routerProvider);
+      if (_coldStart) {
+        router.go('/');
+      }
+      _coldStart = false;
+      unawaited(router.push(target.appPath));
       if (target.type != 'checkin_location') {
         // Counted only as an explicit open report (M17-D21); never blocks.
         unawaited(

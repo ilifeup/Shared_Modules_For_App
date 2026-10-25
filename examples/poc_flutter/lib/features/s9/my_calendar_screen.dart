@@ -166,14 +166,17 @@ class _PrivateTile extends ConsumerWidget {
               ? '・每月'
               : ''}',
         ),
-        trailing: IconButton(
-          tooltip: '刪除',
-          icon: const Icon(Icons.delete_outline),
-          onPressed: () async {
-            await ref.read(calendarApiProvider).deletePrivate(item.id);
-            ref.invalidate(myCalendarProvider(month));
-          },
-        ),
+        // M09-D14: after VIP ends private entries are read-only (no delete either).
+        trailing: !item.editable
+            ? const Text('唯讀')
+            : IconButton(
+                tooltip: '刪除',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  await ref.read(calendarApiProvider).deletePrivate(item.id);
+                  ref.invalidate(myCalendarProvider(month));
+                },
+              ),
       ),
     );
   }

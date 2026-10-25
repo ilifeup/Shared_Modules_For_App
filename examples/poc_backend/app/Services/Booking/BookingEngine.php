@@ -527,14 +527,31 @@ final class BookingEngine
             }
         }
 
+        // D05 "每人名額": the limit is per booker (or guest contact) and occurrence, not
+        // per request — several smaller bookings cannot add up past it (admins exempt).
+        if (! $request->byAdmin) {
+            $limit = max(1, (int) $event->booking_max_seats);
+            $already = (int) EventBookingGroup::query()->where('calendar_event_id', $event->id)
+                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])
+                ->when($request->booker !== null,
+                    fn ($q) => $q->where('booker_user_id', $request->booker->id),
+                    fn ($q) => $q->whereNull('booker_user_id')->where(fn ($c) => $c
+                        ->when($request->contactEmail !== null, fn ($e) => $e->orWhere('contact_email', $request->contactEmail))
+                        ->when($request->contactPhone !== null, fn ($p) => $p->orWhere('contact_phone', $request->contactPhone))))
+                ->sum('seat_count');
+            if ($already + $seats > $limit) {
+                throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每人於此場次最多可報名 '.$limit.' 位（已報名 '.$already.' 位）。');
+            }
+        }
+
         // Eligibility is checked when booking only (D10, D19).
         $this->assertEligible($event, $request->booker);
     }
 
     private function permanentFailure(EventBookingGroup $group): ?string
     {
-        if ($group->is_guest) {
-            return null;
+        if ($group->is_guest && $group->booker_user_id === null) {
+            return null; // unclaimed guest booking (a claimed one is checked like a member's)
         }
         $booker = $group->booker_user_id !== null ? User::query()->find($group->booker_user_id) : null;
 

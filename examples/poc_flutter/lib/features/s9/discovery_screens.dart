@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/device/device_services.dart';
 import '../../core/providers.dart';
@@ -13,8 +17,22 @@ final publicTagsProvider = FutureProvider.autoDispose<List<ContentTag>>(
   (ref) => ref.watch(discoveryApiProvider).tags(),
 );
 
+/// M19-D08 / D17: bookmarks grouped by content type (null = all).
+class BookmarkTypeFilter extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String? type) => state = type;
+}
+
+final bookmarkTypeProvider = NotifierProvider<BookmarkTypeFilter, String?>(
+  BookmarkTypeFilter.new,
+);
+
 final bookmarksProvider = FutureProvider.autoDispose<BookmarkPage>(
-  (ref) => ref.watch(discoveryApiProvider).bookmarks(),
+  (ref) => ref
+      .watch(discoveryApiProvider)
+      .bookmarks(type: ref.watch(bookmarkTypeProvider)),
 );
 
 Widget tagChip(ContentTag tag, {bool selected = false, VoidCallback? onTap}) {
@@ -176,6 +194,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           if (_page > 0 && _items.isEmpty)
             const StatusBox(label: '【找不到符合的內容】', detail: '請減少關鍵字或篩選條件。'),
+          // M19-D28: offer to clear the filters, no automatic recommendations.
+          if (_page > 0 && _items.isEmpty && (_tags.isNotEmpty || _type != null))
+            OutlinedButton(
+              key: const Key('search-clear-filters'),
+              onPressed: () {
+                setState(() {
+                  _tags.clear();
+                  _type = null;
+                });
+                _search();
+              },
+              child: const Text('清除篩選'),
+            ),
           for (final item in _items) ContentCardTile(item: item),
           if (_page > 0 && _page < _lastPage)
             OutlinedButton(
@@ -263,6 +294,24 @@ class BookmarksScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           children: [
             Text('${p.count} / ${p.limit}', key: const Key('bookmarks-count')),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final t in const [
+                  (null, '全部'),
+                  ('article', '文章'),
+                  ('event', '活動'),
+                  ('notice', '公告'),
+                ])
+                  ChoiceChip(
+                    key: Key('bookmark-type-${t.$1 ?? 'all'}'),
+                    label: Text(t.$2),
+                    selected: ref.watch(bookmarkTypeProvider) == t.$1,
+                    onSelected: (_) =>
+                        ref.read(bookmarkTypeProvider.notifier).select(t.$1),
+                  ),
+              ],
+            ),
             if (p.items.isEmpty) const StatusBox(label: '【尚無收藏】', detail: ''),
             for (final b in p.items)
               b.item != null
@@ -323,7 +372,14 @@ Future<bool> _confirm(BuildContext context, String title, String body) async {
   return ok == true;
 }
 
-/// Share (M14) and bookmark (M19) actions for a content detail app bar.
+final shareLinkProvider = FutureProvider.autoDispose
+    .family<ShareLink, (String, String)>(
+      (ref, key) => ref.watch(linkApiProvider).share(key.$1, key.$2),
+    );
+
+/// Share, QR Code (M14) and bookmark (M19) actions for a content detail app bar.
+/// Share and QR are shown only when the server says the content may be shared
+/// (M14-D23); failures hide them instead of blocking the page.
 class ContentActions extends ConsumerWidget {
   const ContentActions({
     super.key,
@@ -338,33 +394,37 @@ class ContentActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final link = ref.watch(shareLinkProvider((contentType, contentId))).value;
+    final url = link != null && link.shareable ? link.url : null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          key: const Key('content-share'),
-          tooltip: '分享',
-          icon: const Icon(Icons.share_outlined),
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            try {
-              final link = await ref
-                  .read(linkApiProvider)
-                  .share(contentType, contentId);
-              if (!link.shareable || link.url == null) {
+        if (url != null) ...[
+          IconButton(
+            key: const Key('content-share'),
+            tooltip: '分享',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                await ref.read(shareTextProvider)(url);
+              } catch (_) {
                 messenger.showSnackBar(
-                  const SnackBar(content: Text('此內容不開放分享。')),
+                  const SnackBar(content: Text('暫時無法分享，請稍後再試。')),
                 );
-                return;
               }
-              await ref.read(shareTextProvider)(link.url!);
-            } catch (_) {
-              messenger.showSnackBar(
-                const SnackBar(content: Text('暫時無法分享，請稍後再試。')),
-              );
-            }
-          },
-        ),
+            },
+          ),
+          IconButton(
+            key: const Key('content-qr'),
+            tooltip: 'QR Code',
+            icon: const Icon(Icons.qr_code_2),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => ShareQrDialog(url: url),
+            ),
+          ),
+        ],
         if (canBookmark)
           IconButton(
             key: const Key('content-bookmark'),
@@ -377,13 +437,86 @@ class ContentActions extends ConsumerWidget {
                     .read(discoveryApiProvider)
                     .addBookmark(contentType, contentId);
                 ref.invalidate(bookmarksProvider);
-                messenger.showSnackBar(const SnackBar(content: Text('已加入收藏。')));
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('已加入收藏。')),
+                );
               } catch (error) {
-                messenger.showSnackBar(SnackBar(content: Text('無法收藏：$error')));
+                messenger.showSnackBar(
+                  SnackBar(content: Text('無法收藏：$error')),
+                );
               }
             },
           ),
       ],
     );
   }
+}
+
+/// M14-D08 / D27: the share URL as a QR Code on screen, shareable as an image.
+class ShareQrDialog extends ConsumerWidget {
+  const ShareQrDialog({super.key, required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return AlertDialog(
+      title: const Text('分享 QR Code'),
+      content: SizedBox(
+        width: 240,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ColoredBox(
+              color: Colors.white,
+              child: QrImageView(
+                key: const Key('share-qr'),
+                data: url,
+                size: 220,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(url, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('關閉'),
+        ),
+        FilledButton(
+          key: const Key('share-qr-image'),
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await ref.read(shareImageProvider)(await qrPng(url), 'qrcode.png');
+            } catch (_) {
+              messenger.showSnackBar(
+                const SnackBar(content: Text('暫時無法分享圖片，請稍後再試。')),
+              );
+            }
+          },
+          child: const Text('分享圖片'),
+        ),
+      ],
+    );
+  }
+}
+
+/// PNG of a QR Code on a white background (readable in light and dark viewers).
+Future<Uint8List> qrPng(String data, {double size = 600}) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  final margin = size * 0.06;
+  canvas.drawRect(Rect.fromLTWH(0, 0, size, size), Paint()..color = Colors.white);
+  canvas.translate(margin, margin);
+  QrPainter(
+    data: data,
+    version: QrVersions.auto,
+    gapless: true,
+  ).paint(canvas, Size.square(size - 2 * margin));
+  final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  return bytes!.buffer.asUint8List();
 }

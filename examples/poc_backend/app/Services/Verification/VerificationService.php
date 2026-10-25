@@ -169,6 +169,9 @@ class VerificationService
     /** Takes effect at once and keeps the record (D07); notifies per type (D10). */
     public function revoke(MemberVerification $verification, User $admin, string $reason): void
     {
+        if (! $admin->is_active || ! $admin->can('verifications.review')) {
+            throw new ApiException(403, 'FORBIDDEN', '沒有撤銷認證的權限。');
+        }
         if ($verification->revoked_at !== null) {
             return;
         }

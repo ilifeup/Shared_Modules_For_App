@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Booking\LegacyBookingBackfill;
+use App\Support\S9DataGuard;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,8 @@ use Spatie\Permission\PermissionRegistrar;
  * event_bookings with UNIQUE(calendar_event_id,user_id,active) stays the member
  * booking anchor (S9-L06 A). The seat ledger is event_booking_attendees; existing
  * confirmed bookings are backfilled (idempotent, verified) so old and new entry
- * points share one count. down() removes only what this migration added.
+ * points share one count. down() removes only what this migration added and refuses
+ * to run while S9 data exists unless the operator accepts the loss (S9DataGuard).
  */
 return new class extends Migration
 {
@@ -277,6 +279,20 @@ return new class extends Migration
             $table->index('updated_at');
         });
 
+        // Admin corrections with their reasons (D12, D16, D27). Personal data of the
+        // check-in, so it is deleted together with the attendance at retention (D28);
+        // the append-only audit log only keeps a de-identified entry.
+        Schema::create('event_attendance_corrections', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('event_attendance_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('admin_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('from_status', 20)->nullable();
+            $table->string('to_status', 20);
+            $table->boolean('late')->default(false);
+            $table->string('reason', 255)->nullable();
+            $table->timestamp('created_at')->nullable();
+        });
+
         // ---- M16 tags --------------------------------------------------------------------
         Schema::create('tags', function (Blueprint $table) {
             $table->id();
@@ -398,10 +414,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Refuses while S9 data exists unless S9_ROLLBACK_ACCEPT_DATA_LOSS=yes (after a backup).
+        S9DataGuard::assertRollbackAllowed();
+
         foreach ([
             'marketing_campaign_placement', 'marketing_campaigns', 'marketing_placements',
             'link_daily_stats', 'link_clicks', 'bookmarks', 'taggables', 'tags',
-            'event_attendances', 'checkin_location_events', 'checkin_locations',
+            'event_attendance_corrections', 'event_attendances', 'checkin_location_events', 'checkin_locations',
             'event_waitlist_entries', 'event_booking_attendees', 'event_booking_groups',
             'google_calendar_event_mappings', 'google_calendar_connections', 'private_calendar_events',
         ] as $table) {

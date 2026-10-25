@@ -101,13 +101,67 @@
 - **App Links 網域**：以編譯參數 `APP_LINK_HOST`（Dart）與 Gradle `-PappLinkHost=`（Manifest placeholder）設定；未設定時 App 不監聽外部連結、Manifest 使用 `app-links.invalid`，不會誤認領他人網域。
 - **登入後返回（M14-D20）**：只允許 App 內固定路徑（`/articles|events|notices/{id}`、`/checkin/location/{token}`），以 `safeReturnPath()` 檢查，外部網址一律忽略。
 - **併發重送冪等**：同一 `client_request_id` 的兩個請求同時抵達時，第二個在取得活動列鎖後重新查詢並回傳同一報名群組（不會出現 ALREADY_BOOKED）。CI 腳本以 10 組重送驗證。
-- **稽核去識別（M11-D28）**：稽核資料表維持 append-only；保留期清除是唯一例外，以 query builder 移除 `attendee_id`、`reason`、`actor_id`、`subject_id` 並標記 `deidentified`。
+- **稽核去識別（M11-D28，2026-10-25 複審修正）**：M07 稽核表維持 append-only，**沒有任何例外**。簽到相關稽核在寫入時就不含個資：不記 `attendee_id`；會員自行簽到時 `actor_id` 為空（只記 `actor_role=member`），工作人員與管理員才記 actor；管理員更正的原因存放在 `event_attendance_corrections`（屬簽到個資，保存期限到時與簽到紀錄一起刪除），稽核只記錄 `reason_recorded`、`correction_id`、前後狀態。清除作業只刪除 `event_attendances` 與 `event_attendance_corrections`，並寫一筆 `checkin.retention_purge`（筆數、保存天數、截止時間）作為執行證據。M11-D24 提到的「稽核紀錄保存期限」若要刪除稽核列，會與 M07 append-only 衝突，**待使用者裁決**，本批不刪除任何稽核列。
 - **MySQL 索引名稱**：超過 64 字元的複合索引／外鍵改用明確短名稱（`gcal_mappings_*`、`booking_attendees_member_active_unique`、`event_attendances_attendee_unique`）。
 
-## 6. 資料庫遷移與回退方案（交付給使用者）
+## 6. 資料庫遷移、備份、回退與資料恢復方案（2026-10-25 複審修訂）
 
-1. **遷移**：單一 migration `2026_11_01_000100_s9_modules.php`，只新增資料表與 `calendar_events` 可為 NULL／有預設值的欄位；不改名、不刪既有欄位、不改既有資料語意。
-2. **舊資料回填**：同一 migration 內呼叫 `LegacyBookingBackfill::run()`，把每筆 S6 `event_bookings` 建成一個 1 人報名群組＋參加者席次（以 `legacy_booking_id` 唯一鍵保證可重跑、不重複），並核對筆數；不一致即中止。
-3. **部署前**：備份資料庫 → `php artisan migrate --force`（已核准的 migration）→ 確認 `event_bookings` 筆數＝`event_booking_groups.legacy_booking_id` 筆數。
-4. **回退**：`php artisan migrate:rollback --step=1 --force` 刪除 S9 新表與 `calendar_events` 新欄位，S1–S8 資料不受影響；S9 期間新增的團體報名、候補、簽到、收藏、標籤、統計、行銷資料會一併刪除（需先備份）。回退後部署 S8 版本程式。
-5. **CI 演練**：`S1 PoC Backend` workflow 的「S9 migration rollback drill」在拋棄式 MySQL 8.4 上實際執行 rollback → 結構檢查 → 重新 migrate → 回填筆數檢查。
+> **結論先講**：S9 回退（`migrate:rollback`）會**永久刪除** S9 上線期間產生的所有 S9 資料，**不是無損回退**。S1–S8 的資料表與欄位不受影響。出問題時優先「往前修正」（修程式後重新部署）；只有 S9 結構本身造成無法運作、且無法快速修正時才回退。正式環境的任何操作都由使用者決定並執行，AI 不執行。
+
+### 6.1 回退會刪除什麼
+
+| 類別 | 回退後狀態 |
+|---|---|
+| S9 新資料表（認證、類別、系列、私人行程、Google 連結、團體報名／參加者／候補、簽到、標籤、收藏、點擊統計、行銷） | **整表刪除** |
+| `calendar_events` 的 S9 欄位（系列、類別、樓層、教室、時區、每組名額、候補開關、相對期限、簽到設定） | **欄位刪除**；活動本身（含系列已產生的各場次）保留為一般單次活動 |
+| S6 `event_bookings` | 保留。S9 期間經 S6 或 S9 取消的單人預約，會同步回寫 `event_bookings`，因此回退後狀態一致 |
+| 經 S9 API 建立的團體、訪客、管理員代報名 | **遺失**（這些不寫入 `event_bookings`）；S8 程式只計算 `event_bookings` 的名額 |
+| Google 日曆中已同步的事件 | 留在會員的 Google 日曆，App 端的對應紀錄遺失 |
+
+### 6.2 防誤操作保護（已實作）
+
+- `php artisan s9:data-report`：唯讀，列出回退會刪除的資料筆數（不含 migration 可自行重建的 S6 回填資料與預設展示區）。
+- `down()` 呼叫 `S9DataGuard::assertRollbackAllowed()`：只要上表有資料，回退就**拒絕執行**，且不刪任何東西。除非執行者在**程序環境變數**明確設定 `S9_ROLLBACK_ACCEPT_DATA_LOSS=yes`。刻意不讀 config，避免快取設定預先放行。
+- CI 演練（`S9 migration rollback drill`）順序：
+  1. 先驗證「有資料時拒絕回退、資料表仍在」。
+  2. 再設定變數執行回退，檢查結構。
+  3. 重新 migrate，核對回填筆數。
+- Pest：`tests/Feature/S9/RollbackGuardTest.php`。
+
+### 6.3 上線前備份（必做）
+
+1. 確認雲端資料庫自動備份或時間點還原（PITR）已啟用，並記下保留天數。
+2. 部署前做一份完整邏輯備份，例如 `mysqldump --single-transaction --routines --triggers <db> | gzip > pre-s9-<日期>.sql.gz`，再記錄 SHA-256。
+3. 在**非正式環境**用這份備份實際還原一次，確認可用。
+4. `php artisan migrate --force`。migration 會回填 S6 預約並核對筆數，不一致就整批失敗。
+5. 驗證：`event_bookings` 筆數＝`event_booking_groups` 中 `legacy_booking_id` 不為空的筆數；`php artisan s9:data-report` 應顯示無 S9 資料。
+
+### 6.4 回退步驟（只在無法往前修正時）
+
+1. 進入維護模式（`php artisan down`），停止 queue worker 與排程，避免回退途中再寫入資料。
+2. `php artisan s9:data-report`，把輸出存檔，作為「將遺失資料」的紀錄。
+3. **回退前再做一次完整備份**（同 6.3 第 2 步）。這份備份含有 S9 期間的所有資料，是之後恢復的唯一來源。
+4. `S9_ROLLBACK_ACCEPT_DATA_LOSS=yes php artisan migrate:rollback --step=1 --force`
+5. 部署 S8 版本程式，`php artisan up`，執行 S1–S8 冒煙測試。
+6. 通知受影響會員：團體／訪客報名、候補、簽到、收藏暫時無法顯示。
+
+### 6.5 資料恢復（重新上線 S9 時）
+
+**資料恢復不是自動的，也不保證完整。** 以下兩種方式擇一：
+
+- **A. 回退後尚未有任何新寫入**（維護模式期間就決定恢復）：直接用 6.4 第 3 步的備份做整庫還原，再部署 S9 程式。這是唯一接近完整的恢復方式。
+- **B. 回退後 S8 已運作一段時間**（有新的 S6 預約、取消、會員異動）：整庫還原會覆蓋這段期間的新資料，因此不能直接整庫還原。改用以下步驟：
+  1. 部署 S9 程式並 `migrate`（會重新產生 S6 回填群組）。
+  2. 從 6.4 第 3 步的備份**只匯出 S9 資料表**（例如 `mysqldump --no-create-info <db> <S9 資料表…>`），以及 `calendar_events` 的 S9 欄位（`SELECT id, <S9 欄位> FROM calendar_events`）。
+  3. 在**非正式環境**合併，並逐項核對：
+     - 舊備份的回填群組與新產生的回填群組 ID 衝突（舊簽到紀錄指向舊的參加者 ID）；
+     - 回退期間 S8 新增或取消的 `event_bookings`，與舊群組狀態不一致；
+     - 回退期間 S8 只看 `event_bookings`，名額可能已被重複使用，合併後可能超額；
+     - 回退期間刪除的會員或活動，造成外鍵失效。
+  4. 只有核對報告經使用者確認後，才把合併結果匯入正式環境。超額與衝突的報名需要人工處理，必要時通知會員。
+- Google 日曆：若 `google_calendar_connections` 已一併恢復（含加密 token，需相同 `APP_KEY`），同步會沿用原日曆與固定事件 ID，不會重複建立。若連結紀錄遺失，會員必須重新連結；新連結會建立新的 App 專用日曆並重新同步現在與未來的行程，舊日曆裡的事件會留在原處，需會員自行刪除。
+
+### 6.6 尚未提供、需使用者決定是否開發
+
+- 自動化的 S9 資料匯出與匯入、合併工具（6.5 B 第 2–4 步）。目前只有文件流程，**NOT TESTED**。
+- 正式環境備份、還原的實際演練：需正式或預備環境，**BLOCKED**。

@@ -2,6 +2,7 @@
 
 use App\Services\Analytics\LinkAnalytics;
 use App\Services\Checkin\CheckinService;
+use App\Support\S9DataGuard;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -20,6 +21,18 @@ Artisan::command('s9:purge-link-stats', function (LinkAnalytics $analytics) {
     $result = $analytics->purge();
     $this->info('M17 cleanup: '.json_encode($result));
 })->purpose('Delete raw clicks after 90 days and aggregates after 24 months (M17-D22)');
+
+// Read-only: what an S9 rollback would delete (run before deciding on a rollback).
+Artisan::command('s9:data-report', function () {
+    $report = S9DataGuard::report();
+    if ($report === []) {
+        $this->info('S9 rollback would delete no data that the migration cannot rebuild.');
+
+        return;
+    }
+    $this->warn('An S9 rollback would permanently delete:');
+    $this->table(['data', 'rows'], array_map(fn ($k, $v) => [$k, $v], array_keys($report), $report));
+})->purpose('Show the S9 rows a migration rollback would delete');
 
 Schedule::command('s9:purge-checkins')->dailyAt('03:10');
 Schedule::command('s9:purge-link-stats')->dailyAt('03:20');

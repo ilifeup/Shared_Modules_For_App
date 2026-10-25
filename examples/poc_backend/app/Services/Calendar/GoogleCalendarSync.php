@@ -168,6 +168,14 @@ class GoogleCalendarSync
             return 'skipped';
         }
 
+        // One item at a time: a slow upsert must not finish after a later delete and
+        // leave a cancelled booking in Google (jobs for the same item may overlap).
+        return Cache::lock('google-sync:'.$connection->id.':'.$sourceType.':'.$sourceId, 120)
+            ->block(60, fn (): string => $this->syncLocked($connection, $sourceType, $sourceId));
+    }
+
+    private function syncLocked(GoogleCalendarConnection $connection, string $sourceType, int $sourceId): string
+    {
         $mapping = $this->mapping($connection, $sourceType, $sourceId);
         $desired = $sourceType === GoogleCalendarEventMapping::SOURCE_BOOKING
             ? $this->bookingPayload($connection, $sourceId)
@@ -178,7 +186,9 @@ class GoogleCalendarSync
         }
 
         if ($desired === null) {
-            if ($mapping->status === 'synced') {
+            // Also after an earlier failure: the event may exist although the call failed
+            // (a missing event answers 404 and is ignored).
+            if ($mapping->status !== 'removed') {
                 $this->client->deleteEvent($connection, $mapping->google_event_id);
             }
             $mapping->forceFill(['status' => 'removed', 'synced_at' => now(), 'last_error' => null])->save();

@@ -1418,12 +1418,12 @@ paths:
       operationId: deletePrivateEvent
       x-verification: required
       x-dart: CalendarApi.deletePrivate
-      description: 'S9 M09 delete own private entry (allowed after VIP ends).'
+      description: 'S9 M09 delete own private entry (VIP only; after VIP ends entries are read-only, M09-D14 — 403 VIP_REQUIRED).'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/DeletedResponse' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /me/google-calendar:

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +59,16 @@ final shareTextProvider = Provider<Future<void> Function(String text)>(
     await SharePlus.instance.share(ShareParams(text: text));
   },
 );
+
+/// System share sheet with an image (M14-D27 QR Code image).
+final shareImageProvider =
+    Provider<Future<void> Function(Uint8List png, String name)>(
+      (ref) => (png, name) async {
+        await SharePlus.instance.share(
+          ShareParams(files: [XFile.fromData(png, mimeType: 'image/png', name: name)]),
+        );
+      },
+    );
 
 /// Opens an HTTPS URL outside the App (Google consent, external campaigns).
 final openUrlProvider = Provider<Future<bool> Function(Uri uri)>(

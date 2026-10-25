@@ -23,7 +23,7 @@ class NoticeDetailScreen extends ConsumerWidget {
           children: [
             ContentUnavailable(
               error: error,
-              onRetry: () => ref.invalidate(noticeDetailProvider(id)),
+              onRetry: () => ref.invalidate(noticeProvider(id)),
             ),
           ],
         ),

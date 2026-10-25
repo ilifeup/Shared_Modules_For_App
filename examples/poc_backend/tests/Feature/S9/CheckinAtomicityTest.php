@@ -130,3 +130,22 @@ it('keeps all check-in data when the purge evidence cannot be written', function
 
     expect(app(CheckinService::class)->purge())->toMatchArray(['attendances_deleted' => 1, 'corrections_deleted' => 1]);
 });
+
+
+it('does not disguise an audit insert failure as an already checked-in scan when a revoked row exists', function () {
+    [$event, , $attendee] = atomicOccurrence();
+    $admin = makeAdmin();
+    $service = app(CheckinService::class);
+    $service->adminSet($event, $attendee, EventAttendance::REVOKED, $admin, '誤登撤銷');
+    $before = checkinSnapshot();
+
+    $staff = User::factory()->create();
+    $staff->assignRole(Role::findOrCreate('checkin_staff', 'web'));
+    $off = failInsertsInto('audit_events');
+    expect(fn () => $service->staffCheckIn($event, $staff, null, $attendee->id))
+        ->toThrow(QueryException::class, 'injected failure');
+    $off();
+
+    expect(checkinSnapshot())->toBe($before)
+        ->and(EventAttendance::query()->sole()->status)->toBe(EventAttendance::REVOKED);
+});

@@ -638,8 +638,18 @@ final class BookingEngine
         $same = $existing->calendar_event_id === $event->id
             && $existing->booker_user_id === $request->booker?->id
             && ($request->booker !== null || $existing->contact_email === $request->contactEmail && $existing->contact_phone === $request->contactPhone);
-        if (! $same) {
-            throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於其他報名。');
+        // A retry must represent the original booking, not a different attendee list.
+        // Compare the persisted attendee snapshot rather than the current member profile.
+        $stored = $existing->attendees()->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
+            'name' => $attendee->name,
+            'member_user_id' => $attendee->member_user_id === null ? null : (int) $attendee->member_user_id,
+        ])->all();
+        $incoming = array_map(fn (array $attendee): array => [
+            'name' => mb_substr(trim($attendee['name']), 0, 80),
+            'member_user_id' => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
+        ], $request->attendees);
+        if (! $same || $existing->seat_count !== count($incoming) || $stored !== $incoming) {
+            throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
         return $existing->load('attendees', 'waitlistEntry');

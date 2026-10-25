@@ -173,8 +173,9 @@ final class BookingEngine
     /**
      * S9 group booking (member, guest or admin on the member's behalf).
      */
-    public function book(CalendarEvent $event, BookingRequest $request): EventBookingGroup
+    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
     {
+        $created = false;
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -242,6 +243,7 @@ final class BookingEngine
             return $this->replay($replayed, $event, $request);
         }
 
+        $created = true;
         AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
             'event_id' => $event->id,
             'seats' => $group->seat_count,

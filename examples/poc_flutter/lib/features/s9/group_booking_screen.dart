@@ -71,7 +71,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
 
   Future<void> _submit() async {
     if (_busy) return;
-    final names = _pendingNames ??
+    final names =
+        _pendingNames ??
         _names.map((c) => c.text.trim()).where((n) => n.isNotEmpty).toList();
     final includeSelf = _pendingIncludeSelf ?? _includeSelf;
     if (!includeSelf && names.isEmpty) {
@@ -187,7 +188,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             if (_pendingNames != null && !_busy)
               const StatusBox(
                 label: '【結果待確認】',
-                detail: '上次送出可能已成功。請重試原請求，或至「我的報名」確認；'
+                detail:
+                    '上次送出可能已成功。請重試原請求，或至「我的報名」確認；'
                     '在結果確定前不可修改參加者資料。',
               ),
             if (_error is String)

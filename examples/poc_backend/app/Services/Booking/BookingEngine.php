@@ -158,9 +158,9 @@ final class BookingEngine
 
             $this->promote($event);
 
-            AuditEvent::record('booking.cancelled', $actor->id, $cancelled, [
-                'event_id' => $cancelled->calendar_event_id,
-                'by' => $actor->id === $cancelled->user_id ? 'member' : 'admin',
+            AuditEvent::record('booking.cancelled', $actor->id, $locked, [
+                'event_id' => $locked->calendar_event_id,
+                'by' => $actor->id === $locked->user_id ? 'member' : 'admin',
             ]);
             return $locked->refresh();
         });
@@ -276,9 +276,9 @@ final class BookingEngine
             $this->cancelGroupLocked($locked, $actor, $byAdmin, $reason);
             $this->promote($event);
 
-            AuditEvent::record($wasConfirmed ? 'booking.group_cancelled' : 'booking.waitlist_cancelled', $actor->id, $result, [
-                'event_id' => $result->calendar_event_id,
-                'seats' => $result->seat_count,
+            AuditEvent::record($wasConfirmed ? 'booking.group_cancelled' : 'booking.waitlist_cancelled', $actor->id, $locked, [
+                'event_id' => $locked->calendar_event_id,
+                'seats' => $locked->seat_count,
                 'by' => $byAdmin ? 'admin' : 'member',
                 'reason' => $reason,
             ]);
@@ -313,7 +313,7 @@ final class BookingEngine
             EventBooking::query()->where('calendar_event_id', $locked->id)->where('status', EventBooking::STATUS_CONFIRMED)
                 ->get()->each(fn (EventBooking $b) => $this->cancelLegacyRow($b, $actor));
 
-            AuditEvent::record('event.cancelled_with_bookings', $actor->id, $event, ['groups' => $count]);
+            AuditEvent::record('event.cancelled_with_bookings', $actor->id, $event, ['groups' => $groups->count()]);
             return $groups->count();
         });
 

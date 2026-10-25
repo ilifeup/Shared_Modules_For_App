@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ui/status_box.dart';
+import '../s9/verification_marketing.dart';
 import '../notifications/notification_providers.dart';
 import 'notice_providers.dart';
 
@@ -79,10 +80,24 @@ class NoticesScreen extends ConsumerWidget {
             icon: const Icon(Icons.person),
             onPressed: () => context.push('/profile'),
           ),
+          // S9 entries.
+          PopupMenuButton<String>(
+            key: const Key('open-more'),
+            tooltip: '更多',
+            onSelected: (path) => context.push(path),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: '/search', child: Text('搜尋')),
+              PopupMenuItem(value: '/me/bookmarks', child: Text('我的收藏')),
+              PopupMenuItem(value: '/me/calendar', child: Text('我的行事曆')),
+              PopupMenuItem(value: '/me/booking-groups', child: Text('我的報名')),
+              PopupMenuItem(value: '/me/verifications', child: Text('身分認證')),
+            ],
+          ),
         ],
       ),
       body: Column(
         children: [
+          const MarketingBanner(),
           _filter(ref),
           Expanded(
             child: RefreshIndicator(

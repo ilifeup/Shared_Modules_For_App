@@ -212,7 +212,9 @@ class CheckinScan {
   /// Event id inside an event token.
   String? get eventId => kind == 'event' ? value.split('.')[1] : null;
 
-  static final _token = RegExp(r'^([ea])\.(\d{1,19})\.(\d{1,12})\.([0-9a-f]{24})$');
+  static final _token = RegExp(
+    r'^([ea])\.(\d{1,19})\.(\d{1,12})\.([0-9a-f]{24})$',
+  );
   static final _location = RegExp(r'^/checkin/l/([A-Za-z0-9]{16,40})/?$');
 
   /// Null when the code is not a check-in code of this App. [appHost] limits

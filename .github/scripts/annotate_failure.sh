@@ -18,6 +18,8 @@ i=0
 for p in "$tmp"/part.*; do
   i=$((i + 1)); [ "$i" -gt "$parts" ] && break
   body="$(sed -e 's/%/%25/g' "$p" | awk 'BEGIN{ORS="%0A"} {print}')"
-  echo "::error title=$title ($i)::$body"
+  # GitHub keeps at most 10 annotations per type and step: spill over into warnings, then notices.
+  level=error; [ "$i" -gt 10 ] && level=warning; [ "$i" -gt 20 ] && level=notice
+  echo "::$level title=$title ($i)::$body"
 done
 rm -rf "$tmp"

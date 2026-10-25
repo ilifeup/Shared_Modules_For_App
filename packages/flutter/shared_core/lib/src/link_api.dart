@@ -231,8 +231,10 @@ class DeepLinkParser {
 
 /// Drops a link that arrives twice in a short time (cold start + stream).
 class DeepLinkDeduper {
-  DeepLinkDeduper({this.window = const Duration(seconds: 5), DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  DeepLinkDeduper({
+    this.window = const Duration(seconds: 5),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   final Duration window;
   final DateTime Function() _now;
@@ -256,8 +258,9 @@ String? safeReturnPath(String? path) {
   }
   final uri = Uri.tryParse(path);
   if (uri == null || uri.hasScheme || uri.hasAuthority) return null;
-  return RegExp(r'^/(articles|events|notices)/\d{1,19}$|^/checkin/location/[A-Za-z0-9]{16,40}$')
-          .hasMatch(uri.path)
+  return RegExp(
+        r'^/(articles|events|notices)/\d{1,19}$|^/checkin/location/[A-Za-z0-9]{16,40}$',
+      ).hasMatch(uri.path)
       ? uri.path
       : null;
 }

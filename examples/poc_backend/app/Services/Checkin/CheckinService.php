@@ -272,11 +272,18 @@ class CheckinService
 
         $audits = 0;
         foreach ($ids->chunk(500) as $chunk) {
+            // The one sanctioned change to audit rows (D28 retention): remove the person
+            // link, keep the event. Done with the query builder because the model is
+            // append-only for every other purpose.
             AuditEvent::query()->where('subject_type', 'EventAttendance')->whereIn('subject_id', $chunk)->get()
                 ->each(function (AuditEvent $audit) use (&$audits): void {
                     $details = (array) $audit->details;
                     unset($details['attendee_id'], $details['reason']);
-                    $audit->forceFill(['details' => $details + ['deidentified' => true], 'subject_id' => null])->save();
+                    DB::table('audit_events')->where('id', $audit->id)->update([
+                        'details' => json_encode($details + ['deidentified' => true], JSON_UNESCAPED_UNICODE),
+                        'subject_id' => null,
+                        'actor_id' => null,
+                    ]);
                     $audits++;
                 });
             EventAttendance::query()->whereIn('id', $chunk)->delete();

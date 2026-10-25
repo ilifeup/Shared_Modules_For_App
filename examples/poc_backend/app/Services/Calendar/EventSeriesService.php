@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -257,9 +258,9 @@ class EventSeriesService
 
     /**
      * @param  array<string, mixed>  $result
-     * @return \Illuminate\Support\Collection<int, CalendarEvent>
+     * @return Collection<int, CalendarEvent>
      */
-    private function targets(CalendarEvent $occurrence, string $scope, array &$result, bool $includeExceptions = false): \Illuminate\Support\Collection
+    private function targets(CalendarEvent $occurrence, string $scope, array &$result, bool $includeExceptions = false): Collection
     {
         if ($scope === 'single') {
             return collect([$occurrence]);

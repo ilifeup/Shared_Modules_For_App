@@ -219,10 +219,7 @@ class CalendarApi {
   }
 
   Future<void> deletePrivate(String id) async {
-    await transport.request(
-      'DELETE',
-      '/api/v1/me/private-events/${s9Seg(id)}',
-    );
+    await transport.request('DELETE', '/api/v1/me/private-events/${s9Seg(id)}');
   }
 
   Future<GoogleCalendarStatus> googleStatus() async {

@@ -66,9 +66,8 @@ Future<void> main() async {
   fake.responses['POST /api/v1/events/7/booking-groups'] = {
     'data': _group('waitlisted'),
   };
-  final group = await BookingGroupApi(
-    fake,
-  ).book('7', clientRequestId: 'uuid-1', attendeeNames: ['家人']);
+  final group = await BookingGroupApi(fake)
+      .book('7', clientRequestId: 'uuid-1', attendeeNames: ['家人']);
   check(group.isWaitlisted && group.waitlistPosition == 1, 'waitlist');
   check(group.venue == '道場 2F A' && group.attendees.length == 2, 'group');
   check(fake.bodies.last!['client_request_id'] == 'uuid-1', 'idempotency');
@@ -77,7 +76,10 @@ Future<void> main() async {
     'meta': {'current_page': 1, 'last_page': 2},
   };
   final page = await BookingGroupApi(fake).mine(status: 'active');
-  check(fake.calls.last == 'GET /api/v1/me/booking-groups?status=active', 'mine path');
+  check(
+    fake.calls.last == 'GET /api/v1/me/booking-groups?status=active',
+    'mine path',
+  );
   check(page.items.single.isConfirmed && page.lastPage == 2, 'mine');
 
   // M09 calendar.
@@ -108,10 +110,12 @@ Future<void> main() async {
     },
     'meta': {'truncated': false},
   };
-  final cal = await CalendarApi(
-    fake,
-  ).myCalendar(DateTime.utc(2026, 12, 1), DateTime.utc(2027, 1, 1));
-  check(fake.calls.last.startsWith('GET /api/v1/me/calendar?from=2026-12-01'), 'calendar path');
+  final cal = await CalendarApi(fake)
+      .myCalendar(DateTime.utc(2026, 12, 1), DateTime.utc(2027, 1, 1));
+  check(
+    fake.calls.last.startsWith('GET /api/v1/me/calendar?from=2026-12-01'),
+    'calendar path',
+  );
   check(cal.events.single.category!.color == '#43A047', 'category colour');
   check(cal.events.single.myBookingStatus == 'confirmed', 'booking status');
   check(cal.privateEvents.single.recurrence == 'weekly' && cal.vip, 'private');
@@ -139,7 +143,11 @@ Future<void> main() async {
   );
   fake.responses['POST /api/v1/events/7/checkin'] = {
     'data': [
-      {'attendee_id': '10', 'result': 'checked_in', 'checkin_status': 'checked_in'},
+      {
+        'attendee_id': '10',
+        'result': 'checked_in',
+        'checkin_status': 'checked_in',
+      },
     ],
   };
   final results = await CheckinApi(fake).checkIn(
@@ -150,49 +158,86 @@ Future<void> main() async {
     lng: 121.56,
   );
   check(results.single.isNew, 'check-in result');
-  check(fake.bodies.last!['attendee_ids'][0] == 10 && !fake.bodies.last!.containsKey('event_token'), 'scan body');
+  check(
+    fake.bodies.last!['attendee_ids'][0] == 10 &&
+        !fake.bodies.last!.containsKey('event_token'),
+    'scan body',
+  );
 
   // M19 search and bookmarks.
   const query = SearchQuery(q: '靜坐 入門', tagIds: ['1', '2'], sort: 'newest');
   check(
-    query.toPath() ==
-        '/api/v1/search?q=%E9%9D%9C%E5%9D%90+%E5%85%A5%E9%96%80&tags[]=1&tags[]=2&sort=newest',
+    query.toPath() == '/api/v1/search?q=%E9%9D%9C%E5%9D%90+%E5%85%A5%E9%96%80&tags[]=1&tags[]=2&sort=newest',
     'search path ${query.toPath()}',
   );
   fake.responses['GET /api/v1/me/bookmarks'] = {
     'data': [
-      {'content_type': 'article', 'content_id': '9', 'available': false, 'item': null},
+      {
+        'content_type': 'article',
+        'content_id': '9',
+        'available': false,
+        'item': null,
+      },
     ],
     'meta': {'count': 1000, 'limit': 1000},
   };
   final marks = await DiscoveryApi(fake).bookmarks();
-  check(!marks.items.single.available && marks.count == marks.limit, 'placeholder');
+  check(
+    !marks.items.single.available && marks.count == marks.limit,
+    'placeholder',
+  );
 
   // M03 badges.
   fake.responses['GET /api/v1/me/verifications'] = {
     'data': {
       'requests': [
-        {'id': '1', 'type': {'name': '志工'}, 'status': 'pending', 'approvals': 1, 'required_approvals': 2},
+        {
+          'id': '1',
+          'type': {'name': '志工'},
+          'status': 'pending',
+          'approvals': 1,
+          'required_approvals': 2,
+        },
       ],
       'badges': [
-        {'id': '4', 'type': {'name': '教職'}, 'state': 'valid', 'is_public': true},
+        {
+          'id': '4',
+          'type': {'name': '教職'},
+          'state': 'valid',
+          'is_public': true,
+        },
       ],
     },
   };
   final mine = await VerificationApi(fake).mine();
-  check(mine.requests.single.isPending && mine.badges.single.isValid, 'verification');
+  check(
+    mine.requests.single.isPending && mine.badges.single.isValid,
+    'verification',
+  );
 
   // M14 deep links, M15 marketing, M17 statistics never throw.
   const parser = DeepLinkParser({'app.example'});
   final link = parser.parse(
-    Uri.parse('https://app.example/articles/12?utm_source=line&utm_campaign=x%3Cy'),
+    Uri.parse(
+      'https://app.example/articles/12?utm_source=line&utm_campaign=x%3Cy',
+    ),
   );
-  check(link!.appPath == '/articles/12' && link.utm['utm_source'] == 'line', 'deep link');
+  check(
+    link!.appPath == '/articles/12' && link.utm['utm_source'] == 'line',
+    'deep link',
+  );
   check(!link.utm.containsKey('utm_campaign'), 'unsafe utm dropped');
-  check(parser.parse(Uri.parse('http://app.example/articles/12')) == null, 'http');
+  check(
+    parser.parse(Uri.parse('http://app.example/articles/12')) == null,
+    'http',
+  );
   check(parser.parse(Uri.parse('https://app.example/admin')) == null, 'path');
   check(safeReturnPath('/events/3') == '/events/3', 'return path');
-  check(safeReturnPath('//evil.example/x') == null && safeReturnPath('https://x') == null, 'external return');
+  check(
+    safeReturnPath('//evil.example/x') == null &&
+        safeReturnPath('https://x') == null,
+    'external return',
+  );
   var t = DateTime.utc(2026);
   final dedupe = DeepLinkDeduper(now: () => t);
   final uri = Uri.parse('https://app.example/events/3');
@@ -206,16 +251,31 @@ Future<void> main() async {
         'id': '2',
         'title': '推廣',
         'button_text': '查看',
-        'target': {'type': 'event', 'id': '7', 'url': 'https://app.example/events/7?utm_source=app', 'app_path': '/events/7'},
-        'utm': {'utm_source': 'app', 'utm_medium': 'marketing', 'utm_campaign': 'c2'},
+        'target': {
+          'type': 'event',
+          'id': '7',
+          'url': 'https://app.example/events/7?utm_source=app',
+          'app_path': '/events/7',
+        },
+        'utm': {
+          'utm_source': 'app',
+          'utm_medium': 'marketing',
+          'utm_campaign': 'c2',
+        },
       },
     ],
   };
   final banners = await MarketingApi(fake).placement('home_banner');
-  check(banners.single.appPath == '/events/7' && !banners.single.isExternal, 'marketing');
+  check(
+    banners.single.appPath == '/events/7' && !banners.single.isExternal,
+    'marketing',
+  );
 
   final failing = _Throwing();
-  check(await LinkApi(failing).click('campaign', '2') == null, 'click never throws');
+  check(
+    await LinkApi(failing).click('campaign', '2') == null,
+    'click never throws',
+  );
   check(!await LinkApi(failing).opened('article', '9'), 'open never throws');
 
   print('S9 Dart API smoke: PASS');

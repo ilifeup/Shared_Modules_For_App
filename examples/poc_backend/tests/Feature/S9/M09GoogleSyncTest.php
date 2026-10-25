@@ -80,8 +80,9 @@ it('connects with a one-time state, creates the App calendar and keeps tokens en
     $this->actingAs($member, 'sanctum')->getJson('/api/v1/me/google-calendar')
         ->assertJsonPath('data.connected', true)->assertJsonMissingPath('data.refresh_token')->assertDontSee('rt-secret');
 
-    // A replayed state is rejected.
+    // A state works once; a replayed state is rejected.
     parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+    $this->get('/oauth/google/callback?state='.$query['state'].'&code=x')->assertSee('已連結 Google 日曆');
     $this->get('/oauth/google/callback?state='.$query['state'].'&code=x')->assertSee('連結失敗');
 });
 

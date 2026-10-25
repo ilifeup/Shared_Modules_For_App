@@ -27,6 +27,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // S9 M14 App Links host (real domain set at build time: -PappLinkHost=...).
+        manifestPlaceholders["appLinkHost"] =
+            (project.findProperty("appLinkHost") as String?) ?: "app-links.invalid"
     }
 
     buildTypes {

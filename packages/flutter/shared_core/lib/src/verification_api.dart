@@ -151,7 +151,10 @@ class VerificationApi {
     await transport.request('POST', '$applyPath/${s9Seg(requestId)}/withdraw');
   }
 
-  Future<VerificationBadge> setBadgePublic(String badgeId, bool isPublic) async {
+  Future<VerificationBadge> setBadgePublic(
+    String badgeId,
+    bool isPublic,
+  ) async {
     final json = await transport.request(
       'PATCH',
       '/api/v1/me/verifications/${s9Seg(badgeId)}',

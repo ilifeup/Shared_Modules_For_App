@@ -176,7 +176,8 @@ class SearchQuery {
 
   String toPath() {
     final parts = <String>[
-      if (q != null && q!.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(q!.trim())}',
+      if (q != null && q!.trim().isNotEmpty)
+        'q=${Uri.encodeQueryComponent(q!.trim())}',
       if (type != null) 'type=$type',
       for (final id in tagIds) 'tags[]=${Uri.encodeQueryComponent(id)}',
       if (articleCategoryId != null) 'article_category_id=$articleCategoryId',
@@ -190,7 +191,9 @@ class SearchQuery {
       if (sort != 'relevance') 'sort=$sort',
       if (page > 1) 'page=$page',
     ];
-    return parts.isEmpty ? '/api/v1/search' : '/api/v1/search?${parts.join('&')}';
+    return parts.isEmpty
+        ? '/api/v1/search'
+        : '/api/v1/search?${parts.join('&')}';
   }
 }
 

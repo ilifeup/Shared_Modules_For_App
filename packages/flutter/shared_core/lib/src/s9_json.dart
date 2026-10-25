@@ -36,9 +36,7 @@ Map<String, dynamic> s9Data(Map<String, dynamic> json) {
   return data;
 }
 
-String s9Path(String path, [Map<String, String> query = const {}]) => Uri(
-  path: path,
-  queryParameters: query.isEmpty ? null : query,
-).toString();
+String s9Path(String path, [Map<String, String> query = const {}]) =>
+    Uri(path: path, queryParameters: query.isEmpty ? null : query).toString();
 
 String s9Seg(String value) => Uri.encodeComponent(value);

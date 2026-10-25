@@ -8,6 +8,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
 import '../../ui/status_box.dart';
 import '../auth/auth_controller.dart';
+import '../s9/discovery_screens.dart';
 import 'article_comments.dart';
 import 'article_providers.dart';
 
@@ -23,7 +24,10 @@ class ArticleDetailScreen extends ConsumerWidget {
     final detail = ref.watch(articleDetailProvider(id));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('文章')),
+      appBar: AppBar(
+        title: const Text('文章'),
+        actions: [ContentActions(contentType: 'article', contentId: id)],
+      ),
       body: detail.when(
         loading: () => const LoadingView(),
         error: (error, _) => ListView(

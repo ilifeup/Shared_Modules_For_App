@@ -136,23 +136,20 @@ class CheckinService
             throw new ApiException(409, 'CHECKOUT_DISABLED', '此活動未啟用簽退。');
         }
 
-        $attendance = DB::transaction(function () use ($event, $attendee): EventAttendance {
+        // State change and its audit entry commit together or not at all.
+        [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor): array {
             $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
             if ($row === null || $row->status === EventAttendance::REVOKED) {
                 throw new ApiException(409, 'NOT_CHECKED_IN', '尚未簽到，無法簽退。');
             }
             if ($row->status === EventAttendance::CHECKED_OUT) {
-                return $row;
+                return [$row, 'already_checked_out'];
             }
             $row->forceFill(['status' => EventAttendance::CHECKED_OUT, 'checked_out_at' => now()])->save();
+            $this->audit('checkin.checked_out', $actor, $row, ['event_id' => $event->id]);
 
-            return $row;
+            return [$row, 'checked_out'];
         });
-
-        $result = $attendance->wasChanged('status') ? 'checked_out' : 'already_checked_out';
-        if ($result === 'checked_out') {
-            $this->audit('checkin.checked_out', $actor, $attendance, ['event_id' => $event->id]);
-        }
 
         return ['attendee_id' => (string) $attendee->id, 'result' => $result, 'attendance' => $attendance];
     }
@@ -178,17 +175,19 @@ class CheckinService
         }
 
         $outsideWindow = ! now()->between($event->checkinOpensAt(), $event->checkinClosesAt());
-        $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
-        $needsReason = $outsideWindow || $existing !== null;
-        if ($needsReason && trim((string) $reason) === '') {
-            throw new ApiException(422, 'REASON_REQUIRED', '逾時補登、撤銷或更正必須填寫原因。', ['reason' => ['請填寫原因。']]);
-        }
 
-        $before = $existing?->only(['status', 'checked_in_at', 'checked_out_at']);
-        $attendance = DB::transaction(function () use ($event, $attendee, $status, $admin): EventAttendance {
-            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first()
-                ?? new EventAttendance(['calendar_event_id' => $event->id, 'event_booking_attendee_id' => $attendee->id]);
+        // One transaction for the state change, the correction reason and the audit
+        // entry: if any step fails nothing is kept (no changed state without its
+        // reason or audit). The current row is read under the lock, so "before" and
+        // the reason requirement cannot race with a parallel scan or correction.
+        return DB::transaction(function () use ($event, $attendee, $status, $admin, $reason, $outsideWindow): EventAttendance {
+            $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+            if (($outsideWindow || $existing !== null) && trim((string) $reason) === '') {
+                throw new ApiException(422, 'REASON_REQUIRED', '逾時補登、撤銷或更正必須填寫原因。', ['reason' => ['請填寫原因。']]);
+            }
+            $before = $existing?->status;
 
+            $row = $existing ?? new EventAttendance(['calendar_event_id' => $event->id, 'event_booking_attendee_id' => $attendee->id]);
             $row->forceFill([
                 'status' => $status,
                 'checked_in_at' => $status === EventAttendance::REVOKED ? $row->checked_in_at : ($row->checked_in_at ?? now()),
@@ -197,30 +196,28 @@ class CheckinService
                 'checked_in_by' => $admin->id,
             ])->save();
 
+            // The reason is personal check-in data: it lives with the attendance and is
+            // deleted at retention; the audit entry only records the de-identified facts.
+            $correctionId = DB::table('event_attendance_corrections')->insertGetId([
+                'event_attendance_id' => $row->id,
+                'admin_id' => $admin->id,
+                'from_status' => $before,
+                'to_status' => $row->status,
+                'late' => $outsideWindow,
+                'reason' => $reason !== null ? mb_substr(trim($reason), 0, 255) : null,
+                'created_at' => now(),
+            ]);
+            AuditEvent::record('checkin.admin_'.$status, $admin->id, $row, [
+                'event_id' => $event->id,
+                'before' => $before === null ? null : ['status' => $before],
+                'after' => ['status' => $row->status],
+                'late' => $outsideWindow,
+                'reason_recorded' => trim((string) $reason) !== '',
+                'correction_id' => $correctionId,
+            ]);
+
             return $row;
         });
-
-        // The reason is personal check-in data: it lives with the attendance and is
-        // deleted at retention; the audit entry only records the de-identified facts.
-        $correctionId = DB::table('event_attendance_corrections')->insertGetId([
-            'event_attendance_id' => $attendance->id,
-            'admin_id' => $admin->id,
-            'from_status' => $before['status'] ?? null,
-            'to_status' => $attendance->status,
-            'late' => $outsideWindow,
-            'reason' => $reason !== null ? mb_substr(trim($reason), 0, 255) : null,
-            'created_at' => now(),
-        ]);
-        AuditEvent::record('checkin.admin_'.$status, $admin->id, $attendance, [
-            'event_id' => $event->id,
-            'before' => $before === null ? null : ['status' => $before['status']],
-            'after' => ['status' => $attendance->status],
-            'late' => $outsideWindow,
-            'reason_recorded' => trim((string) $reason) !== '',
-            'correction_id' => $correctionId,
-        ]);
-
-        return $attendance;
     }
 
     /**
@@ -291,23 +288,25 @@ class CheckinService
         $ids = EventAttendance::query()->where('updated_at', '<', $cutoff)
             ->whereHas('event', fn ($q) => $q->where('ends_at', '<', $cutoff))->pluck('id');
 
-        $corrections = 0;
-        foreach ($ids->chunk(500) as $chunk) {
-            DB::transaction(function () use ($chunk, &$corrections): void {
+        // The deletions and their evidence entry commit together: no purge without
+        // its audit record, no audit record for a purge that did not happen.
+        return DB::transaction(function () use ($ids, $days, $cutoff): array {
+            $corrections = 0;
+            foreach ($ids->chunk(500) as $chunk) {
                 $corrections += DB::table('event_attendance_corrections')->whereIn('event_attendance_id', $chunk)->delete();
                 EventAttendance::query()->whereIn('id', $chunk)->delete();
-            });
-        }
+            }
 
-        $result = [
-            'attendances_deleted' => $ids->count(),
-            'corrections_deleted' => $corrections,
-            'retention_days' => $days,
-            'cutoff' => $cutoff->toIso8601ZuluString(),
-        ];
-        AuditEvent::record('checkin.retention_purge', null, null, $result);
+            $result = [
+                'attendances_deleted' => $ids->count(),
+                'corrections_deleted' => $corrections,
+                'retention_days' => $days,
+                'cutoff' => $cutoff->toIso8601ZuluString(),
+            ];
+            AuditEvent::record('checkin.retention_purge', null, null, $result);
 
-        return $result;
+            return $result;
+        });
     }
 
     /**
@@ -359,17 +358,19 @@ class CheckinService
                     'source' => $source,
                     'checked_in_by' => $actor->id,
                 ])->save();
+                // Same transaction: no check-in without its audit entry.
+                $this->audit('checkin.checked_in', $actor, $row, ['event_id' => $event->id, 'source' => $source]);
 
                 return [$row, 'checked_in'];
             });
-        } catch (QueryException) {
-            // UNIQUE(calendar_event_id, event_booking_attendee_id) from a parallel scan.
-            $attendance = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->firstOrFail();
+        } catch (QueryException $e) {
+            // UNIQUE(calendar_event_id, event_booking_attendee_id) from a parallel scan:
+            // the other request's row exists. Any other failure is not hidden.
+            $attendance = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
+            if ($attendance === null) {
+                throw $e;
+            }
             $result = 'already_checked_in';
-        }
-
-        if ($result === 'checked_in') {
-            $this->audit('checkin.checked_in', $actor, $attendance, ['event_id' => $event->id, 'source' => $source]);
         }
 
         return ['attendee_id' => (string) $attendee->id, 'result' => $result, 'attendance' => $attendance];

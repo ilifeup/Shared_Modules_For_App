@@ -90,14 +90,18 @@ $groups = App\Models\EventBookingGroup::query()->where("calendar_event_id", $id)
 $seq = App\Models\EventWaitlistEntry::query()->where("calendar_event_id", $id)->pluck("sequence");
 $legacyConfirmed = App\Models\EventBooking::query()->where("calendar_event_id", $id)->where("status", "confirmed")->count();
 $legacyAttendees = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->where("status", "confirmed")->whereHas("group", fn ($q) => $q->whereNotNull("legacy_booking_id"))->count();
-echo json_encode(["seats" => $seats, "dup_members" => $dupMembers, "groups" => $groups, "seq_unique" => $seq->unique()->count() === $seq->count(), "waiting" => $seq->count(), "legacy_confirmed" => $legacyConfirmed, "legacy_attendees" => $legacyAttendees]), PHP_EOL;
+$head = App\Models\EventWaitlistEntry::query()->where("calendar_event_id", $id)->where("status", "waiting")->orderBy("sequence")->with("group")->first();
+echo json_encode(["seats" => $seats, "dup_members" => $dupMembers, "groups" => $groups, "seq_unique" => $seq->unique()->count() === $seq->count(), "waiting" => $seq->count(), "legacy_confirmed" => $legacyConfirmed, "legacy_attendees" => $legacyAttendees, "head_seats" => $head?->group?->seat_count]), PHP_EOL;
 ' | tail -n 1
 }
 state="$(check)"
+initial_seats="$(php -r 'echo json_decode($argv[1], true)["seats"];' "$state")"
 echo "ledger: $state"
 php -r '$s = json_decode($argv[1], true); $cap = (int) $argv[2]; $groups = (int) $argv[3]; $legacyOk = (int) $argv[4];
   $errors = [];
-  if ($s["seats"] !== $cap) $errors[] = "confirmed seats {$s["seats"]} != capacity $cap";
+  if ($s["seats"] > $cap || $s["seats"] < 0) $errors[] = "invalid confirmed seats {$s["seats"]} for capacity $cap";
+  // Strict FIFO may legitimately leave one seat unused when the head group needs two.
+  if ($s["seats"] < $cap && ($s["head_seats"] === null || $s["head_seats"] <= $cap - $s["seats"])) $errors[] = "head of waitlist should have been promoted";
   if ($s["dup_members"] !== 0) $errors[] = "members with two active places: {$s["dup_members"]}";
   if (! $s["seq_unique"]) $errors[] = "duplicate waitlist sequence";
   if ($s["legacy_confirmed"] !== $legacyOk || $s["legacy_attendees"] !== $legacyOk) $errors[] = "S6 bookings {$s["legacy_confirmed"]} / ledger {$s["legacy_attendees"]} != 201 responses $legacyOk";
@@ -123,7 +127,7 @@ echo json_encode(["waiting_before" => count($before), "promoted" => count($promo
 ' | tail -n 1 > "$OUT/fifo.json"
 echo "fifo: $(cat "$OUT/fifo.json")"
 grep -q '"fifo":true' "$OUT/fifo.json" || { echo "::error title=s9 booking concurrency::promotion did not follow the waitlist order"; exit 1; }
-grep -q "\"seats\":$((CAPACITY + 6))" "$OUT/fifo.json" || { echo "::error title=s9 booking concurrency::seats after promotion != capacity"; exit 1; }
+grep -q "\"seats\":$((initial_seats + 6))" "$OUT/fifo.json" || { echo "::error title=s9 booking concurrency::promoted seats differ from six newly available seats"; exit 1; }
 
 if grep -qiE 'deadlock|SQLSTATE\[40001\]' storage/logs/laravel.log 2>/dev/null; then
   echo "::error title=s9 booking concurrency::deadlock found in laravel.log"; exit 1

@@ -173,6 +173,8 @@ it('is idempotent for retried requests', function () {
     groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
     groupBook($event, $member, ['不同姓名'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
     groupBook($event, $member, ['友人', '新增'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    $member->update(['name' => '會員新顯示名稱']);
+    groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
     groupBook($event, User::factory()->create(), [], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
 
     expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(2);

@@ -26,6 +26,37 @@ function guestPost(CalendarEvent $event, array $data)
     ], $data));
 }
 
+
+it('rejects a guest replay with a changed contact name but preserves the original booking', function () {
+    $event = guestEvent(['booking_capacity' => 3]);
+    $id = (string) Str::uuid();
+    $engine = app(BookingEngine::class);
+
+    $request = fn (string $contactName) => new \App\Services\Booking\BookingRequest(
+        booker: null,
+        contactName: $contactName,
+        contactEmail: 'guest@example.com',
+        contactPhone: null,
+        attendees: [['name' => '王訪客']],
+        clientRequestId: $id,
+    );
+
+    $first = $engine->book($event, $request('王訪客'));
+    expect($engine->book($event, $request('王訪客'))->id)->toBe($first->id);
+
+    try {
+        $engine->book($event, $request('不同聯絡人'));
+        test()->fail('Changed guest contact name must conflict with the original idempotency key.');
+    } catch (\App\Support\Api\ApiException $e) {
+        expect($e->status)->toBe(409)
+            ->and($e->errorCode)->toBe('IDEMPOTENCY_CONFLICT');
+    }
+
+    expect(\App\Models\EventBookingGroup::query()->count())->toBe(1)
+        ->and($first->refresh()->contact_name)->toBe('王訪客')
+        ->and(seats($event))->toBe(1);
+});
+
 // G03 / G15 / G16 — guests book with name + email or phone; no email/SMS; claim after verification.
 it('lets guests book on the web page without sending any email or SMS', function () {
     Mail::fake();

@@ -5,6 +5,8 @@ use App\Models\EventBookingGroup;
 use App\Models\EventCategory;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingRequest;
+use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -26,13 +28,12 @@ function guestPost(CalendarEvent $event, array $data)
     ], $data));
 }
 
-
 it('rejects a guest replay with a changed contact name but preserves the original booking', function () {
     $event = guestEvent(['booking_capacity' => 3]);
     $id = (string) Str::uuid();
     $engine = app(BookingEngine::class);
 
-    $request = fn (string $contactName) => new \App\Services\Booking\BookingRequest(
+    $request = fn (string $contactName) => new BookingRequest(
         booker: null,
         contactName: $contactName,
         contactEmail: 'guest@example.com',
@@ -47,12 +48,12 @@ it('rejects a guest replay with a changed contact name but preserves the origina
     try {
         $engine->book($event, $request('不同聯絡人'));
         test()->fail('Changed guest contact name must conflict with the original idempotency key.');
-    } catch (\App\Support\Api\ApiException $e) {
+    } catch (ApiException $e) {
         expect($e->status)->toBe(409)
             ->and($e->errorCode)->toBe('IDEMPOTENCY_CONFLICT');
     }
 
-    expect(\App\Models\EventBookingGroup::query()->count())->toBe(1)
+    expect(EventBookingGroup::query()->count())->toBe(1)
         ->and($first->refresh()->contact_name)->toBe('王訪客')
         ->and(seats($event))->toBe(1);
 });

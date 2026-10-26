@@ -5,7 +5,7 @@ set -euo pipefail
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'kill "${SERVER:-0}" 2>/dev/null || true; rm -rf "$OUT"' EXIT
+trap 'if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "M11 CI"], ["allow_proxy_booking" => true, "allow_guest_booking" => false]);
@@ -24,10 +24,12 @@ EVENT="$(cat "$OUT/event")"
 BEARER="$(cat "$OUT/bearer")"
 PHP_CLI_SERVER_WORKERS=8 php artisan serve --host=127.0.0.1 --port="$PORT" >"$OUT/server.log" 2>&1 &
 SERVER=$!
+ready=0
 for i in $(seq 1 40); do
-  curl -fsS "$BASE/api/v1/health" >/dev/null 2>&1 && break
+  if curl -fsS "$BASE/api/v1/health" >/dev/null 2>&1; then ready=1; break; fi
   sleep 1
 done
+[ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -fsS --max-time 30 -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
   -d '{"include_self":true,"attendees":[{"name":"M11 parallel guest"}]}' >"$OUT/booking.json"

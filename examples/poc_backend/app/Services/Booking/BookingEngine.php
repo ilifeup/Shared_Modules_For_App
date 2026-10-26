@@ -702,6 +702,20 @@ final class BookingEngine
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
+        // An idempotent replay is still a read of protected booking details.
+        // Recheck current identity/delegation; revocation must take effect immediately.
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '預約者已停用。');
+        }
+        if (! $request->byAdmin) {
+            foreach ($existing->attendees()->get() as $attendee) {
+                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->first();
+                if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
+                }
+            }
+        }
+
         return $existing->load('attendees', 'waitlistEntry');
     }
 

@@ -13,7 +13,7 @@ OUT="$(mktemp -d)"
 # The fixture runs before the HTTP server starts; never swallow its failure.
 trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=S9 setup::failed at line $FAILED_LINE (exit $rc)"; for f in "$OUT"/cache.log "$OUT"/fixture.log; do [ -f "$f" ] && tail -n 50 "$f"; done; fi; rm -rf "$OUT"' EXIT
 LEGACY=50     # S6 POST /events/{id}/bookings (1 seat each)
-GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (self + 1 named attendee = 2 seats)
+GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (self + 1 registered family member = 2 seats)
 RETRIES=10    # the first RETRIES groups send the same client_request_id twice in parallel
 CAPACITY=20
 export OUT LEGACY GROUP_COUNT CAPACITY
@@ -21,7 +21,7 @@ export OUT LEGACY GROUP_COUNT CAPACITY
 php artisan cache:clear > "$OUT/cache.log" 2>&1
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
-$category = App\Models\EventCategory::query()->firstOrCreate(["name" => "CI 併發"], ["allow_proxy_booking" => true, "allow_guest_booking" => false]);
+$category = App\Models\EventCategory::query()->firstOrCreate(["name" => "CI 併發"], ["allow_proxy_booking" => true]);
 $event = App\Models\CalendarEvent::query()->create([
     "title" => "S9 concurrency", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHour(),
     "status" => "published", "audience" => "members", "booking_enabled" => true, "booking_capacity" => (int) getenv("CAPACITY"),
@@ -30,7 +30,18 @@ $event = App\Models\CalendarEvent::query()->create([
 file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;
 file_put_contents(getenv("OUT")."/legacy", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("LEGACY")))));
-file_put_contents(getenv("OUT")."/groups", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("GROUP_COUNT")))));
+$groups = [];
+foreach (range(1, (int) getenv("GROUP_COUNT")) as $index) {
+    $manager = App\Models\User::factory()->create();
+    $member = App\Models\User::factory()->create();
+    \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
+        "manager_user_id" => $manager->id, "member_user_id" => $member->id,
+        "relationship" => "family", "status" => "active", "started_at" => now(),
+        "created_by" => $manager->id, "created_at" => now(), "updated_at" => now(),
+    ]);
+    $groups[] = $manager->createToken("ci")->plainTextToken." ".$member->id;
+}
+file_put_contents(getenv("OUT")."/groups", implode("\n", $groups));
 ' > "$OUT/fixture.log" 2>&1
 EVENT="$(cat "$OUT/event")"
 
@@ -48,10 +59,10 @@ while IFS= read -r token || [ -n "$token" ]; do
   pids+=("$!")
 done < "$OUT/legacy"
 g=0
-while IFS= read -r token || [ -n "$token" ]; do
+while read -r token companion || [ -n "$token" ]; do
   g=$((g + 1))
   uuid="$(cat /proc/sys/kernel/random/uuid)"
-  body="{\"include_self\":true,\"attendees\":[{\"name\":\"同行$g\"}],\"client_request_id\":\"$uuid\"}"
+  body="{\"include_self\":true,\"attendees\":[{\"member_user_id\":$companion}],\"client_request_id\":\"$uuid\"}"
   copies=1; [ "$g" -le "$RETRIES" ] && copies=2
   for c in $(seq 1 "$copies"); do
     curl -sS --max-time 60 -o "$OUT/g$g-$c.json" -w '%{http_code}' -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \

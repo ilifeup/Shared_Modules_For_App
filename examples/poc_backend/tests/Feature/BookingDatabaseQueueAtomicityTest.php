@@ -1,6 +1,10 @@
 <?php
 
 use App\Jobs\SyncGoogleCalendarItem;
+use App\Models\GoogleCalendarConnection;
+use App\Models\GoogleCalendarEventMapping;
+use App\Models\User;
+use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -58,10 +62,10 @@ it('rolls back a queued Google sync job with its enclosing database transaction'
 it('rolls back both Google mapping and database job if enclosing booking transaction fails', function (): void {
     config()->set('queue.default', 'database');
 
-    $member = \App\Models\User::factory()->create();
-    $connection = \App\Models\GoogleCalendarConnection::query()->create([
+    $member = User::factory()->create();
+    $connection = GoogleCalendarConnection::query()->create([
         'user_id' => $member->id,
-        'status' => \App\Models\GoogleCalendarConnection::ACTIVE,
+        'status' => GoogleCalendarConnection::ACTIVE,
         'google_calendar_id' => 'synthetic-calendar',
     ]);
     $event = s9Event();
@@ -69,7 +73,7 @@ it('rolls back both Google mapping and database job if enclosing booking transac
 
     try {
         DB::transaction(function () use ($member, $event): void {
-            app(\App\Services\Calendar\GoogleCalendarSync::class)->queueBooking($member->id, $event->id);
+            app(GoogleCalendarSync::class)->queueBooking($member->id, $event->id);
 
             expect(DB::table('jobs')->count())->toBeGreaterThan(0);
             throw new RuntimeException('synthetic booking rollback');
@@ -79,9 +83,9 @@ it('rolls back both Google mapping and database job if enclosing booking transac
     }
 
     expect(DB::table('jobs')->count())->toBe($beforeJobs);
-    expect(\App\Models\GoogleCalendarEventMapping::query()
+    expect(GoogleCalendarEventMapping::query()
         ->where('google_calendar_connection_id', $connection->id)
-        ->where('source_type', \App\Models\GoogleCalendarEventMapping::SOURCE_BOOKING)
+        ->where('source_type', GoogleCalendarEventMapping::SOURCE_BOOKING)
         ->where('source_id', $event->id)
         ->exists())->toBeFalse();
 });

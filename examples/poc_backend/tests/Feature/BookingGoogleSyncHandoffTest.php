@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
+use Mockery\MockInterface;
 
 it('dispatches existing Google sync job and mapping when durable handoff is processed', function (): void {
     config()->set('queue.default', 'database');
@@ -73,7 +74,7 @@ it('propagates downstream dispatch failure so the queue worker can retry handoff
     $member = User::factory()->create();
     $event = s9Event();
 
-    $sync = Mockery::mock(GoogleCalendarSync::class, function (\Mockery\MockInterface $mock) use ($member, $event): void {
+    $sync = Mockery::mock(GoogleCalendarSync::class, function (MockInterface $mock) use ($member, $event): void {
         $mock->shouldReceive('queueBooking')
             ->once()
             ->with($member->id, $event->id)

@@ -55,6 +55,24 @@ PY
   fi
 }
 
+if [ "${1:-}" = "--self-test-diagnostics" ]; then
+  OUT="$(mktemp -d)"
+  trap 'rm -rf "$OUT"' EXIT
+  printf '409' > "$OUT/l1.code"
+  printf '{"error":{"code":"BOOKING_FULL"}}' > "$OUT/l1.json"
+  printf '500' > "$OUT/g1-1.code"
+  printf '{invalid-json' > "$OUT/g1-1.json"
+  diagnose_failure 37 123 > "$OUT/diagnostics.txt"
+  grep -Fq 'line=123 exit_code=37' "$OUT/diagnostics.txt"
+  grep -Fq '409' "$OUT/diagnostics.txt"
+  grep -Fq '500' "$OUT/diagnostics.txt"
+  grep -Fq 'BOOKING_FULL' "$OUT/diagnostics.txt"
+  grep -Fq 'INVALID_OR_MISSING_JSON: 1' "$OUT/diagnostics.txt"
+  grep -Fq 'LEDGER_QUERY_UNAVAILABLE_BEFORE_SETUP' "$OUT/diagnostics.txt"
+  echo 'PASS: synthetic failure diagnostics (line, exit, API status/error, invalid response, DB unavailable)'
+  exit 0
+fi
+
 BASE="http://127.0.0.1:8004"
 OUT="$(mktemp -d)"
 LEGACY=50     # S6 POST /events/{id}/bookings (1 seat each)

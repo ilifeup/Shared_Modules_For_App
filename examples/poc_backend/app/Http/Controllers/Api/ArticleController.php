@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\ArticleCategory;
 use App\Models\ArticleComment;
 use App\Models\ArticleLike;
+use App\Models\AuditEvent;
 use App\Models\Bookmark;
 use App\Models\MemberVerification;
 use App\Models\User;
@@ -224,6 +225,8 @@ class ArticleController extends Controller
         // Admin aliases are ordinary members, but their comments are exempt
         // from member-report counting and automated moderation. Keep the flag private.
         if ($comment->user()->where('is_admin_alias', true)->exists()) {
+            AuditEvent::record('comment.admin_alias_report_ignored', $request->user()->id, $comment);
+
             return new JsonResponse(['data' => ['reported' => true]], 201);
         }
         $this->interactions->report($comment, $request->user(), (string) $request->input('reason'), $request->input('note'));

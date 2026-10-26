@@ -8,7 +8,6 @@ use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Booking\GuestClaimService;
 use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,7 +61,7 @@ class BookingGroupController extends Controller
         $group = $this->engine->book($event, new BookingRequest(
             booker: $member,
             contactName: $member->name,
-            contactEmail: GuestClaimService::normalizeEmail($member->email),
+            contactEmail: $member->email !== null ? mb_strtolower(trim($member->email)) : null,
             contactPhone: $member->phone_e164,
             attendees: $attendees,
             clientRequestId: $data['client_request_id'],

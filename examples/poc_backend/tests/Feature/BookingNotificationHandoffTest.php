@@ -8,14 +8,20 @@ use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
-it('does nothing if notification booking group no longer exists', function (): void {
+it('logs a missing booking group without creating a notification', function (): void {
+    Log::spy();
     $before = DB::table('notifications')->count();
+    $job = new DispatchBookingNotification(999999999, 'Title', 'Body');
 
-    (new DispatchBookingNotification(999999999, 'Title', 'Body'))
-        ->handle(app(MemberNotifier::class));
+    $job->handle(app(MemberNotifier::class));
 
     expect(DB::table('notifications')->count())->toBe($before);
+    Log::shouldHaveReceived('warning')->once()->with(
+        'booking notification skipped: group missing',
+        ['group_id' => 999999999, 'delivery_id' => $job->deliveryId],
+    );
 });
 
 it('propagates real notifier validation failures without swallowing them', function (): void {

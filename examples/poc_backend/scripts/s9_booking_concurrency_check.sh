@@ -7,7 +7,6 @@
 set -euo pipefail
 diagnose_failure() {
   local code="$1" line="$2"
-  trap - ERR
   set +e
   echo "::error title=S9 concurrency::line=$line exit_code=$code"
   echo "CI_DIAGNOSTICS: HTTP status, safe API error codes, response validation"
@@ -50,7 +49,6 @@ PY
   fi
   echo "DATABASE_VALIDATION: inspect ledger / rollback markers in preceding CI log"
 }
-trap 'diagnose_failure "$?" "$LINENO"' ERR
 
 BASE="http://127.0.0.1:8004"
 OUT="$(mktemp -d)"
@@ -78,7 +76,7 @@ EVENT="$(cat "$OUT/event")"
 
 PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'code=$?; if [ "$code" -ne 0 ]; then diagnose_failure "$code" "${BASH_LINENO[0]:-unknown}"; fi; kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break; sleep 1; done
 
 pids=()

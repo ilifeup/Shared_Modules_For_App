@@ -103,3 +103,20 @@ it('rejects idempotent booking replay after family delegation is revoked', funct
         ->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
     expect(DB::table('event_booking_groups')->where('client_request_id', $payload['client_request_id'])->count())->toBe(1);
 });
+
+it('does not reveal whether an unauthorized family member ID exists', function () {
+    $manager = User::factory()->create();
+    $stranger = User::factory()->create();
+    $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+
+    foreach ([$stranger->id, 999999999] as $memberId) {
+        $this->actingAs($manager, 'sanctum')->postJson($url, [
+            'include_self' => false,
+            'attendees' => [['member_user_id' => $memberId]],
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+    }
+
+    expect(DB::table('event_booking_groups')->count())->toBe(0);
+});

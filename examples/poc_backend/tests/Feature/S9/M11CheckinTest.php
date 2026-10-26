@@ -235,7 +235,6 @@ it('keeps attendance per occurrence', function () {
 
 it('rejects a mixed-ownership check-in batch before any attendee is checked in', function () {
     [$event, $member, $attendees] = checkinEvent();
-    $other = User::factory()->create();
     $token = app(CheckinTokens::class)->event($event->id);
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [

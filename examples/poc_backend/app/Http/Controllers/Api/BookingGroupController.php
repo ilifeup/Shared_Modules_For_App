@@ -7,10 +7,8 @@ use App\Http\Presenters\BookingGroupPresenter;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Models\User;
-use App\Services\Family\FamilyDelegation;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -101,22 +99,10 @@ class BookingGroupController extends Controller
     public function cancel(Request $request, int $id): JsonResponse
     {
         $group = EventBookingGroup::query()->where('booker_user_id', $request->user()->id)->findOrFail($id);
-        // G01: revoking delegation preserves existing bookings but removes the
-        // former manager's authority to cancel a group containing that member.
+        // BookingEngine rechecks delegation under the cancellation transaction lock.
         $actor = $request->user();
-        $delegation = app(FamilyDelegation::class);
-        foreach ($group->attendees as $attendee) {
-            $member = $attendee->member_user_id !== null
-                ? User::query()->find($attendee->member_user_id)
-                : null;
-            if ($member === null || ! $delegation->canManage($actor, $member)) {
-                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '此預約包含目前無權代管的家庭會員，請洽管理員處理。');
-            }
-        }
         $cancelled = $this->engine->cancelGroup($group, $actor);
 
         return new JsonResponse(['data' => BookingGroupPresenter::present($cancelled, $request->user())]);
     }
-
-
 }

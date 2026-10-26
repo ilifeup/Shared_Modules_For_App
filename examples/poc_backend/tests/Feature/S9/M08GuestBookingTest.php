@@ -33,3 +33,58 @@ it('rejects guest booking directly in the engine even for an admin request', fun
     }
     expect(EventBookingGroup::query()->count())->toBe(0);
 });
+
+it('rejects name-only attendees and arbitrary member identities in the group API', function () {
+    $event = s9Event();
+    $member = \App\Models\User::factory()->create();
+    $other = \App\Models\User::factory()->create();
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+
+    $this->actingAs($member, 'sanctum')->postJson($url, [
+        'include_self' => false,
+        'attendees' => [['name' => '無會員 ID']],
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertStatus(422)->assertJsonValidationErrors(['attendees.0.member_user_id']);
+
+    $this->actingAs($member, 'sanctum')->postJson($url, [
+        'include_self' => false,
+        'attendees' => [['member_user_id' => $other->id]],
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertStatus(403)->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+
+    $this->actingAs($member, 'sanctum')->postJson($url, [
+        'include_self' => true,
+        'attendees' => [['member_user_id' => $member->id]],
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertStatus(422)->assertJsonPath('error.code', 'DUPLICATE_ATTENDEE');
+
+    expect(EventBookingGroup::query()->count())->toBe(0);
+});
+
+it('rejects name-only and duplicate member identities for direct engine callers', function () {
+    $event = s9Event();
+    $member = \App\Models\User::factory()->create();
+    $request = fn (array $attendees) => new BookingRequest(
+        booker: $member, contactName: $member->name,
+        contactEmail: $member->email, contactPhone: $member->phone_e164,
+        attendees: $attendees, byAdmin: true,
+    );
+
+    expect(fn () => app(BookingEngine::class)->book($event, $request([
+        ['name' => '沒有會員 ID', 'member_user_id' => null],
+    ])))->toThrow(ApiException::class, '會員 ID');
+
+    expect(fn () => app(BookingEngine::class)->book($event, $request([
+        ['name' => $member->name, 'member_user_id' => $member->id],
+        ['name' => $member->name, 'member_user_id' => $member->id],
+    ])))->toThrow(ApiException::class, '重複加入');
+
+    expect(EventBookingGroup::query()->count())->toBe(0);
+});
+
+it('does not expose guest claim endpoints after guest bookings are retired', function () {
+    $member = \App\Models\User::factory()->create();
+    $this->actingAs($member, 'sanctum')
+        ->postJson('/api/v1/me/guest-bookings/123/claim')
+        ->assertNotFound();
+});

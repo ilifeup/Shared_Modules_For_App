@@ -13,7 +13,7 @@ use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
-/** An occurrence open for check-in now, with the member's confirmed group (self + one guest name). */
+/** An occurrence open for check-in now, with the member's confirmed group (self + one companion (registered/delegated by PR #43 helper)). */
 function checkinEvent(array $attributes = []): array
 {
     $event = s9Event(array_merge([
@@ -21,6 +21,8 @@ function checkinEvent(array $attributes = []): array
         'checkin_enabled' => true, 'checkout_enabled' => true, 'booking_capacity' => 5,
     ], $attributes));
     $member = User::factory()->create();
+    // Reuse the branch-local booking fixture. PR #43 resolves this name to a
+    // registered member with delegation; #40 alone has no family schema.
     groupBook($event, $member, ['家人'])->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
@@ -231,4 +233,125 @@ it('keeps attendance per occurrence', function () {
 
     expect(EventAttendance::query()->where('calendar_event_id', $second->id)->count())->toBe(0)
         ->and(CalendarEvent::query()->count())->toBe(2);
+});
+
+it('rejects another members real attendee ID in check-in and checkout batches', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $other = User::factory()->create();
+    groupBook($event, $other, [])->assertCreated();
+    $foreign = EventBookingAttendee::query()->where('calendar_event_id', $event->id)
+        ->where('member_user_id', $other->id)->firstOrFail();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id],
+        'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $foreign->id)->count())->toBe(0);
+    expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+it('rejects a mixed-ownership check-in batch before any attendee is checked in', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, 999999999],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+});
+
+it('rejects a mixed-ownership checkout batch before changing attendance', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id],
+        'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, 999999999],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->first()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
+    expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+// #36: checkout must not partially commit when a later owned attendee is not checked in.
+it('rolls back an entire checkout batch and its audits on a later 409', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id], 'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'NOT_CHECKED_IN');
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN)
+        ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+// #36: a later valid-owned attendee can fail eligibility after an earlier write.
+it('rolls back an entire check-in batch and its audits when a later attendee is waitlisted', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $attendees[1]->forceFill(['status' => EventBookingAttendee::STATUS_WAITLISTED])->save();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'WAITLISTED');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+});
+
+// #36: a successful batch can be retried without duplicate attendance or audit writes.
+it('keeps full-batch check-in and checkout retries idempotent', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $ids = [$attendees[0]->id, $attendees[1]->id];
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in')->assertJsonPath('data.1.result', 'checked_in');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_in')->assertJsonPath('data.1.result', 'already_checked_in');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out')->assertJsonPath('data.1.result', 'checked_out');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_out')->assertJsonPath('data.1.result', 'already_checked_out');
+
+    expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
 });

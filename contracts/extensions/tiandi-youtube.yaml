@@ -24,6 +24,8 @@ paths:
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
       responses:
+        '429':
+          description: Request rate limit exceeded
         '200':
           description: YouTube module visibility and cached video list
           content:

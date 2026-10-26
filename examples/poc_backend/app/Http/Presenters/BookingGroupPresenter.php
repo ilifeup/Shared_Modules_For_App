@@ -32,7 +32,6 @@ final class BookingGroupPresenter
             'status' => $group->status,
             'seat_count' => $group->seat_count,
             'contact_name' => $group->contact_name,
-            'is_guest' => $group->is_guest,
             'booked_at' => $group->booked_at->toIso8601ZuluString(),
             'confirmed_at' => $group->confirmed_at?->toIso8601ZuluString(),
             'cancelled_at' => $group->cancelled_at?->toIso8601ZuluString(),

@@ -128,6 +128,27 @@ it('does not duplicate member notifications when the same worker payload is repl
     expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(1);
 });
 
+it('delivers to the current booker when booking ownership changes before processing', function (): void {
+    $event = s9Event();
+    $original = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $replacement = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $original);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+    $job = new DispatchBookingNotification($group->id, 'Ownership update', 'Changed booking owner');
+
+    $group->update(['booker_user_id' => $replacement->id]);
+    $job->handle(app(MemberNotifier::class));
+
+    expect($original->fresh()->notifications()->where('data->title', 'Ownership update')->count())->toBe(0);
+    expect($replacement->fresh()->notifications()->where('data->title', 'Ownership update')->count())->toBe(1);
+});
+
 it('delivers separate notification jobs even when their text is identical', function (): void {
     $event = s9Event();
     $member = User::factory()->create([

@@ -32,7 +32,6 @@ it('propagates real notifier validation failures without swallowing them', funct
         ->toThrow(ApiException::class);
 });
 
-
 it('delivers a real member booking notification using the existing notifier', function (): void {
     $event = s9Event();
     $member = User::factory()->create([

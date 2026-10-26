@@ -79,8 +79,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function canUploadArticleAttachments(): bool
     {
         return $this->is_active
-            && $this->hasVerifiedEmail()
-            && $this->hasVerifiedPhone()
+            && app(\\App\\Support\\VerificationPolicy::class)->isSatisfiedBy($this)
             && $this->attachment_upload_enabled === true
             && ($this->attachment_upload_expires_at === null
                 || $this->attachment_upload_expires_at->isFuture());

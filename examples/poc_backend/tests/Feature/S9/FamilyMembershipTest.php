@@ -41,3 +41,35 @@ it('revokes only the current managers own delegation and writes an audit', funct
 
     $this->actingAs($manager, 'sanctum')->postJson($url)->assertNotFound();
 });
+
+it('keeps historical bookings but blocks cancellation after delegation revocation', function () {
+    $manager = User::factory()->create();
+    $member = User::factory()->create();
+    $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
+    $now = now();
+    $membershipId = DB::table('family_memberships')->insertGetId([
+        'manager_user_id' => $manager->id,
+        'member_user_id' => $member->id,
+        'status' => 'active',
+        'started_at' => $now,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    $booking = $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'include_self' => false,
+        'attendees' => [['member_user_id' => $member->id]],
+        'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+    ])->assertCreated();
+
+    $groupId = $booking->json('data.id');
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/me/family-memberships/{$membershipId}/revoke")
+        ->assertOk();
+
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$groupId}/cancel")
+        ->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+
+    expect(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed');
+});

@@ -9,6 +9,7 @@ use App\Models\EventBookingGroup;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Services\Booking\GuestClaimService;
+use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,7 +26,7 @@ class BookingGroupController extends Controller
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {include_self, attendees:[{name}], client_request_id}
+     * Body: {include_self, attendees:[{member_user_id}], client_request_id}
      * 201 confirmed or waitlisted (whole group), 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
@@ -48,13 +49,13 @@ class BookingGroupController extends Controller
             // Until family delegation is implemented, a member cannot book for another identity.
             // In particular, never accept a name-only attendee or an arbitrary member ID.
             if ($attendeeId !== $member->id) {
-                throw new \App\Support\Api\ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
             }
             $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
         }
         $ids = array_column($attendees, 'member_user_id');
         if (count($ids) !== count(array_unique($ids))) {
-            throw new \App\Support\Api\ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
+            throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
         }
 
         // The engine determines whether this was created or replayed under its event lock.

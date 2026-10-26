@@ -27,6 +27,14 @@ Status: design + initial database models only. **Not production ready.**
 6. Cache identity must include member ID, attachment ID and content version/hash; logout/account switch evicts access to previous account's files. Keep a bounded cache size.
 7. A server denial or expiry blocks viewing even when ciphertext still exists locally.
 
+## Comment list minimal attachment presentation
+
+- Other members see only one attachment/paperclip icon and an aggregate count, e.g. `3 個附件`, on each comment.
+- Public comment JSON exposes only `attachment_count` and a minimal access/expiry state where necessary; it MUST NOT expose attachment names, extensions, MIME types, file sizes, private paths, or file URLs.
+- Attachment identifiers needed for viewing are resolved only after an authenticated, article-authorized reader request, never as an unauthenticated bulk comment payload.
+- The uploader and authorized administrators may see original filenames in their own management flows only.
+- A count does not grant read access; expiry, removed status and comment/article permissions remain server-enforced.
+
 ## Bookmark
 
 - A member may bookmark/unbookmark an attachment; `(user_id, attachment_id)` is unique.

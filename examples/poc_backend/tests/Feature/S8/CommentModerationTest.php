@@ -51,7 +51,7 @@ function fakeModerator(string|Throwable $outcome): object
 function reportedComment(): ArticleComment
 {
     $article = liveArticle();
-    $author = articleMember(['name' => '留言者真名', 'email' => 'author-secret@example.com']);
+    $author = articleMember(['name' => '留言者真名', 'email' => fake()->unique()->safeEmail()]);
 
     return ArticleComment::query()->create([
         'article_id' => $article->id, 'user_id' => $author->id, 'body' => '被檢舉的留言', 'status' => ArticleComment::STATUS_VISIBLE,

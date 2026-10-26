@@ -4,6 +4,7 @@ use App\Jobs\DispatchBookingGoogleSync;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
+use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 
 it('dispatches existing Google sync job and mapping when durable handoff is processed', function (): void {
@@ -18,7 +19,7 @@ it('dispatches existing Google sync job and mapping when durable handoff is proc
     ]);
 
     $before = DB::table('jobs')->count();
-    (new DispatchBookingGoogleSync($member->id, $event->id))->handle(app(\App\Services\Calendar\GoogleCalendarSync::class));
+    (new DispatchBookingGoogleSync($member->id, $event->id))->handle(app(GoogleCalendarSync::class));
 
     expect(DB::table('jobs')->count())->toBe($before + 1);
     expect(GoogleCalendarEventMapping::query()
@@ -34,7 +35,7 @@ it('does not enqueue Google sync from durable handoff when connection is absent'
     $member = User::factory()->create();
     $before = DB::table('jobs')->count();
 
-    (new DispatchBookingGoogleSync($member->id, $event->id))->handle(app(\App\Services\Calendar\GoogleCalendarSync::class));
+    (new DispatchBookingGoogleSync($member->id, $event->id))->handle(app(GoogleCalendarSync::class));
 
     expect(DB::table('jobs')->count())->toBe($before);
     expect(GoogleCalendarEventMapping::query()->count())->toBe(0);

@@ -139,9 +139,8 @@ class ContentPageController extends Controller
 
     private function guestBookable(CalendarEvent $event): bool
     {
-        return $event->status === CalendarEvent::STATUS_PUBLISHED && $event->booking_enabled
-            && ($event->category?->allow_guest_booking ?? false) && $event->category?->required_verification_type_id === null
-            && now()->lt($event->bookingClosesAt());
+        // All activities are members-only, regardless of legacy category settings.
+        return false;
     }
 
     /**

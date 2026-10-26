@@ -28,7 +28,7 @@ file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;
 file_put_contents(getenv("OUT")."/legacy", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("LEGACY")))));
 file_put_contents(getenv("OUT")."/groups", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("GROUP_COUNT")))));
-' > /dev/null
+'
 EVENT="$(cat "$OUT/event")"
 
 PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &

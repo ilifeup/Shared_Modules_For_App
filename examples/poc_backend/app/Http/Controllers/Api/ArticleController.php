@@ -221,6 +221,11 @@ class ArticleController extends Controller
 
         $comment = ArticleComment::query()->where('status', ArticleComment::STATUS_VISIBLE)->findOrFail($id);
         $this->interactive($request, $comment->article_id);
+        // Admin aliases are ordinary members, but their comments are exempt
+        // from member-report counting and automated moderation. Keep the flag private.
+        if ($comment->user()->where('is_admin_alias', true)->exists()) {
+            return new JsonResponse(['data' => ['reported' => true]], 201);
+        }
         $this->interactions->report($comment, $request->user(), (string) $request->input('reason'), $request->input('note'));
 
         return new JsonResponse(['data' => ['reported' => true]], 201);

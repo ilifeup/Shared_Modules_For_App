@@ -34,7 +34,7 @@ class BookingGroupController extends Controller
         $data = $request->validate([
             'include_self' => ['sometimes', 'boolean'],
             'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.member_user_id' => ['required', 'integer', 'exists:users,id'],
+            'attendees.*.member_user_id' => ['required', 'integer'],
             'client_request_id' => ['required', 'uuid'],
         ]);
 
@@ -46,8 +46,10 @@ class BookingGroupController extends Controller
         }
         foreach ($data['attendees'] ?? [] as $a) {
             $attendeeId = (int) $a['member_user_id'];
-            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->firstOrFail();
-            if (! app(FamilyDelegation::class)->canManage($member, $attendee)) {
+            // Missing and unauthorized member IDs must have the same response.
+            // Never reveal account existence through 422 vs 403 differences.
+            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->first();
+            if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
                 throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
             }
             $attendees[] = ['name' => $attendee->name, 'member_user_id' => $attendee->id];

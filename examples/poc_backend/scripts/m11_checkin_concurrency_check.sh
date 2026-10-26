@@ -47,7 +47,7 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 member companion\",\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+  -d "{\"include_self\":true,\"attendees\":[{\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
 [ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");

@@ -40,6 +40,7 @@ file_put_contents(getenv("OUT")."/qr", app(App\Services\Checkin\CheckinTokens::c
 ' >/dev/null
 read -r A B <"$OUT/ids"
 QR="$(cat "$OUT/qr")"
+pids=()
 for n in 1 2; do
   if [ "$n" = 1 ]; then FIRST="$A"; SECOND="$B"; else FIRST="$B"; SECOND="$A"; fi
   curl -sS --max-time 40 -o "$OUT/$n.json" -w '%{http_code}' \

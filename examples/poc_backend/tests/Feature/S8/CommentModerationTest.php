@@ -343,3 +343,38 @@ it('resumes ordinary report moderation when the admin alias flag is removed', fu
     reportBy(User::factory()->create(), $comment)->assertCreated();
     expect(CommentModerationCase::query()->sole()->report_count)->toBe(1);
 });
+
+
+it('limits each member to one report per Taiwan calendar day and two per rolling ten days', function () {
+    Queue::fake();
+    $member = User::factory()->create();
+    $first = reportedComment();
+    $second = reportedComment();
+    $third = reportedComment();
+
+    reportBy($member, $first)->assertCreated();
+    reportBy($member, $second)->assertStatus(429)->assertJsonPath('error.code', 'REPORT_DAILY_LIMIT');
+
+    $this->travel(1)->days();
+    reportBy($member, $second)->assertCreated();
+    reportBy($member, $third)->assertStatus(429)->assertJsonPath('error.code', 'REPORT_DAILY_LIMIT');
+
+    $this->travel(1)->days();
+    reportBy($member, $third)->assertStatus(429)->assertJsonPath('error.code', 'REPORT_TEN_DAY_LIMIT');
+
+    $this->travel(9)->days();
+    reportBy($member, $third)->assertCreated();
+});
+
+it('counts silently ignored admin alias reports toward the same member limit', function () {
+    Queue::fake();
+    $member = User::factory()->create();
+    $first = reportedComment();
+    $second = reportedComment();
+    User::query()->whereKey($first->user_id)->update(['is_admin_alias' => true]);
+
+    reportBy($member, $first)->assertCreated();
+    reportBy($member, $second)->assertStatus(429)->assertJsonPath('error.code', 'REPORT_DAILY_LIMIT');
+    expect(AuditEvent::query()->where('event', 'comment.admin_alias_report_ignored')->count())->toBe(1)
+        ->and(CommentReport::query()->count())->toBe(0);
+});

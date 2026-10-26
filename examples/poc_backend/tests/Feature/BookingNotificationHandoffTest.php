@@ -8,6 +8,7 @@ use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 it('does nothing if notification booking group no longer exists', function (): void {
     $before = DB::table('notifications')->count();

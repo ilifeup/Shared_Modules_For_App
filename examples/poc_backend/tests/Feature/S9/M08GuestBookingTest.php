@@ -3,6 +3,7 @@
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Models\EventCategory;
+use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;

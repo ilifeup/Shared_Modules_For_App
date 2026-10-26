@@ -128,12 +128,8 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
     expect($job->backoff())->toBe([60, 300, 900, 3600]);
 });
 
-/**
- * Same-database queue handoff is now wired into BookingEngine, pending CI and
- * worker acceptance. Other queue drivers still use the legacy fallback.
- */
 
-it('persists a booking notification job without sending a notification before the worker runs', function (): void {
+it('persists an actual booking change notification job before the worker runs', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);
 
@@ -142,16 +138,18 @@ it('persists a booking notification job without sending a notification before th
         'email_verified_at' => now(),
         'phone_verified_at' => now(),
     ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
     $before = DB::table('jobs')->count();
 
-    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    DB::transaction(function () use ($event): void {
+        expect(app(BookingEngine::class)->notifyChange($event, 'Event update', 'Schedule changed'))->toBe(1);
+    });
 
-    expect($booking->exists)->toBeTrue();
     expect(DB::table('jobs')->count())->toBeGreaterThan($before);
     expect($member->fresh()->notifications()->count())->toBe(0);
 });
 
-it('atomically enqueues the real booking notification inside the booking transaction', function (): void {
+it('rolls back an actual booking change notification with its transaction', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);
 
@@ -160,21 +158,21 @@ it('atomically enqueues the real booking notification inside the booking transac
         'email_verified_at' => now(),
         'phone_verified_at' => now(),
     ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
     $before = DB::table('jobs')->count();
 
     try {
-        DB::transaction(function () use ($event, $member, $before): void {
-            app(BookingEngine::class)->bookLegacy($event, $member);
-
+        DB::transaction(function () use ($event, $before): void {
+            expect(app(BookingEngine::class)->notifyChange($event, 'Event update', 'Schedule changed'))->toBe(1);
             expect(DB::table('jobs')->count())->toBeGreaterThan($before);
-            throw new RuntimeException('rollback real booking notification handoff');
+            throw new RuntimeException('rollback real booking change notification');
         });
     } catch (RuntimeException $e) {
-        expect($e->getMessage())->toBe('rollback real booking notification handoff');
+        expect($e->getMessage())->toBe('rollback real booking change notification');
     }
 
     expect(DB::table('jobs')->count())->toBe($before);
-    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+    expect($member->fresh()->notifications()->count())->toBe(0);
 });
 
 it('rolls back a queued notification handoff with its enclosing transaction', function (): void {

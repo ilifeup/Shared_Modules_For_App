@@ -49,10 +49,18 @@ return new class extends Migration
         // Database-level constraints: no booking group or attendee may exist without a member.
         // Existing guest rows have already been purged above.
         Schema::table('event_booking_groups', function (Blueprint $table): void {
+            $table->dropForeign(['booker_user_id']);
+        });
+        Schema::table('event_booking_attendees', function (Blueprint $table): void {
+            $table->dropForeign(['member_user_id']);
+        });
+        Schema::table('event_booking_groups', function (Blueprint $table): void {
             $table->unsignedBigInteger('booker_user_id')->nullable(false)->change();
+            $table->foreign('booker_user_id')->references('id')->on('users')->restrictOnDelete();
         });
         Schema::table('event_booking_attendees', function (Blueprint $table): void {
             $table->unsignedBigInteger('member_user_id')->nullable(false)->change();
+            $table->foreign('member_user_id')->references('id')->on('users')->restrictOnDelete();
         });
     }
 

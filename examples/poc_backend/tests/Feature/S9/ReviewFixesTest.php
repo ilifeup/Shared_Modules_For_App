@@ -4,7 +4,6 @@ use App\Models\CalendarEvent;
 use App\Models\CheckinLocation;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
-use App\Models\EventCategory;
 use App\Models\MemberVerification;
 use App\Models\User;
 use App\Models\VerificationType;

@@ -137,8 +137,13 @@ it('checks out by a linked location QR without GPS while keeping event binding a
         'attendee_ids' => [$attendees[0]->id], 'location_token' => $unlinked->token,
     ])->assertStatus(422)->assertJsonPath('error.code', 'LOCATION_EVENT_MISMATCH');
 
+    // GPS fields are ignored on checkout, including stale or malformed client values.
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody + [
+        'lat' => 'invalid', 'lng' => 'invalid', 'accuracy' => 'invalid',
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out');
+
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody)
-        ->assertOk()->assertJsonPath('data.0.result', 'checked_out');
+        ->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
 
     expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
         ->toBe(EventAttendance::CHECKED_OUT);

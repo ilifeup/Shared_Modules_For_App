@@ -47,8 +47,9 @@ for n in 1 2; do
     -X POST "$BASE/api/v1/events/$EVENT/checkin" \
     -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
     -d "{\"attendee_ids\":[$FIRST,$SECOND],\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
+  pids+=("$!")
 done
-wait
+wait "${pids[@]}"
 for n in 1 2; do
   echo "M11 parallel request $n: HTTP $(cat "$OUT/$n.code") $(head -c 250 "$OUT/$n.json")"
 done

@@ -31,6 +31,8 @@ class ArticleCommentAttachment extends Model
 
     public function isViewable(): bool
     {
-        return $this->removed_at === null && $this->view_expires_at->isFuture();
+        return $this->removed_at === null
+            && $this->view_expires_at !== null
+            && $this->view_expires_at->isFuture();
     }
 }

@@ -135,12 +135,12 @@ jobs:
         run: |
           set -o pipefail
           {
-            # Only the S8 attachment-table migration sorts after S9; the S8 user-entitlement migration sorts before S9. Peel off exactly ONE latest migration.
-            # so --step=1 below targets S9 rather than silently rolling back S8.
+            # Three S8 migrations sort after S9: attachment tables, admin alias flag and audit index.
+            # Peel all three so the next --step=1 targets S9. The earlier S8 entitlement migration remains.
             # This is permitted ONLY in the disposable CI database, after checking emptiness.
             php artisan tinker --execute='$empty = Schema::hasTable("article_comment_attachments") && Schema::hasTable("article_attachment_bookmarks") && DB::table("article_comment_attachments")->count() === 0 && DB::table("article_attachment_bookmarks")->count() === 0; echo $empty ? "S8_EMPTY" : "S8_NOT_EMPTY", PHP_EOL;' | tee /dev/stderr | grep -q S8_EMPTY
-            php artisan migrate:rollback --step=1 --force --no-interaction
-            php artisan tinker --execute='$gone = ! Schema::hasTable("article_comment_attachments") && ! Schema::hasTable("article_attachment_bookmarks") && Schema::hasColumn("users", "attachment_upload_enabled"); echo $gone ? "S8_PEELED" : "S8_STILL_PRESENT", PHP_EOL;' | tee /dev/stderr | grep -q S8_PEELED
+            php artisan migrate:rollback --step=3 --force --no-interaction
+            php artisan tinker --execute='$gone = ! Schema::hasTable("article_comment_attachments") && ! Schema::hasTable("article_attachment_bookmarks") && Schema::hasColumn("users", "attachment_upload_enabled") && ! Schema::hasColumn("users", "is_admin_alias"); echo $gone ? "S8_PEELED" : "S8_STILL_PRESENT", PHP_EOL;' | tee /dev/stderr | grep -q S8_PEELED
             # Earlier steps left S9 data behind: the guard must refuse without explicit acceptance.
             php artisan s9:data-report
             if php artisan migrate:rollback --step=1 --force --no-interaction > "$RUNNER_TEMP/refused.log" 2>&1; then

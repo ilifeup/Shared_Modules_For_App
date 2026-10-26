@@ -74,6 +74,8 @@ class MemberResource extends Resource
                 ->unique(ignoreRecord: true)
                 ->regex('/^\+8869\d{8}$/')
                 ->helperText('格式 +886912345678。修改後此手機會變成「未驗證」。'),
+            Toggle::make('is_admin_alias')->label('管理員分身（留言檢舉豁免）')
+                ->helperText('僅管理員可見。標記後該帳號的留言不計入一般檢舉及 AI 審核；不授予後台權限。'),
             Toggle::make('attachment_upload_enabled')->label('允許附件上傳（管理員手動開通）')
                 ->helperText('與 App 付款及會員等級無關；實名驗證、期限與配額仍由後端檢查。'),
             DateTimePicker::make('attachment_upload_expires_at')->label('附件上傳權限到期（留空＝無期限）'),

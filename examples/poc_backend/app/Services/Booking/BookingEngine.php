@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Jobs\DispatchBookingGoogleSync;
+use App\Jobs\DispatchBookingNotification;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
@@ -709,6 +710,15 @@ final class BookingEngine
 
     private function notice(EventBookingGroup $group, string $title, string $body): void
     {
+        if (DB::transactionLevel() > 0
+            && config('queue.default') === 'database'
+            && (config('queue.connections.database.connection') === null
+                || config('queue.connections.database.connection') === DB::getDefaultConnection())) {
+            DispatchBookingNotification::dispatch($group->id, $title, $body)->onConnection('database');
+
+            return;
+        }
+
         $this->pendingNotices[] = [$group, $title, $body];
     }
 

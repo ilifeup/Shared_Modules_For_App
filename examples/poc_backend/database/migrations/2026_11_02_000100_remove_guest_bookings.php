@@ -42,8 +42,6 @@ return new class extends Migration
             $table->dropColumn('allow_guest_booking');
         });
         Schema::table('event_booking_groups', function (Blueprint $table): void {
-            $table->dropIndex(['contact_email']);
-            $table->dropIndex(['contact_phone']);
             $table->dropColumn(['is_guest', 'claimed_at']);
         });
         // Keep contact_email/contact_phone: these are also used for legitimate member bookings.

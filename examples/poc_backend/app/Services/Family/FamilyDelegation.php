@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FamilyDelegation
 {
-    public function canManage(User $manager, User $member): bool
+    public function canManage(User $manager, User $member, bool $lock = false): bool
     {
         if (! $manager->is_active || ! $member->is_active) {
             return false;
@@ -21,11 +21,17 @@ final class FamilyDelegation
             return true;
         }
 
-        return DB::table('family_memberships')
+        $query = DB::table('family_memberships')
             ->where('manager_user_id', $manager->id)
             ->where('member_user_id', $member->id)
             ->where('status', 'active')
-            ->whereNull('ended_at')
-            ->exists();
+            ->whereNull('ended_at');
+
+        // Use inside a transaction for cancellation/transfer race protection.
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first() !== null;
     }
 }

@@ -128,7 +128,6 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
     expect($job->backoff())->toBe([60, 300, 900, 3600]);
 });
 
-
 it('persists an actual booking change notification job before the worker runs', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);

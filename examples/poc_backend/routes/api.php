@@ -119,7 +119,6 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/booking-groups', [BookingGroupController::class, 'mine']);
     Route::post('/me/booking-groups/{id}/cancel', [BookingGroupController::class, 'cancel'])->whereNumber('id');
-    Route::get('/me/guest-bookings', [BookingGroupController::class, 'claimable']);
     Route::post('/me/guest-bookings/{id}/claim', [BookingGroupController::class, 'claim'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S9 M09 my calendar, VIP private entries, Google Calendar (one-way).

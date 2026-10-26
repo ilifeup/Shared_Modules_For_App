@@ -31,7 +31,7 @@ class BookingAttendee {
       );
 }
 
-/// S9 M08 booking group: one booker (or guest contact) with 1..n attendees;
+/// S9 M08 members-only booking group with 1..n identified attendees;
 /// confirmed or waitlisted as a whole (strict FIFO).
 class BookingGroup {
   const BookingGroup({
@@ -138,7 +138,7 @@ class BookingGroupPage {
   final int lastPage;
 }
 
-/// S9 M08 group booking, waitlist and guest-booking claim. Retries must reuse
+/// S9 M08 members-only group booking and waitlist. Retries must reuse
 /// the same [clientRequestId] (UUID) so a booking is never created twice.
 class BookingGroupApi {
   const BookingGroupApi(this.transport);
@@ -193,18 +193,4 @@ class BookingGroupApi {
     return BookingGroup.fromJson(s9Data(json));
   }
 
-  /// Guest bookings made with this member's verified email or phone.
-  Future<List<BookingGroup>> claimable() async {
-    final json = await transport.request('GET', '/api/v1/me/guest-bookings');
-    return s9List(json['data'], BookingGroup.fromJson);
-  }
-
-  /// 404 when not claimable; 409 CLAIM_CONFLICT (already booked this occurrence).
-  Future<BookingGroup> claim(String groupId) async {
-    final json = await transport.request(
-      'POST',
-      '/api/v1/me/guest-bookings/${s9Seg(groupId)}/claim',
-    );
-    return BookingGroup.fromJson(s9Data(json));
-  }
 }

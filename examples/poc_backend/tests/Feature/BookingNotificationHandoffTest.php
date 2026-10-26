@@ -132,6 +132,33 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
  * Existing notification handoff is NOT transactionally wired into BookingEngine
  * yet. This tests the component's queue persistence and rollback contract only.
  */
+
+it('atomically enqueues the real booking notification inside the booking transaction', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $before = DB::table('jobs')->count();
+
+    try {
+        DB::transaction(function () use ($event, $member, $before): void {
+            app(BookingEngine::class)->bookLegacy($event, $member);
+
+            expect(DB::table('jobs')->count())->toBeGreaterThan($before);
+            throw new RuntimeException('rollback real booking notification handoff');
+        });
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toBe('rollback real booking notification handoff');
+    }
+
+    expect(DB::table('jobs')->count())->toBe($before);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
 it('rolls back a queued notification handoff with its enclosing transaction', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);

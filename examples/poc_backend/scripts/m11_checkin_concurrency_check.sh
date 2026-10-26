@@ -8,9 +8,10 @@ BASE="http://127.0.0.1:$PORT"
 trap 'if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
+app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
 $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "M11 CI"], ["allow_proxy_booking" => true, "allow_guest_booking" => false]);
 $event = App\Models\CalendarEvent::query()->create([
-"title" => "M11 concurrency CI", "starts_at" => now()->addMinutes(30), "ends_at" => now()->addHours(2),
+"title" => "M11 concurrency CI", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHours(2),
 "status" => "published", "audience" => "members", "booking_enabled" => true,
 "booking_capacity" => 5, "booking_max_seats" => 3, "waitlist_enabled" => true,
 "checkin_enabled" => true, "checkout_enabled" => true, "checkin_gps_required" => false,
@@ -32,7 +33,7 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -fsS --max-time 30 -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d '{"include_self":true,"attendees":[{"name":"M11 parallel guest"}]}' >"$OUT/booking.json"
+  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 parallel guest\"}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.json"
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->orderBy("id")->pluck("id")->all();

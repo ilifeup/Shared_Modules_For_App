@@ -5,15 +5,15 @@ use App\Models\EventBookingGroup;
 use App\Services\Booking\BookingEngine;
 use App\Models\User;
 use App\Services\MemberNotifier;
+use App\Support\Api\ApiException;
 
 it('does nothing if notification booking group no longer exists', function (): void {
-    $notifier = Mockery::mock(MemberNotifier::class);
-    $notifier->shouldNotReceive('send');
+    $notifier = app(MemberNotifier::class);
 
     (new DispatchBookingNotification(999999999, 'Title', 'Body'))->handle($notifier);
 });
 
-it('propagates member notifier failures so the queue can retry', function (): void {
+it('propagates real notifier validation failures without swallowing them', function (): void {
     $event = s9Event();
     $member = User::factory()->create([
         'email_verified_at' => now(),
@@ -23,12 +23,12 @@ it('propagates member notifier failures so the queue can retry', function (): vo
     $group = EventBookingGroup::query()
         ->where('legacy_booking_id', $booking->id)->firstOrFail();
 
-    $notifier = Mockery::mock(MemberNotifier::class);
-    $notifier->shouldReceive('send')->once()
-        ->andThrow(new RuntimeException('synthetic notification outage'));
+    // MemberNotifier is final; use the real service and its validation error
+    // to prove the handoff does not swallow worker exceptions.
+    $notifier = app(MemberNotifier::class);
 
-    expect(fn () => (new DispatchBookingNotification($group->id, 'Title', 'Body'))->handle($notifier))
-        ->toThrow(RuntimeException::class, 'synthetic notification outage');
+    expect(fn () => (new DispatchBookingNotification($group->id, '', 'Body'))->handle($notifier))
+        ->toThrow(ApiException::class);
 });
 
 it('sets bounded retry policy for booking notification handoff', function (): void {

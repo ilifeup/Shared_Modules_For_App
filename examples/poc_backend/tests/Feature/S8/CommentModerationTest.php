@@ -310,3 +310,35 @@ it('audits reports, AI review and admin actions', function () {
         ->and(AuditEvent::query()->where('event', 'comment.case_resolved')->sole()->actor_id)->toBe($this->admin->id)
         ->and(AuditEvent::query()->where('event', 'comment.hidden_by_admin')->exists())->toBeTrue();
 });
+
+
+it('silently ignores reports against admin alias comments without creating a moderation case', function () {
+    Queue::fake();
+    $comment = reportedComment();
+    User::query()->whereKey($comment->user_id)->update(['is_admin_alias' => true]);
+
+    foreach (User::factory()->count(4)->create() as $member) {
+        reportBy($member, $comment)->assertCreated()->assertJsonPath('data.reported', true);
+    }
+
+    expect(CommentReport::query()->count())->toBe(0)
+        ->and(CommentModerationCase::query()->count())->toBe(0)
+        ->and($comment->refresh()->status)->toBe(ArticleComment::STATUS_VISIBLE);
+    Queue::assertNotPushed(ReviewReportedComment::class);
+
+    $this->getJson("/api/v1/articles/{$comment->article_id}/comments")
+        ->assertDontSee('is_admin_alias');
+});
+
+it('resumes ordinary report moderation when the admin alias flag is removed', function () {
+    Queue::fake();
+    $comment = reportedComment();
+    $author = User::query()->findOrFail($comment->user_id);
+    $author->forceFill(['is_admin_alias' => true])->save();
+    reportBy(User::factory()->create(), $comment)->assertCreated();
+    expect(CommentModerationCase::query()->count())->toBe(0);
+
+    $author->forceFill(['is_admin_alias' => false])->save();
+    reportBy(User::factory()->create(), $comment)->assertCreated();
+    expect(CommentModerationCase::query()->sole()->report_count)->toBe(1);
+});

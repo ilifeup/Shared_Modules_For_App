@@ -12,14 +12,14 @@ diagnose_failure() {
   echo "CI_DIAGNOSTICS: HTTP status, safe API error codes, response validation"
   if [ -d "${OUT:-/nonexistent}" ]; then
     python3 - "$OUT" <<'PY'
-import collections, glob, json, os, sys
+import collections, glob, json, os, re, sys
 root = sys.argv[1]
 statuses = collections.Counter()
 errors = collections.Counter()
 invalid = 0
 for path in glob.glob(os.path.join(root, "*.code")):
     status = open(path, encoding="utf-8").read().strip()
-    statuses[status] += 1
+    statuses[status if re.fullmatch(r"[1-5][0-9]{2}", status) else "INVALID_HTTP_STATUS"] += 1
     response = path[:-5] + ".json"
     if not os.path.isfile(response):
         invalid += 1
@@ -31,7 +31,8 @@ for path in glob.glob(os.path.join(root, "*.code")):
             continue
         error = payload.get("error")
         if isinstance(error, dict) and isinstance(error.get("code"), str):
-            errors[error["code"][:64]] += 1
+            code = error["code"]
+            errors[code if re.fullmatch(r"[A-Z0-9_-]{1,64}", code, flags=re.ASCII) else "INVALID_ERROR_CODE"] += 1
     except (ValueError, OSError):
         invalid += 1
 print("HTTP_STATUS_COUNTS:", dict(statuses))
@@ -41,7 +42,7 @@ for name in ("event",):
     print("TEST_DATA_PRESENT:", name, os.path.isfile(os.path.join(root, name)))
 PY
   fi
-  echo "PHP_SERVER_DIAGNOSTICS: warning/error type and source location (messages omitted)"
+  echo "PHP_SERVER_DIAGNOSTICS: warning/error type only (messages and paths redacted)"
   if [ -f "${S9_PHP_LOG:-/tmp/s9-concurrency-serve.log}" ]; then
     grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' "${S9_PHP_LOG:-/tmp/s9-concurrency-serve.log}" | sed -E 's/.*PHP (Fatal error|Parse error|Warning|Notice).*/PHP \1 [message redacted]/; s/.*\] (ERROR|CRITICAL).*/Laravel \1 [message redacted]/' | tail -n 12
   else
@@ -51,7 +52,27 @@ PY
   if declare -F check >/dev/null && [ -f "${OUT:-/nonexistent}/event" ]; then
     local ledger_output
     if ledger_output="$(set -o pipefail; check 2>/dev/null | tail -n 1)" && [ -n "$ledger_output" ]; then
-      printf "LEDGER_RESULT: %s\n" "$ledger_output"
+      LEDGER_JSON="$ledger_output" python3 - <<'PY_LEDGER'
+import json, os
+try:
+    value = json.loads(os.environ["LEDGER_JSON"])
+    if not isinstance(value, dict):
+        raise ValueError("not object")
+    keys = ("seats", "dup_members", "groups", "seq_unique", "waiting", "legacy_confirmed", "legacy_attendees")
+    cleaned = {}
+    for key in keys:
+        if key in value:
+            v = value[key]
+            if type(v) is bool or (type(v) is int and 0 <= v <= 1000000000):
+                cleaned[key] = v
+            else:
+                raise ValueError("invalid metric")
+    if not cleaned:
+        raise ValueError("empty metrics")
+    print("LEDGER_RESULT:", json.dumps(cleaned, separators=(",", ":"), sort_keys=True))
+except (ValueError, TypeError, KeyError):
+    print("LEDGER_RESULT_INVALID")
+PY_LEDGER
     else
       echo "LEDGER_QUERY_FAILED"
     fi
@@ -83,6 +104,10 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   printf '{"error":{"code":"BOOKING_FULL"}}' > "$OUT/l1.json"
   printf '500' > "$OUT/g1-1.code"
   printf '{invalid-json' > "$OUT/g1-1.json"
+  printf '201' > "$OUT/unsafe.code"
+  printf '{"error":{"code":"BOOKING_FULL\\nTOKEN_CANARY"}}' > "$OUT/unsafe.json"
+  printf '200\\nTOKEN_CANARY' > "$OUT/bad-status.code"
+  printf '{}' > "$OUT/bad-status.json"
   ( diagnose_failure 37 123 ) > "$OUT/diagnostics.txt"
   grep -Fq 'line=123 exit_code=37' "$OUT/diagnostics.txt"
   if ( grep -Fq 'THIS_MARKER_MUST_NOT_EXIST' "$OUT/diagnostics.txt" ); then
@@ -92,6 +117,9 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   grep -Fq '409' "$OUT/diagnostics.txt"
   grep -Fq '500' "$OUT/diagnostics.txt"
   grep -Fq 'BOOKING_FULL' "$OUT/diagnostics.txt"
+  grep -Fq 'INVALID_ERROR_CODE' "$OUT/diagnostics.txt"
+  grep -Fq 'INVALID_HTTP_STATUS' "$OUT/diagnostics.txt"
+  if grep -Fq 'TOKEN_CANARY' "$OUT/diagnostics.txt"; then echo "Unsafe API diagnostics leaked"; exit 1; fi
   grep -Fq 'INVALID_OR_MISSING_JSON: 1' "$OUT/diagnostics.txt"
   grep -Fq 'LEDGER_QUERY_UNAVAILABLE_BEFORE_SETUP' "$OUT/diagnostics.txt"
   set +e
@@ -109,6 +137,15 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   check() { return 19; }
   ( export S9_PHP_LOG="$OUT/php.log"; diagnose_failure 37 123 ) > "$OUT/db-diagnostics.txt"
   grep -Fq 'LEDGER_QUERY_FAILED' "$OUT/db-diagnostics.txt"
+  unset -f check
+  check() { printf '%s\n' '{"seats":20,"dup_members":0,"seq_unique":true,"secret":"TOKEN_CANARY"}'; }
+  ( diagnose_failure 37 123 ) > "$OUT/ledger-safe.txt"
+  grep -Fq 'LEDGER_RESULT: {"dup_members":0,"seats":20,"seq_unique":true}' "$OUT/ledger-safe.txt"
+  if grep -Fq 'TOKEN_CANARY' "$OUT/ledger-safe.txt"; then echo "Unsafe ledger diagnostics leaked"; exit 1; fi
+  check() { printf '%s\n' '{"seats":"TOKEN_CANARY"}'; }
+  ( diagnose_failure 37 123 ) > "$OUT/ledger-invalid.txt"
+  grep -Fq 'LEDGER_RESULT_INVALID' "$OUT/ledger-invalid.txt"
+  if grep -Fq 'TOKEN_CANARY' "$OUT/ledger-invalid.txt"; then echo "Invalid ledger diagnostics leaked"; exit 1; fi
   unset -f check
   echo 'PASS: synthetic failure diagnostics and real nonzero EXIT trap'
   exit 0

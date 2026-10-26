@@ -81,13 +81,17 @@ class CheckinService
         }
 
         $mine = $this->attendeesOf($event, $member)->keyBy('id');
-        $results = [];
-        foreach (array_values(array_unique($attendeeIds)) as $id) {
-            $attendee = $mine->get($id);
-            if ($attendee === null) {
+        $ids = array_values(array_unique($attendeeIds));
+        // Validate the entire requested ownership set before changing any attendance.
+        // Individual scans still commit independently as specified by D07.
+        foreach ($ids as $id) {
+            if (! $mine->has($id)) {
                 throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
             }
-            $results[] = $this->checkIn($event, $attendee, $member, $source);
+        }
+        $results = [];
+        foreach ($ids as $id) {
+            $results[] = $this->checkIn($event, $mine->get($id), $member, $source);
         }
 
         return $results;

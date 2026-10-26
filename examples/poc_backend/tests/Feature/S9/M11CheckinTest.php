@@ -233,6 +233,37 @@ it('keeps attendance per occurrence', function () {
         ->and(CalendarEvent::query()->count())->toBe(2);
 });
 
+it('rejects another members real attendee ID in check-in and checkout batches', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $other = User::factory()->create();
+    groupBook($event, $other, [])->assertCreated();
+    $foreign = EventBookingAttendee::query()->where('calendar_event_id', $event->id)
+        ->where('member_user_id', $other->id)->firstOrFail();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id],
+        'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $foreign->id)->count())->toBe(0);
+    expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
 it('rejects a mixed-ownership check-in batch before any attendee is checked in', function () {
     [$event, $member, $attendees] = checkinEvent();
     $token = app(CheckinTokens::class)->event($event->id);

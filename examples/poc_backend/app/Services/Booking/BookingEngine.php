@@ -517,12 +517,7 @@ final class BookingEngine
         }
 
         if ($request->booker === null) {
-            if (! $request->byAdmin && ($event->audience !== CalendarEvent::AUDIENCE_PUBLIC || ! ($category?->allow_guest_booking ?? false))) {
-                throw new ApiException(403, 'GUEST_NOT_ALLOWED', '此活動不開放訪客報名，請先註冊會員。');
-            }
-            if ($request->contactEmail === null && $request->contactPhone === null) {
-                throw new ApiException(422, 'VALIDATION_FAILED', '請填寫 Email 或手機。', ['contact' => ['請填寫 Email 或手機。']]);
-            }
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         } else {
             $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
             if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {

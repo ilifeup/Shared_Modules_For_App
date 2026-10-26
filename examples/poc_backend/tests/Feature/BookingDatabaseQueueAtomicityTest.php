@@ -50,3 +50,38 @@ it('rolls back a queued Google sync job with its enclosing database transaction'
 
     expect(DB::table('jobs')->count())->toBe($before);
 });
+
+/**
+ * A durable booking-side sync intent must not survive a failed booking write.
+ * This tests the actual mapping + job path inside an enclosing transaction.
+ */
+it('rolls back both Google mapping and database job if enclosing booking transaction fails', function (): void {
+    config()->set('queue.default', 'database');
+
+    $member = \App\Models\User::factory()->create();
+    $connection = \App\Models\GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => \App\Models\GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
+    ]);
+    $event = s9Event();
+    $beforeJobs = DB::table('jobs')->count();
+
+    try {
+        DB::transaction(function () use ($member, $event): void {
+            app(\App\Services\Calendar\GoogleCalendarSync::class)->queueBooking($member->id, $event->id);
+
+            expect(DB::table('jobs')->count())->toBeGreaterThan(0);
+            throw new RuntimeException('synthetic booking rollback');
+        });
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toBe('synthetic booking rollback');
+    }
+
+    expect(DB::table('jobs')->count())->toBe($beforeJobs);
+    expect(\App\Models\GoogleCalendarEventMapping::query()
+        ->where('google_calendar_connection_id', $connection->id)
+        ->where('source_type', \App\Models\GoogleCalendarEventMapping::SOURCE_BOOKING)
+        ->where('source_id', $event->id)
+        ->exists())->toBeFalse();
+});

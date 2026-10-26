@@ -10,8 +10,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 
 /**
- * S9 M08 one booking (one or more attendees, booked together). Guest groups keep
- * their in-app notifications here (notifiable) until a member claims them (D23).
+ * S9 M08 one booking (one or more registered attendees, booked together).
  *
  * @property Carbon $booked_at
  * @property Carbon|null $confirmed_at
@@ -31,19 +30,17 @@ class EventBookingGroup extends Model
     public const STATUS_EVENT_CANCELLED = 'event_cancelled';
 
     protected $fillable = [
-        'calendar_event_id', 'legacy_booking_id', 'booker_user_id', 'is_guest', 'contact_name', 'contact_email',
+        'calendar_event_id', 'legacy_booking_id', 'booker_user_id', 'contact_name', 'contact_email',
         'contact_phone', 'status', 'seat_count', 'client_request_id', 'booked_at', 'confirmed_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_guest' => 'boolean',
             'seat_count' => 'integer',
             'booked_at' => 'datetime',
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
-            'claimed_at' => 'datetime',
         ];
     }
 

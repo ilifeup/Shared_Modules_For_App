@@ -31,10 +31,10 @@ $groups = [];
 foreach (range(1, (int) getenv("GROUP_COUNT")) as $i) {
     $booker = App\Models\User::factory()->create();
     $attendee = App\Models\User::factory()->create();
-    App\Models\FamilyMembership::query()->create([
+    \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
         "manager_user_id" => $booker->id, "member_user_id" => $attendee->id,
         "relationship" => "family", "status" => "active", "started_at" => now(),
-        "created_by" => $booker->id,
+        "created_by" => $booker->id, "created_at" => now(), "updated_at" => now(),
     ]);
     $groups[] = $booker->createToken("ci")->plainTextToken." ".$attendee->id;
 }

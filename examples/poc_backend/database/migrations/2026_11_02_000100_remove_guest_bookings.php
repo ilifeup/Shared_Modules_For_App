@@ -14,6 +14,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Fail closed on production. This flag is an explicit operator gate,
+        // NOT proof of a backup: verify a restore before setting it.
+        // CI/disposable databases still exercise the migration.
+        if (app()->environment('production') && env('GUEST_PURGE_BACKUP_VERIFIED') !== 'yes') {
+            throw new RuntimeException('Guest booking purge blocked: verify a restorable database backup and set GUEST_PURGE_BACKUP_VERIFIED=yes for the migration run.');
+        }
+
         // MySQL DDL implicitly commits: the transaction below only protects row deletion,
         // not subsequent DROP COLUMN / ALTER TABLE operations.
         // This migration must be deployed only after a verified, restorable backup.

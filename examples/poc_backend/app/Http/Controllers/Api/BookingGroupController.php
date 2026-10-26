@@ -14,14 +14,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S9 M08 multi-attendee bookings and waitlist for members (verified), plus the
- * guest-booking claim. The S6 single-booking API stays unchanged (BookingController).
+ * S9 M08 members-only group bookings and waitlist.
+ * The S6 single-booking API stays unchanged (BookingController).
  */
 class BookingGroupController extends Controller
 {
     public function __construct(
         private readonly BookingEngine $engine,
-        private readonly GuestClaimService $claims,
     ) {}
 
     /**
@@ -107,23 +106,5 @@ class BookingGroupController extends Controller
         return new JsonResponse(['data' => BookingGroupPresenter::present($cancelled, $request->user())]);
     }
 
-    /**
-     * GET /api/v1/me/guest-bookings — guest bookings made with my verified email / phone.
-     */
-    public function claimable(Request $request): JsonResponse
-    {
-        return new JsonResponse(['data' => $this->claims->claimable($request->user())
-            ->map(fn (EventBookingGroup $g) => BookingGroupPresenter::present($g, $request->user()))->values()->all()]);
-    }
 
-    /**
-     * POST /api/v1/me/guest-bookings/{id}/claim
-     */
-    public function claim(Request $request, int $id): JsonResponse
-    {
-        $group = EventBookingGroup::query()->findOrFail($id);
-        $claimed = $this->claims->claim($group, $request->user());
-
-        return new JsonResponse(['data' => BookingGroupPresenter::present($claimed, $request->user())]);
-    }
 }

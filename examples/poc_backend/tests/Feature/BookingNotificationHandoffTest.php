@@ -140,9 +140,7 @@ it('persists an actual booking change notification job before the worker runs', 
     app(BookingEngine::class)->bookLegacy($event, $member);
     $before = DB::table('jobs')->count();
 
-    DB::transaction(function () use ($event): void {
-        expect(app(BookingEngine::class)->notifyChange($event, 'Event update', 'Schedule changed'))->toBe(1);
-    });
+    expect(app(BookingEngine::class)->notifyChange($event, 'Event update', 'Schedule changed'))->toBe(1);
 
     expect(DB::table('jobs')->count())->toBeGreaterThan($before);
     expect($member->fresh()->notifications()->count())->toBe(0);

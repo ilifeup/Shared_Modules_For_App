@@ -34,7 +34,7 @@ $groups = [];
 foreach (range(1, (int) getenv("GROUP_COUNT")) as $index) {
     $manager = App\Models\User::factory()->create();
     $member = App\Models\User::factory()->create();
-    // PR #40 predates #43's family schema; the integrated contract creates
+    // PR #40 predates the family schema added by PR #43; the integration creates
     // delegation rows only when that migration exists.
     if (\Illuminate\Support\Facades\Schema::hasTable("family_memberships")) {
         \Illuminate\Support\Facades\DB::table("family_memberships")->insert([

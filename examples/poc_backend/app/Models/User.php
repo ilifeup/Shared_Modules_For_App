@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\VerificationPolicy;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -79,7 +80,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function canUploadArticleAttachments(): bool
     {
         return $this->is_active
-            && app(\App\Support\VerificationPolicy::class)->isSatisfiedBy($this)
+            && app(VerificationPolicy::class)->isSatisfiedBy($this)
             && $this->attachment_upload_enabled === true
             && ($this->attachment_upload_expires_at === null
                 || $this->attachment_upload_expires_at->isFuture());

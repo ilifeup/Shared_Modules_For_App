@@ -4,8 +4,9 @@
 # idempotent retries) against `php artisan serve` with several PHP workers and MySQL.
 # Verifies the one seat ledger: no overbooking, one active place per member, unique
 # FIFO sequences, replays return the same group, and promotion follows the queue.
-set -euo pipefail
-trap 'echo "::error title=s9 booking concurrency::failed at line $LINENO: $BASH_COMMAND"' ERR
+set -Eeuo pipefail
+FAILED_LINE=unknown
+trap 'FAILED_LINE=$LINENO' ERR
 
 BASE="http://127.0.0.1:8004"
 OUT="$(mktemp -d)"
@@ -31,9 +32,9 @@ file_put_contents(getenv("OUT")."/groups", implode("\n", array_map(fn () => $mak
 ' > /dev/null
 EVENT="$(cat "$OUT/event")"
 
-PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &
+PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --no-reload --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=S9 concurrency::failed at line $FAILED_LINE (exit $rc)"; echo "=== PHP server (last 80 lines) ==="; tail -n 80 /tmp/s9-concurrency-serve.log 2>/dev/null || true; echo "=== unexpected API responses ==="; for f in "$OUT"/*.code; do [ -f "$f" ] || continue; code="$(cat "$f")"; case "$code" in 200|201|409) ;; *) echo "$f HTTP $code"; head -c 500 "${f%.code}.json" 2>/dev/null || true; echo;; esac; done; fi; kill "$SERVER" 2>/dev/null || true; rm -rf "$OUT"' EXIT
 for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break; sleep 1; done
 
 pids=()

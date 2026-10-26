@@ -2,12 +2,14 @@
 
 namespace App\Services\Booking;
 
+use App\Jobs\DispatchBookingGoogleSync;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
+use App\Models\GoogleCalendarConnection;
 use App\Models\MemberVerification;
 use App\Models\User;
 use App\Support\Api\ApiException;
@@ -712,6 +714,25 @@ final class BookingEngine
 
     private function queueSync(int $userId, int $eventId): void
     {
+        // A database-queued handoff is inserted on the same DB transaction as
+        // the booking. No Google API calls or Google mapping writes occur here.
+        // Other queue drivers retain the old post-commit behavior until their
+        // durable handoff has been explicitly configured and validated.
+        if (DB::transactionLevel() > 0
+            && config('queue.default') === 'database'
+            && (config('queue.connections.database.connection') === null
+                || config('queue.connections.database.connection') === DB::getDefaultConnection())) {
+            if (GoogleCalendarConnection::query()
+                ->where('user_id', $userId)
+                ->where('status', GoogleCalendarConnection::ACTIVE)
+                ->whereNotNull('google_calendar_id')
+                ->exists()) {
+                DispatchBookingGoogleSync::dispatch($userId, $eventId)->onConnection('database');
+            }
+
+            return;
+        }
+
         $this->pendingSync[$userId][$eventId] = true;
     }
 

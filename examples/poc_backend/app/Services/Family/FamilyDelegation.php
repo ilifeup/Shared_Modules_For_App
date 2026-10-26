@@ -11,6 +11,37 @@ use Illuminate\Support\Facades\DB;
  */
 final class FamilyDelegation
 {
+    /**
+     * Read-only bulk authorization for a booking group response.
+     * Cancellation still rechecks each member under a transaction lock.
+     *
+     * @param  array<int, int|null>  $memberIds
+     */
+    public function canManageMemberIds(User $manager, array $memberIds): bool
+    {
+        if (! $manager->is_active || $memberIds === [] || in_array(null, $memberIds, true)) {
+            return false;
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $memberIds)));
+        if (User::query()->whereIn('id', $ids)->where('is_active', true)->count() !== count($ids)) {
+            return false;
+        }
+
+        $delegated = array_values(array_filter($ids, fn (int $id): bool => $id !== (int) $manager->id));
+        if ($delegated === []) {
+            return true;
+        }
+
+        return DB::table('family_memberships')
+            ->where('manager_user_id', $manager->id)
+            ->whereIn('member_user_id', $delegated)
+            ->where('status', 'active')
+            ->whereNull('ended_at')
+            ->distinct()
+            ->count('member_user_id') === count($delegated);
+    }
+
     public function canManage(User $manager, User $member, bool $lock = false): bool
     {
         if (! $manager->is_active || ! $member->is_active) {

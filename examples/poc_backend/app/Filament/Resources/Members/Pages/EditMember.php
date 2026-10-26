@@ -19,6 +19,19 @@ class EditMember extends EditRecord
     {
         /** @var User $record */
         $record->fill($data);
+        // These settings are admin-only and deliberately not mass assignable
+        // through member-facing controllers.
+        foreach ([
+            'attachment_upload_enabled',
+            'attachment_upload_expires_at',
+            'attachment_weekly_upload_count',
+            'attachment_weekly_upload_bytes',
+            'admin_identity_note',
+        ] as $field) {
+            if (array_key_exists($field, $data)) {
+                $record->setAttribute($field, $data[$field]);
+            }
+        }
         $changed = array_keys($record->getDirty());
 
         if ($record->isDirty('email')) {

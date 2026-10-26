@@ -47,7 +47,12 @@ PY
   else
     echo "PHP_SERVER_LOG_UNAVAILABLE"
   fi
-  echo "DATABASE_VALIDATION: inspect ledger / rollback markers in preceding CI log"
+  echo "DATABASE_VALIDATION:"
+  if declare -F check >/dev/null && [ -f "${OUT:-/nonexistent}/event" ]; then
+    check 2>/dev/null | tail -n 1 || echo "LEDGER_QUERY_FAILED"
+  else
+    echo "LEDGER_QUERY_UNAVAILABLE_BEFORE_SETUP"
+  fi
 }
 
 BASE="http://127.0.0.1:8004"
@@ -107,13 +112,13 @@ for i in $(seq 1 "$n"); do
   code="$(cat "$OUT/l$i.code")"
   if [ "$code" = 201 ]; then legacy_ok=$((legacy_ok + 1))
   elif [ "$code" = 409 ] && grep -q 'BOOKING_FULL' "$OUT/l$i.json"; then legacy_full=$((legacy_full + 1))
-  else other=$((other + 1)); echo "  unexpected legacy: $code $(head -c 300 "$OUT/l$i.json")"; fi
+  else other=$((other + 1)); echo "  unexpected legacy HTTP status: $code (body redacted)"; fi
 done
 for i in $(seq 1 "$g"); do
   for f in "$OUT"/g"$i"-*.code; do
     code="$(cat "$f")"
     if [ "$code" = 201 ] || [ "$code" = 200 ]; then group_ok=$((group_ok + 1))
-    else other=$((other + 1)); echo "  unexpected group: $code $(head -c 300 "${f%.code}.json")"; fi
+    else other=$((other + 1)); echo "  unexpected group HTTP status: $code (body redacted)"; fi
   done
   if [ -f "$OUT/g$i-2.json" ]; then
     a="$(grep -o '"id":"[0-9]*"' "$OUT/g$i-1.json" | head -n 1)"; b="$(grep -o '"id":"[0-9]*"' "$OUT/g$i-2.json" | head -n 1)"

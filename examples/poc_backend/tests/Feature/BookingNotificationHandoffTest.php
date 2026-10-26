@@ -100,6 +100,27 @@ it('does not duplicate member notifications when the same worker payload is repl
     expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(1);
 });
 
+it('delivers separate notification jobs even when their text is identical', function (): void {
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+
+    $first = new DispatchBookingNotification($group->id, 'Same title', 'Same body');
+    $second = new DispatchBookingNotification($group->id, 'Same title', 'Same body');
+
+    expect($first->deliveryId)->not->toBe($second->deliveryId);
+
+    $first->handle(app(MemberNotifier::class));
+    $second->handle(app(MemberNotifier::class));
+    $first->handle(app(MemberNotifier::class));
+
+    expect($member->fresh()->notifications()->where('data->title', 'Same title')->count())->toBe(2);
+});
+
 it('sets bounded retry policy for booking notification handoff', function (): void {
     $job = new DispatchBookingNotification(123, 'Title', 'Body');
 

@@ -138,7 +138,8 @@ jobs:
       - name: S9 migration rollback drill (down, verify, up again; disposable CI database)
         id: rollback
         run: |
-          set -o pipefail
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=S9 rollback drill::failed at workflow script line $LINENO (exit $rc)"; for f in "$RUNNER_TEMP/refused.log" "$RUNNER_TEMP/rollback.log"; do if [ -f "$f" ]; then echo "=== $(basename "$f") ==="; tail -n 80 "$f"; fi; done; echo "=== Laravel exception summary ==="; if [ -f storage/logs/laravel.log ]; then grep -E "ERROR|CRITICAL|Exception" storage/logs/laravel.log | tail -n 12 | cut -c1-350 || true; fi' ERR
           {
             # Earlier steps left S9 data behind: the guard must refuse without explicit acceptance.
             php artisan s9:data-report

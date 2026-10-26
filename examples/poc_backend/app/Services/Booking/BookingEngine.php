@@ -533,8 +533,15 @@ final class BookingEngine
             throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每筆報名最多 '.max(1, (int) $event->booking_max_seats).' 人。');
         }
 
-        // Enforce member identity at the service boundary as well as the HTTP controller.
-        // This also protects admin and internal callers from name-only attendees.
+        // Every entry point, including admin/internal calls, requires an active booker.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
+        }
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+            throw new ApiException(422, 'INVALID_BOOKER', '預約者必須是有效的正式會員。');
+        }
+
+        // Enforce attendee identities for every caller, including administrators.
         if ($request->booker !== null) {
             $memberIds = array_map(static fn (array $a) => $a['member_user_id'] ?? null, $request->attendees);
             if (in_array(null, $memberIds, true)) {

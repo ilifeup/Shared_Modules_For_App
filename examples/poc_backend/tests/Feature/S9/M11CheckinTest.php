@@ -294,3 +294,21 @@ it('rejects a mixed-ownership checkout batch before changing attendance', functi
         ->toBe(EventAttendance::CHECKED_IN);
     expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
 });
+
+// #36: checkout must not partially commit when a later owned attendee is not checked in.
+it('rolls back an entire checkout batch and its audits on a later 409', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id], 'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'NOT_CHECKED_IN');
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN)
+        ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});

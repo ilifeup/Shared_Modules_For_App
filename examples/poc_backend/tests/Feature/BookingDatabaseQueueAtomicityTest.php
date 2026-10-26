@@ -1,6 +1,8 @@
 <?php
 
 use App\Jobs\SyncGoogleCalendarItem;
+use App\Models\EventBooking;
+use App\Services\Booking\BookingEngine;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
@@ -88,4 +90,44 @@ it('rolls back both Google mapping and database job if enclosing booking transac
         ->where('source_type', GoogleCalendarEventMapping::SOURCE_BOOKING)
         ->where('source_id', $event->id)
         ->exists())->toBeFalse();
+});
+
+/**
+ * Exercise the actual BookingEngine write, rather than just dispatching a job
+ * directly. A forced outer transaction rollback must remove both the booking
+ * and the durable handoff. RefreshDatabase still limits this to MySQL
+ * transaction/savepoint evidence, not a separate-process crash simulation.
+ */
+it('rolls back BookingEngine booking and durable handoff together', function (): void {
+    expect(DB::getDefaultConnection())->toBe('mysql');
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
+    ]);
+
+    $beforeJobs = DB::table('jobs')->count();
+    $beforeBookings = EventBooking::query()->count();
+
+    try {
+        DB::transaction(function () use ($event, $member, $beforeJobs): void {
+            $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+            expect($booking->exists)->toBeTrue();
+            expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+            throw new RuntimeException('synthetic outer booking rollback');
+        });
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toBe('synthetic outer booking rollback');
+    }
+
+    expect(DB::table('jobs')->count())->toBe($beforeJobs);
+    expect(EventBooking::query()->count())->toBe($beforeBookings);
 });

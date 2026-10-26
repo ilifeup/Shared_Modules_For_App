@@ -151,6 +151,8 @@ class CheckinService
 
         // State change and its audit entry commit together or not at all.
         [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor): array {
+            // Single staff scans and member batches must lock in the same order.
+            EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
             $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
             if ($row === null || $row->status === EventAttendance::REVOKED) {
                 throw new ApiException(409, 'NOT_CHECKED_IN', '尚未簽到，無法簽退。');
@@ -355,6 +357,8 @@ class CheckinService
 
         try {
             [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor, $source): array {
+                // Serialize concurrent first scans before the attendance row exists.
+                EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
                 $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
                 if ($row !== null && $row->status === EventAttendance::CHECKED_IN) {
                     return [$row, 'already_checked_in'];

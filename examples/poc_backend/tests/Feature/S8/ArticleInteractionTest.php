@@ -120,3 +120,23 @@ it('hides comments of withdrawn articles', function () {
     $article->update(['status' => Article::STATUS_WITHDRAWN]);
     $this->getJson("/api/v1/articles/{$article->id}/comments")->assertNotFound();
 });
+
+
+// S8: public comment lists reveal only attachment counts, not file metadata.
+it('returns a minimal attachment count without exposing attachment file metadata', function () {
+    $article = liveArticle();
+    $member = articleMember(['nickname' => '附件作者']);
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/articles/{$article->id}/comments", ['body' => '有附件的留言'])
+        ->assertCreated()
+        ->assertJsonPath('data.attachment_count', 0);
+
+    $this->getJson("/api/v1/articles/{$article->id}/comments")
+        ->assertOk()
+        ->assertJsonPath('data.0.attachment_count', 0)
+        ->assertJsonMissingPath('data.0.filename')
+        ->assertJsonMissingPath('data.0.mime_type')
+        ->assertJsonMissingPath('data.0.storage_path')
+        ->assertJsonMissingPath('data.0.download_url');
+});

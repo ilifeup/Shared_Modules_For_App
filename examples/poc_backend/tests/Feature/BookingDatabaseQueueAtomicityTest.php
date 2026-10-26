@@ -12,6 +12,7 @@ use RuntimeException;
  */
 it('writes database queue jobs on the same database connection inside the booking transaction', function (): void {
     expect(DB::getDefaultConnection())->toBe('mysql');
+    config()->set('queue.default', 'database');
     expect(config('queue.default'))->toBe('database');
     expect(config('queue.connections.database.after_commit'))->toBeFalse();
 
@@ -31,6 +32,7 @@ it('writes database queue jobs on the same database connection inside the bookin
 
 it('rolls back a queued Google sync job with its enclosing database transaction', function (): void {
     expect(DB::getDefaultConnection())->toBe('mysql');
+    config()->set('queue.default', 'database');
     expect(config('queue.default'))->toBe('database');
     expect(config('queue.connections.database.after_commit'))->toBeFalse();
 

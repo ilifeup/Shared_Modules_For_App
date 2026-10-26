@@ -322,6 +322,7 @@ it('silently ignores reports against admin alias comments without creating a mod
     }
 
     expect(CommentReport::query()->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'comment.admin_alias_report_ignored')->count())->toBe(4)
         ->and(CommentModerationCase::query()->count())->toBe(0)
         ->and($comment->refresh()->status)->toBe(ArticleComment::STATUS_VISIBLE);
     Queue::assertNotPushed(ReviewReportedComment::class);

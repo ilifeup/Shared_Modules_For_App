@@ -15,6 +15,12 @@ At commit `2aa50e46fe0c35a8d234b4188711be84f9debc34`, Shared PR #42 has green Ba
 - **Updated:** `notifyChange()` now wraps its notification/sync scheduling in `BookingEngine::transaction()`; direct calls no longer require a caller-provided transaction.
 - The database queue configuration currently has `after_commit=false`. Transactional queue insertion requires the queue's database connection to match the booking DB connection, and a running worker.
 
+## Recipient semantics (observed; acceptance pending)
+
+- **CURRENT IMPLEMENTATION:** `DispatchBookingNotification` persists the booking group ID and resolves the booker from `EventBookingGroup::booker()` at worker execution time, not at enqueue time. Test commit `ea8aa0c0f3769f649af7561669d684e486306968` verifies that changing ownership from A to B before execution delivers to B, not A (Backend CI run 40298888018: success).
+- This behavior is **NOT an approved business decision** for every notification type. Cancellation, transfer, privacy-sensitive or historical audit notices may require delivery to the original recipient. Require an explicit decision and new tests before changing this behavior.
+- The worker locks the booking group but does not snapshot a recipient ID at enqueue time. Deletion or role changes before execution may cause skipped delivery. Production multi-worker/recovery validation remains outstanding.
+
 ## Important risks / not yet verified
 
 1. **Idempotency**: each notification job now has a stable UUID used as the database notification ID, with an existence check and a group row lock in the worker transaction. Sequential replay tests pass; concurrent multi-worker/crash-recovery behavior is still unverified. Do not claim exactly-once delivery.

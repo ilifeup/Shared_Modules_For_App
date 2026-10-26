@@ -5,6 +5,7 @@ use App\Models\GoogleCalendarConnection;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingSideEffects;
+use App\Services\Calendar\EventSeriesService;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\DB;
 
@@ -70,4 +71,31 @@ it('does not leave a durable Google handoff after a rejected booking', function 
     }
 
     expect(DB::table('jobs')->count())->toBe($beforeJobs);
+});
+
+/**
+ * An event update and its durable notification intent must share a commit.
+ * Inject a notification handoff failure to prove the event edit rolls back;
+ * the old post-commit loop left the edit committed despite the failure.
+ */
+it('rolls back event changes if notification intent cannot be persisted', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event(['location' => 'Before']);
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
+
+    $engine = Mockery::mock(BookingEngine::class)->makePartial();
+    $engine->shouldReceive('notifyChange')->once()->andThrow(new RuntimeException('synthetic notification handoff failure'));
+    app()->instance(BookingEngine::class, $engine);
+
+    expect(fn () => app(EventSeriesService::class)->update($event, 'single', [
+        'location' => 'After',
+    ], $member))->toThrow(RuntimeException::class, 'synthetic notification handoff failure');
+
+    expect($event->fresh()->location)->toBe('Before');
 });

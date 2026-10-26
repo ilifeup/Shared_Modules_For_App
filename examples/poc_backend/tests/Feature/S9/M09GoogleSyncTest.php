@@ -8,14 +8,12 @@ use App\Models\MembershipLevel;
 use App\Models\PrivateCalendarEvent;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
-use App\Services\Booking\BookingRequest;
 use App\Services\Calendar\GoogleCalendarSync;
 use App\Services\MembershipService;
 use App\Support\Settings;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 
 /** Status the fake Calendar event endpoint answers (changeable inside one test). */
 function googleEventStatus(?int $set = null): int

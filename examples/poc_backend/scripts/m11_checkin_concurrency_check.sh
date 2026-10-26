@@ -22,11 +22,15 @@ $event = App\Models\CalendarEvent::query()->create([
 ]);
 $user = App\Models\User::factory()->create();
 $companion = App\Models\User::factory()->create();
+// The stacked PR #40 has no family schema; #43 adds this table and enforces
+// delegation. Only the integrated fixture creates delegation records.
+if (\Illuminate\Support\Facades\Schema::hasTable("family_memberships")) {
     \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
         "manager_user_id" => $user->id, "member_user_id" => $companion->id,
         "relationship" => "family", "status" => "active", "started_at" => now(),
         "created_by" => $user->id, "created_at" => now(), "updated_at" => now(),
     ]);
+}
 file_put_contents(getenv("OUT")."/companion", $companion->id);
 file_put_contents(getenv("OUT")."/event", $event->id);
 file_put_contents(getenv("OUT")."/bearer", $user->createToken("m11-ci")->plainTextToken);

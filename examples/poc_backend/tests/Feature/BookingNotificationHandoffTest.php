@@ -65,7 +65,7 @@ it('delivers a real guest booking notification to the guest group', function ():
     expect($group->fresh()->notifications()->where('data->title', 'Guest update')->count())->toBe(1);
 });
 
-it('currently creates duplicate notifications when the same worker payload is replayed', function (): void {
+it('does not duplicate guest notifications when the same worker payload is replayed', function (): void {
     $event = s9Event();
     $group = EventBookingGroup::query()->create([
         'calendar_event_id' => $event->id,
@@ -81,12 +81,10 @@ it('currently creates duplicate notifications when the same worker payload is re
     $job->handle(app(MemberNotifier::class));
     $job->handle(app(MemberNotifier::class));
 
-    // Characterization of the CURRENT BUG, not a desired acceptance criterion.
-    // Change expected count to 1 when stable delivery-id deduplication is implemented.
-    expect($group->fresh()->notifications()->where('data->title', 'Replay update')->count())->toBe(2);
+    expect($group->fresh()->notifications()->where('data->title', 'Replay update')->count())->toBe(1);
 });
 
-it('currently creates duplicate member notifications when the same worker payload is replayed', function (): void {
+it('does not duplicate member notifications when the same worker payload is replayed', function (): void {
     $event = s9Event();
     $member = User::factory()->create([
         'email_verified_at' => now(),
@@ -99,8 +97,7 @@ it('currently creates duplicate member notifications when the same worker payloa
     $job->handle(app(MemberNotifier::class));
     $job->handle(app(MemberNotifier::class));
 
-    // KNOWN BUG characterization, not acceptance: expected 1 after deduplication.
-    expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(2);
+    expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(1);
 });
 
 it('sets bounded retry policy for booking notification handoff', function (): void {

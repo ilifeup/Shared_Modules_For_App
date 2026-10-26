@@ -46,7 +46,14 @@ return new class extends Migration
             $table->dropColumn(['is_guest', 'claimed_at']);
         });
         // Keep contact_email/contact_phone: these are also used for legitimate member bookings.
-        // Keep nullable FK definitions until a separate cross-database FK migration is validated.
+        // Database-level constraints: no booking group or attendee may exist without a member.
+        // Existing guest rows have already been purged above.
+        Schema::table('event_booking_groups', function (Blueprint $table): void {
+            $table->unsignedBigInteger('booker_user_id')->nullable(false)->change();
+        });
+        Schema::table('event_booking_attendees', function (Blueprint $table): void {
+            $table->unsignedBigInteger('member_user_id')->nullable(false)->change();
+        });
     }
 
     public function down(): void

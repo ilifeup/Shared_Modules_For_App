@@ -65,7 +65,6 @@ it('delivers a real guest booking notification to the guest group', function ():
     expect($group->fresh()->notifications()->where('data->title', 'Guest update')->count())->toBe(1);
 });
 
-
 it('currently creates duplicate notifications when the same worker payload is replayed', function (): void {
     $event = s9Event();
     $group = EventBookingGroup::query()->create([
@@ -86,7 +85,6 @@ it('currently creates duplicate notifications when the same worker payload is re
     // Change expected count to 1 when stable delivery-id deduplication is implemented.
     expect($group->fresh()->notifications()->where('data->title', 'Replay update')->count())->toBe(2);
 });
-
 
 it('currently creates duplicate member notifications when the same worker payload is replayed', function (): void {
     $event = s9Event();

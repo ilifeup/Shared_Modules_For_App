@@ -1711,3 +1711,12 @@
 ### M11-D24 正式補充裁決｜2026-10-25｜A
 
 **優先於舊候選文字**：M07 稽核事件維持 append-only，不刪除、不改寫；簽到個資及管理員更正原因依各 App 後台設定的期限清除。稽核在**寫入時**就須去識別，不能留下可反向識別參加者的 ID、聯絡資訊、原因自由文字或關聯。清理僅新增一筆稽核事件記錄批次結果。工作人員必要的操作責任仍須保留，但不得使已清除的參加者個資被重新識別。測試應驗證清理前後既有稽核列逐欄不變、個資確實清除、清理事件新增。任何較早「稽核紀錄到期刪除／改寫」候選由此裁決覆蓋。
+
+
+### PR #40 + #43 integration validation (2026-10-27)
+
+- Isolated integration branch: `integration/pr40-pr43-validation-20261027`, initially based on PR #43 (`6aab52243c1bc2104d4b40e738468ed565787f64`).
+- PR #40 head at review: `0c42dc5f5e810f6d56ca9141812fd74634658a5e`; its independent Backend/Mobile/Docs CI passed, as did #43 independent CI.
+- **Not integrated yet:** both branches modify CheckinController, CheckinService, M11 tests, S9 concurrency fixtures, and CI workflow. Blind file copying or a synthetic merge is not an acceptable conflict resolution.
+- Integration acceptance requires a reviewed combination of member-ID-only booking, family delegation, atomic check-in/checkout, QR-only location checkout, S9/M11 concurrency, fault rollback, and full CI. No guest booking exceptions.
+- Destructive guest purge migration in #43 requires verified backup and restore rehearsal before production deployment. Green CI does not authorize merge, deployment, or issue closure.

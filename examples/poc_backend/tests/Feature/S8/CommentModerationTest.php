@@ -312,7 +312,6 @@ it('audits reports, AI review and admin actions', function () {
         ->and(AuditEvent::query()->where('event', 'comment.hidden_by_admin')->exists())->toBeTrue();
 });
 
-
 it('silently ignores reports against admin alias comments without creating a moderation case', function () {
     Queue::fake();
     $comment = reportedComment();

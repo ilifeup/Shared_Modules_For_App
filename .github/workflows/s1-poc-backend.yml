@@ -138,7 +138,7 @@ jobs:
             # Invoke this exact migration's down() directly, not migrate:rollback
             # (which may select a different migration in the current batch).
             php artisan tinker --execute='$migration = require base_path("database/migrations/2026_11_02_000100_remove_guest_bookings.php"); try { $migration->down(); echo "GUARD_BYPASSED", PHP_EOL; exit(1); } catch (RuntimeException $e) { if ($e->getMessage() !== "Guest booking purge is irreversible; restore the verified database backup instead.") { throw $e; } echo "IRREVERSIBLE_GUARD_OK", PHP_EOL; }' | tee /dev/stderr | grep -q IRREVERSIBLE_GUARD_OK
-            php artisan tinker --execute='$s = Illuminate\\Support\\Facades\\Schema::class; $ok = $s::hasTable("event_booking_groups") && ! $s::hasColumn("event_booking_groups", "is_guest") && ! $s::hasColumn("event_categories", "allow_guest_booking") && ! $s::hasColumn("event_booking_groups", "claimed_at"); echo $ok ? "MEMBER_ONLY_SCHEMA_OK" : "MEMBER_ONLY_SCHEMA_FAILED", PHP_EOL;' | tee /dev/stderr | grep -q MEMBER_ONLY_SCHEMA_OK
+            php artisan tinker --execute='$s = Illuminate\Support\Facades\Schema::class; $ok = $s::hasTable("event_booking_groups") && ! $s::hasColumn("event_booking_groups", "is_guest") && ! $s::hasColumn("event_categories", "allow_guest_booking") && ! $s::hasColumn("event_booking_groups", "claimed_at"); echo $ok ? "MEMBER_ONLY_SCHEMA_OK" : "MEMBER_ONLY_SCHEMA_FAILED", PHP_EOL;' | tee /dev/stderr | grep -q MEMBER_ONLY_SCHEMA_OK
             echo "PASS: irreversible migration guard and member-only schema"
           } 2>&1 | tee "$RUNNER_TEMP/rollback.log"
 

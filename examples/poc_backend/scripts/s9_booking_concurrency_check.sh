@@ -83,8 +83,12 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   printf '{"error":{"code":"BOOKING_FULL"}}' > "$OUT/l1.json"
   printf '500' > "$OUT/g1-1.code"
   printf '{invalid-json' > "$OUT/g1-1.json"
-  diagnose_failure 37 123 > "$OUT/diagnostics.txt"
+  ( diagnose_failure 37 123 ) > "$OUT/diagnostics.txt"
   grep -Fq 'line=123 exit_code=37' "$OUT/diagnostics.txt"
+  if ( grep -Fq 'THIS_MARKER_MUST_NOT_EXIST' "$OUT/diagnostics.txt" ); then
+    echo "FAIL: negative diagnostic assertion unexpectedly matched"
+    exit 1
+  fi
   grep -Fq '409' "$OUT/diagnostics.txt"
   grep -Fq '500' "$OUT/diagnostics.txt"
   grep -Fq 'BOOKING_FULL' "$OUT/diagnostics.txt"
@@ -98,12 +102,12 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   grep -Fq 'exit_code=37' "$OUT/exit-trap.txt"
   grep -Fq 'BOOKING_FULL' "$OUT/exit-trap.txt"
   printf 'PHP Fatal error: secret=CANARY_TOKEN in /tmp/sample.php on line 17\n' > "$OUT/php.log"
-  S9_PHP_LOG="$OUT/php.log" diagnose_failure 37 123 > "$OUT/php-diagnostics.txt"
+  S9_PHP_LOG="$OUT/php.log" ( diagnose_failure 37 123 ) > "$OUT/php-diagnostics.txt"
   grep -Fq 'PHP Fatal error [message redacted]' "$OUT/php-diagnostics.txt"
   if grep -Fq 'CANARY_TOKEN' "$OUT/php-diagnostics.txt"; then echo "Sensitive PHP log leaked"; exit 1; fi
   printf 'fixture-event' > "$OUT/event"
   check() { return 19; }
-  S9_PHP_LOG="$OUT/php.log" diagnose_failure 37 123 > "$OUT/db-diagnostics.txt"
+  S9_PHP_LOG="$OUT/php.log" ( diagnose_failure 37 123 ) > "$OUT/db-diagnostics.txt"
   grep -Fq 'LEDGER_QUERY_FAILED' "$OUT/db-diagnostics.txt"
   unset -f check
   echo 'PASS: synthetic failure diagnostics and real nonzero EXIT trap'

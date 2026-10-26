@@ -13,6 +13,7 @@ use App\Support\Phone;
 use App\Support\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * S9 M11 check-in API (online only, D13). Members: own attendees; staff
@@ -63,11 +64,25 @@ class CheckinController extends Controller
         $this->assertScanToken($event, $data);
 
         $mine = $this->checkins->attendeesOf($event, $request->user())->keyBy('id');
-        $results = [];
-        foreach (array_values(array_unique($data['attendee_ids'])) as $attendeeId) {
-            $attendee = $mine->get($attendeeId) ?? throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            $results[] = $this->result($this->checkins->checkOut($event, $attendee, $request->user()));
+        $ids = array_values(array_unique($data['attendee_ids']));
+        // Reject mixed-ownership batches before committing any individual checkout.
+        foreach ($ids as $attendeeId) {
+            if (! $mine->has($attendeeId)) {
+                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
+            }
         }
+        // Batch atomicity: a later 409/error rolls back earlier attendance + audits.
+        $results = DB::transaction(function () use ($ids, $mine, $event, $request): array {
+            // Match check-in's deterministic lock order for reversed batches.
+            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
+                ->lockForUpdate()->get(['id']);
+            $results = [];
+            foreach ($ids as $attendeeId) {
+                $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
+            }
+
+            return $results;
+        });
 
         return new JsonResponse(['data' => $results]);
     }

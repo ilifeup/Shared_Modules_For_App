@@ -25,11 +25,6 @@ final myBookingGroupsProvider = FutureProvider.autoDispose<BookingGroupPage>(
   (ref) => ref.watch(bookingGroupApiProvider).mine(),
 );
 
-final claimableGuestBookingsProvider =
-    FutureProvider.autoDispose<List<BookingGroup>>(
-      (ref) => ref.watch(bookingGroupApiProvider).claimable(),
-    );
-
 /// Text for a group status (shown with words, not colour only).
 String groupStatusLabel(BookingGroup g) => switch (g.status) {
   'confirmed' => '【正式報名】',
@@ -214,7 +209,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   }
 }
 
-/// My S9 booking groups and guest bookings I can claim.
+/// My S9 member booking groups.
 class MyBookingGroupsScreen extends ConsumerStatefulWidget {
   const MyBookingGroupsScreen({super.key});
 
@@ -239,7 +234,6 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
       if (mounted) setState(() => _error = error);
     } finally {
       ref.invalidate(myBookingGroupsProvider);
-      ref.invalidate(claimableGuestBookingsProvider);
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -270,7 +264,6 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
   @override
   Widget build(BuildContext context) {
     final groups = ref.watch(myBookingGroupsProvider);
-    final claimable = ref.watch(claimableGuestBookingsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('我的報名')),
@@ -278,31 +271,6 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
         padding: const EdgeInsets.all(12),
         children: [
           if (_error != null) ErrorBox(error: _error!),
-          ...claimable.maybeWhen(
-            data: (items) => [
-              if (items.isNotEmpty) const Text('可認領的訪客報名（與您已驗證的 Email／手機相同）'),
-              for (final g in items)
-                Card(
-                  child: ListTile(
-                    title: Text(g.eventTitle),
-                    subtitle: Text(
-                      '${formatDate(g.eventStartsAt)}・${g.seatCount} 位',
-                    ),
-                    trailing: TextButton(
-                      key: Key('claim-${g.id}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _act(
-                              () =>
-                                  ref.read(bookingGroupApiProvider).claim(g.id),
-                            ),
-                      child: const Text('認領'),
-                    ),
-                  ),
-                ),
-            ],
-            orElse: () => const <Widget>[],
-          ),
           ...groups.when(
             loading: () => const [LoadingView()],
             error: (error, _) => [

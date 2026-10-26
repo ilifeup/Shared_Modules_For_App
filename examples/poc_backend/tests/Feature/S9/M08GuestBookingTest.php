@@ -35,6 +35,23 @@ it('rejects guest booking directly in the engine even for an admin request', fun
     expect(EventBookingGroup::query()->count())->toBe(0);
 });
 
+it('requires authentication and rejects nonexistent attendee member IDs', function () {
+    $event = s9Event();
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+    $payload = [
+        'include_self' => false,
+        'attendees' => [['member_user_id' => 2147483647]],
+        'client_request_id' => (string) Str::uuid(),
+    ];
+
+    $this->postJson($url, $payload)->assertUnauthorized();
+
+    $member = \\App\\Models\\User::factory()->create();
+    $this->actingAs($member, 'sanctum')->postJson($url, $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['attendees.0.member_user_id']);
+    expect(EventBookingGroup::query()->count())->toBe(0);
+});
+
 it('rejects name-only attendees and arbitrary member identities in the group API', function () {
     $event = s9Event();
     $member = \App\Models\User::factory()->create();

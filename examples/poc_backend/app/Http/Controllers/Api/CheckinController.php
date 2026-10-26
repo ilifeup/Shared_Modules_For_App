@@ -63,10 +63,16 @@ class CheckinController extends Controller
         $this->assertScanToken($event, $data);
 
         $mine = $this->checkins->attendeesOf($event, $request->user())->keyBy('id');
+        $ids = array_values(array_unique($data['attendee_ids']));
+        // Reject mixed-ownership batches before committing any individual checkout.
+        foreach ($ids as $attendeeId) {
+            if (! $mine->has($attendeeId)) {
+                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
+            }
+        }
         $results = [];
-        foreach (array_values(array_unique($data['attendee_ids'])) as $attendeeId) {
-            $attendee = $mine->get($attendeeId) ?? throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            $results[] = $this->result($this->checkins->checkOut($event, $attendee, $request->user()));
+        foreach ($ids as $attendeeId) {
+            $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
         }
 
         return new JsonResponse(['data' => $results]);

@@ -194,9 +194,9 @@ class CheckinController extends Controller
         ];
         if ($validateGps) {
             $rules += [
-            'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
-            'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
-            'accuracy' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000'],
+                'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+                'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+                'accuracy' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000'],
             ];
         }
 

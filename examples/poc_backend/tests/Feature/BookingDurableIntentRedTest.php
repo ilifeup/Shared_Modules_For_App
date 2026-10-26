@@ -4,7 +4,7 @@ use App\Models\EventBooking;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingSideEffects;
-use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * RED regression for Shared #25 / Tiandi #34.
@@ -24,7 +24,7 @@ it('keeps booking response successful and durable when post-commit sync dispatch
     $effects->shouldReceive('syncBooking')
         ->once()
         ->with($member->id, $event->id)
-        ->andThrow(new \RuntimeException('synthetic queue dispatch failure'));
+        ->andThrow(new RuntimeException('synthetic queue dispatch failure'));
     app()->instance(BookingSideEffects::class, $effects);
 
     // This currently fails: the booking has committed but flush() propagates

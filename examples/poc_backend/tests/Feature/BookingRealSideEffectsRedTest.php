@@ -81,3 +81,26 @@ it('queues Google sync for a connected member when the real adapter succeeds', f
         ->where('source_id', $event->id)
         ->exists())->toBeTrue();
 });
+
+/**
+ * Negative control: an unconnected member must not create Google mapping or
+ * Google sync job merely because a booking was made.
+ */
+it('does not queue Google sync for a member without a Google connection', function (): void {
+    config()->set('queue.default', 'database');
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+
+    $beforeJobs = DB::table('jobs')->count();
+    $beforeMappings = GoogleCalendarEventMapping::query()->count();
+
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+
+    expect($booking->exists)->toBeTrue();
+    expect(DB::table('jobs')->count())->toBe($beforeJobs);
+    expect(GoogleCalendarEventMapping::query()->count())->toBe($beforeMappings);
+});

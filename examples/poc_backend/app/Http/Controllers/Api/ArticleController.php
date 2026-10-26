@@ -21,6 +21,7 @@ use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -222,14 +223,36 @@ class ArticleController extends Controller
 
         $comment = ArticleComment::query()->where('status', ArticleComment::STATUS_VISIBLE)->findOrFail($id);
         $this->interactive($request, $comment->article_id);
-        // Admin aliases are ordinary members, but their comments are exempt
-        // from member-report counting and automated moderation. Keep the flag private.
-        if ($comment->user()->where('is_admin_alias', true)->exists()) {
-            AuditEvent::record('comment.admin_alias_report_ignored', $request->user()->id, $comment);
+        // Serialize reports per member so concurrent requests cannot bypass limits.
+        // Audit rows cover both ordinary reports and silently ignored admin-alias reports.
+        DB::transaction(function () use ($request, $comment): void {
+            $member = User::query()->whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+            $events = ['comment.reported', 'comment.admin_alias_report_ignored'];
+            $today = now('Asia/Taipei')->startOfDay()->utc();
+            $tenDaysAgo = now()->subDays(10);
 
-            return new JsonResponse(['data' => ['reported' => true]], 201);
-        }
-        $this->interactions->report($comment, $request->user(), (string) $request->input('reason'), $request->input('note'));
+            if (AuditEvent::query()->where('actor_id', $member->id)->whereIn('event', $events)
+                ->where('created_at', '>=', $today)->exists()) {
+                throw new ApiException(429, 'REPORT_DAILY_LIMIT', '每位會員每天最多檢舉 1 次。');
+            }
+
+            if (AuditEvent::query()->where('actor_id', $member->id)->whereIn('event', $events)
+                ->where('created_at', '>=', $tenDaysAgo)->count() >= 2) {
+                throw new ApiException(429, 'REPORT_TEN_DAY_LIMIT', '每位會員 10 天內最多檢舉 2 次。');
+            }
+
+            if ($comment->user_id === $member->id) {
+                throw new ApiException(422, 'VALIDATION_FAILED', '不能檢舉自己的留言。');
+            }
+
+            if ($comment->user()->where('is_admin_alias', true)->exists()) {
+                AuditEvent::record('comment.admin_alias_report_ignored', $member->id, $comment);
+
+                return;
+            }
+
+            $this->interactions->report($comment, $member, (string) $request->input('reason'), $request->input('note'));
+        });
 
         return new JsonResponse(['data' => ['reported' => true]], 201);
     }

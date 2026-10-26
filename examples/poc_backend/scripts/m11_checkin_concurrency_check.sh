@@ -11,7 +11,7 @@ trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at l
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
- $categoryOptions = ["allow_proxy_booking" => true];
+$categoryOptions = ["allow_proxy_booking" => true];
 if (\Illuminate\Support\Facades\Schema::hasColumn("event_categories", "allow_guest_booking")) {
     $categoryOptions["allow_guest_booking"] = false;
 }

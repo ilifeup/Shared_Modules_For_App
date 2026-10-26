@@ -92,6 +92,11 @@ class CheckinService
         // All attendee state changes and their audit entries share one transaction.
         // Any failure rolls back the entire HTTP batch (M11-D07, #36 decision A).
         return DB::transaction(function () use ($ids, $mine, $event, $member, $source): array {
+            // Lock existing parent rows in one stable order before inserting missing
+            // attendance rows. Reverse-order concurrent batches otherwise deadlock
+            // on MySQL gap/unique-key locks and return an unexpected HTTP 500.
+            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
+                ->lockForUpdate()->get(['id']);
             $results = [];
             foreach ($ids as $id) {
                 $results[] = $this->checkIn($event, $mine->get($id), $member, $source);

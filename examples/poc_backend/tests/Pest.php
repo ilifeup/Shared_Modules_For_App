@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Sms\FakeSmsGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -108,14 +109,14 @@ function groupBook(CalendarEvent $event, User $member, array $names = [], bool $
             $attendee = User::factory()->create(['name' => $name, 'email' => $email]);
         }
 
-        $delegationExists = \Illuminate\Support\Facades\DB::table('family_memberships')
+        $delegationExists = DB::table('family_memberships')
             ->where('member_user_id', $attendee->id)
             ->where('manager_user_id', $member->id)
             ->where('status', 'active')
             ->whereNull('ended_at')
             ->exists();
         if (! $delegationExists) {
-            \Illuminate\Support\Facades\DB::table('family_memberships')->insert([
+            DB::table('family_memberships')->insert([
                 'member_user_id' => $attendee->id,
                 'manager_user_id' => $member->id,
                 'relationship' => 'test_fixture',

@@ -88,6 +88,7 @@ class CheckinService
                 throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
             }
         }
+
         // All attendee state changes and their audit entries share one transaction.
         // Any failure rolls back the entire HTTP batch (M11-D07, #36 decision A).
         return DB::transaction(function () use ($ids, $mine, $event, $member, $source): array {

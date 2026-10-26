@@ -10,13 +10,15 @@ trap 'FAILED_LINE=$LINENO' ERR
 
 BASE="http://127.0.0.1:8004"
 OUT="$(mktemp -d)"
+# The fixture runs before the HTTP server starts; never swallow its failure.
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=S9 setup::failed at line $FAILED_LINE (exit $rc)"; for f in "$OUT"/cache.log "$OUT"/fixture.log; do [ -f "$f" ] && tail -n 50 "$f"; done; fi; rm -rf "$OUT"' EXIT
 LEGACY=50     # S6 POST /events/{id}/bookings (1 seat each)
 GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (self + 1 named attendee = 2 seats)
 RETRIES=10    # the first RETRIES groups send the same client_request_id twice in parallel
 CAPACITY=20
 export OUT LEGACY GROUP_COUNT CAPACITY
 
-php artisan cache:clear > /dev/null
+php artisan cache:clear > "$OUT/cache.log" 2>&1
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
 $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "CI 併發"], ["allow_proxy_booking" => true, "allow_guest_booking" => false]);
@@ -29,7 +31,7 @@ file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;
 file_put_contents(getenv("OUT")."/legacy", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("LEGACY")))));
 file_put_contents(getenv("OUT")."/groups", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("GROUP_COUNT")))));
-' > /dev/null
+' > "$OUT/fixture.log" 2>&1
 EVENT="$(cat "$OUT/event")"
 
 PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --no-reload --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &

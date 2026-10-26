@@ -48,6 +48,25 @@ it('delivers a real member booking notification using the existing notifier', fu
     expect($member->fresh()->notifications()->where('data->title', 'Booking update')->count())->toBe(1);
 });
 
+
+it('delivers a real guest booking notification to the guest group', function (): void {
+    $event = s9Event();
+    $group = EventBookingGroup::query()->create([
+        'calendar_event_id' => $event->id,
+        'is_guest' => true,
+        'contact_name' => 'Guest',
+        'contact_email' => 'guest@example.test',
+        'status' => EventBookingGroup::STATUS_CONFIRMED,
+        'seat_count' => 1,
+        'booked_at' => now(),
+    ]);
+
+    (new DispatchBookingNotification($group->id, 'Guest update', 'Guest booking was updated'))
+        ->handle(app(MemberNotifier::class));
+
+    expect($group->fresh()->notifications()->where('data->title', 'Guest update')->count())->toBe(1);
+});
+
 it('sets bounded retry policy for booking notification handoff', function (): void {
     $job = new DispatchBookingNotification(123, 'Title', 'Body');
 

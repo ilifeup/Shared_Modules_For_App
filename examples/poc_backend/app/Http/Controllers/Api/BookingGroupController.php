@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Services\Family\FamilyDelegation;
+use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

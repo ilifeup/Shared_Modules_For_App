@@ -56,6 +56,7 @@ class CheckinController extends Controller
     /**
      * POST /api/v1/events/{id}/checkout {attendee_ids, event_token | location_token} — same QR entry (D23).
      */
+    /** M11 #38 decision B: checkout validates QR/event binding, not GPS proximity. */
     public function checkOut(Request $request, int $id): JsonResponse
     {
         $data = $this->validateScan($request);

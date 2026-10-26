@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\EventBooking;
+use App\Support\Api\ApiException;
 use App\Models\GoogleCalendarConnection;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
@@ -64,7 +65,7 @@ it('does not leave a durable Google handoff after a rejected booking', function 
     try {
         app(BookingEngine::class)->bookLegacy($event, $member);
         $this->fail('Duplicate booking unexpectedly accepted.');
-    } catch (\App\Support\Api\ApiException $e) {
+    } catch (ApiException $e) {
         expect($e->getMessage())->not->toBe('');
     }
 

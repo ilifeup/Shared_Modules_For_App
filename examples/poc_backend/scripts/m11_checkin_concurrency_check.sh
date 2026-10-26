@@ -53,13 +53,18 @@ for n in 1 2; do
 done
 wait "${pids[@]}"
 for n in 1 2; do
-  echo "M11 parallel request $n: HTTP $(cat "$OUT/$n.code") $(head -c 250 "$OUT/$n.json")"
+  code="$(cat "$OUT/$n.code")"
+  echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
+  if [ "$code" != 200 ]; then
+    echo "::warning title=M11 concurrency::parallel request $n returned HTTP $code; review deadlock/unique-key behavior"
+  fi
 done
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->get();
-$audits = App\Models\AuditEvent::query()->where("event", "checkin.checked_in")->where("metadata->event_id", $id)->count();
-echo "M11_ATTENDANCE_COUNT=".$rows->count().PHP_EOL;
+$audits = App\Models\AuditEvent::query()->where("event", "checkin.checked_in")->where("details->event_id", $id)->count();
+echo "M11_ATTENDANCE_COUNT=".$rows->count()." AUDITS=".$audits.PHP_EOL;
+if ($audits !== 2) { throw new RuntimeException("M11 expected exactly two check-in audits, got ".$audits); }
 if ($rows->count() !== 2 || $rows->where("status", App\Models\EventAttendance::CHECKED_IN)->count() !== 2) {
     throw new RuntimeException("M11 incomplete attendance after parallel requests");
 }

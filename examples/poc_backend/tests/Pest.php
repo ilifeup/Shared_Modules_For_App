@@ -94,13 +94,45 @@ function s9Event(array $attributes = [], ?EventCategory $category = null): Calen
 }
 
 /**
- * Group booking through the S9 API. $names are extra attendees besides the member.
+ * S9 group booking fixture: every extra attendee is a real registered member.
+ * Reuse the same member for the same manager/name to test idempotent retries.
+ * Delegation is created explicitly; production APIs never create it implicitly.
  */
 function groupBook(CalendarEvent $event, User $member, array $names = [], bool $includeSelf = true, ?string $requestId = null)
 {
+    $attendees = [];
+    foreach ($names as $name) {
+        $email = 's9-'.hash('sha256', $member->id.'|'.$name).'@example.test';
+        $attendee = User::query()->where('email', $email)->first();
+        if ($attendee === null) {
+            $attendee = User::factory()->create(['name' => $name, 'email' => $email]);
+        }
+
+        $delegationExists = \Illuminate\Support\Facades\DB::table('family_memberships')
+            ->where('member_user_id', $attendee->id)
+            ->where('manager_user_id', $member->id)
+            ->where('status', 'active')
+            ->whereNull('ended_at')
+            ->exists();
+        if (! $delegationExists) {
+            \Illuminate\Support\Facades\DB::table('family_memberships')->insert([
+                'member_user_id' => $attendee->id,
+                'manager_user_id' => $member->id,
+                'relationship' => 'test_fixture',
+                'status' => 'active',
+                'started_at' => now(),
+                'created_by' => $member->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $attendees[] = ['member_user_id' => $attendee->id];
+    }
+
     return test()->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
         'include_self' => $includeSelf,
-        'attendees' => array_map(fn (string $n) => ['name' => $n], $names),
+        'attendees' => $attendees,
         'client_request_id' => $requestId ?? (string) Str::uuid(),
     ]);
 }

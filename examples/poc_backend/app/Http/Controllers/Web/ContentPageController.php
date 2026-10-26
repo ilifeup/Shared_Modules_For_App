@@ -64,10 +64,7 @@ class ContentPageController extends Controller
         ]);
     }
 
-    /**
-     * @param  array{status: string, seats: int}|null  $result
-     */
-    public function event(Request $request, int $id, ?array $result = null): View|Response
+    public function event(Request $request, int $id): View|Response
     {
         $event = CalendarEvent::query()->with('category')->listed()->find($id);
         if ($event === null) {
@@ -79,11 +76,7 @@ class ContentPageController extends Controller
             'event' => $public ? $event : null,
             'pageTitle' => $public ? $event->title : '會員活動',
             'og' => $public ? $this->og('event', $event) : null,
-            'clickId' => $result === null ? $this->analytics->click('event', $event->id, $request) : null,
-            'guestBooking' => false,
-            'maxSeats' => max(1, min(10, (int) $event->booking_max_seats)),
-            'clientRequestId' => (string) Str::uuid(),
-            'result' => $result,
+            'clickId' => $this->analytics->click('event', $event->id, $request),
         ]);
     }
 

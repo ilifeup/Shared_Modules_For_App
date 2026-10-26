@@ -1711,3 +1711,7 @@
 ### M11-D24 正式補充裁決｜2026-10-25｜A
 
 **優先於舊候選文字**：M07 稽核事件維持 append-only，不刪除、不改寫；簽到個資及管理員更正原因依各 App 後台設定的期限清除。稽核在**寫入時**就須去識別，不能留下可反向識別參加者的 ID、聯絡資訊、原因自由文字或關聯。清理僅新增一筆稽核事件記錄批次結果。工作人員必要的操作責任仍須保留，但不得使已清除的參加者個資被重新識別。測試應驗證清理前後既有稽核列逐欄不變、個資確實清除、清理事件新增。任何較早「稽核紀錄到期刪除／改寫」候選由此裁決覆蓋。
+
+## M11 #36 — batch atomicity (approved 2026-10-26)
+
+Member check-in and checkout requests containing multiple `attendee_ids` are **all-or-nothing**. After QR/GPS validation and ownership prevalidation, all attendee status updates and audit rows execute within one database transaction. A later attendee failure (e.g. `409 NOT_CHECKED_IN`) rolls back earlier changes and audits. Success retains `200` with `data[]` in request order; failure returns the existing API error envelope with no partial-success `data[]`. Repeated scans remain idempotent per attendee when the entire batch succeeds. Staff single-attendee operations are unchanged. Related: Shared #36, PR #33 ownership prevalidation.

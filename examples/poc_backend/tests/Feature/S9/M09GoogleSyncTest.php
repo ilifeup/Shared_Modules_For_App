@@ -189,21 +189,19 @@ it('deletes the Google event after a cancellation even when the last sync had fa
         ->and(GoogleCalendarEventMapping::query()->sole()->status)->toBe('removed');
 });
 
-// Review fix: a claimed guest booking becomes "my booking" and is synced (M09-D07).
-it('syncs a guest booking to Google once the member claims it', function () {
+// Guest booking and claim were removed: a registered member's booking syncs directly.
+it('syncs a registered member booking to Google without guest claim', function () {
     fakeGoogle();
-    $category = EventCategory::query()->create(['name' => '開放', 'allow_guest_booking' => true, 'allow_proxy_booking' => true]);
-    $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC], $category);
-    $member = User::factory()->create(['email' => 'claim@example.com']);
+    $member = User::factory()->create(['email' => 'member-sync@example.com']);
     connectGoogle($member);
-    $group = app(BookingEngine::class)->book($event, new BookingRequest(
-        booker: null, contactName: '訪客', contactEmail: 'claim@example.com', contactPhone: null,
-        attendees: [['name' => '訪客', 'member_user_id' => null]], clientRequestId: (string) Str::uuid(),
-    ));
-    expect(googleEventCalls('PUT'))->toHaveCount(0);
+    $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC]);
 
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/me/guest-bookings/{$group->id}/claim")->assertOk();
+    groupBook($event, $member)->assertCreated();
     expect(googleEventCalls('PUT'))->toHaveCount(1);
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson('/api/v1/me/guest-bookings/1/claim')
+        ->assertNotFound();
 });
 
 // M09-D24: the first sync after connecting covers current and future bookings only.

@@ -121,7 +121,6 @@ it('hides comments of withdrawn articles', function () {
     $this->getJson("/api/v1/articles/{$article->id}/comments")->assertNotFound();
 });
 
-
 // S8: public comment lists reveal only attachment counts, not file metadata.
 it('returns a minimal attachment count without exposing attachment file metadata', function () {
     $article = liveArticle();

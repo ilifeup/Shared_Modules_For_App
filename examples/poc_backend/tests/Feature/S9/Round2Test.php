@@ -49,31 +49,24 @@ function r2Occurrence(): array
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC, 'booking_capacity' => 10, 'starts_at' => now()->addMinutes(30),
         'ends_at' => now()->addHours(2), 'checkin_enabled' => true, 'checkout_enabled' => true], $category);
     $member = User::factory()->create(['name' => '會員甲乙丙', 'email' => 'member-r2@example.com']);
-    $family = User::factory()->create(['name' => '家人丁戊']);
-    $family2 = User::factory()->create(['name' => '家人己庚']);
-    foreach ([$family, $family2] as $managed) {
-        DB::table('family_memberships')->insert([
-            'manager_user_id' => $member->id, 'member_user_id' => $managed->id,
-            'relationship' => 'family', 'status' => 'active', 'started_at' => now(),
-            'created_by' => $member->id, 'created_at' => now(), 'updated_at' => now(),
-        ]);
-    }
-    groupBook($event, $member, [$family->id, $family2->id])->assertCreated();
+    // Use the local groupBook helper rather than writing a table unavailable on
+    // #40's stacked base. The #43 helper registers/delegates both companions.
+    groupBook($event, $member, ['家人丁戊', '家人己庚'])->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
-    return [$event, $member, $attendees, $family2];
+    return [$event, $member, $attendees];
 }
 
 // ---- M11-D24-A / D28 ---------------------------------------------------------------
 
 it('keeps the audit log append-only, purges check-in data and leaves no way to re-identify attendees', function () {
-    [$event, $member, $attendees, $guest] = r2Occurrence();
+    [$event, $member, $attendees] = r2Occurrence();
     $staff = r2Staff();
     $admin = makeAdmin();
 
     // Member self check-in, staff manual family-member check-in, staff checkout, admin correction.
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
-    $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'contact' => '0912-000-111'])->assertOk();
+    $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'action' => 'checkout'])->assertOk();
     app(CheckinService::class)->adminSet($event, $attendees[1], EventAttendance::CHECKED_IN, $admin, '家人丁戊遲到補登 0912000111');
 

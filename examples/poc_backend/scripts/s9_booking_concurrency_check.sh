@@ -44,7 +44,7 @@ PY
   fi
   echo "PHP_SERVER_DIAGNOSTICS: warning/error type and source location (messages omitted)"
   if [ -f /tmp/s9-concurrency-serve.log ]; then
-    grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' /tmp/s9-concurrency-serve.log | sed -E 's/^(.{0,160}).*$/\1 [truncated]/' | tail -n 12
+    grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' /tmp/s9-concurrency-serve.log | sed -E 's/.*PHP (Fatal error|Parse error|Warning|Notice).*/PHP \1 [message redacted]/; s/.*\] (ERROR|CRITICAL).*/Laravel \1 [message redacted]/' | tail -n 12
   else
     echo "PHP_SERVER_LOG_UNAVAILABLE"
   fi

@@ -326,3 +326,30 @@ it('rolls back an entire check-in batch and its audits when a later attendee is 
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
 });
+
+// #36: a successful batch can be retried without duplicate attendance or audit writes.
+it('keeps full-batch check-in and checkout retries idempotent', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $ids = [$attendees[0]->id, $attendees[1]->id];
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in')->assertJsonPath('data.1.result', 'checked_in');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_in')->assertJsonPath('data.1.result', 'already_checked_in');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out')->assertJsonPath('data.1.result', 'checked_out');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_out')->assertJsonPath('data.1.result', 'already_checked_out');
+
+    expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
+});

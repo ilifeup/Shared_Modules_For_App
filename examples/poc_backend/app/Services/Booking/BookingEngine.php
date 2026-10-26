@@ -644,7 +644,9 @@ final class BookingEngine
     {
         $same = $existing->calendar_event_id === $event->id
             && $existing->booker_user_id === $request->booker?->id
-            && ($request->booker !== null || $existing->contact_email === $request->contactEmail && $existing->contact_phone === $request->contactPhone);
+            && ($request->booker !== null || ($existing->contact_name === $request->contactName
+                && $existing->contact_email === $request->contactEmail
+                && $existing->contact_phone === $request->contactPhone));
         // A retry must represent the original booking, not a different attendee list.
         // Compare the persisted attendee snapshot rather than the current member profile.
         $stored = $existing->attendees()->orderBy('id')->get(['name', 'member_user_id'])->map(fn ($attendee): array => [

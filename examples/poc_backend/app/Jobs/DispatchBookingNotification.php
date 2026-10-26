@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -44,7 +45,16 @@ class DispatchBookingNotification implements ShouldQueue
         DB::transaction(function () use ($notifier): void {
             // Serialize retries for this booking group, including concurrent workers.
             $group = EventBookingGroup::query()->lockForUpdate()->find($this->groupId);
-            if ($group === null || DB::table('notifications')->where('id', $this->deliveryId)->exists()) {
+            if ($group === null) {
+                Log::warning('booking notification skipped: group missing', [
+                    'group_id' => $this->groupId,
+                    'delivery_id' => $this->deliveryId,
+                ]);
+
+                return;
+            }
+
+            if (DB::table('notifications')->where('id', $this->deliveryId)->exists()) {
                 return;
             }
 

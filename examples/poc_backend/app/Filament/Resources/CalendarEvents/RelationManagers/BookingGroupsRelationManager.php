@@ -9,7 +9,6 @@ use App\Models\EventWaitlistEntry;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Booking\GuestClaimService;
 use App\Support\Api\ApiException;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Repeater;
@@ -99,7 +98,7 @@ class BookingGroupsRelationManager extends RelationManager
                             $group = app(BookingEngine::class)->book($event, new BookingRequest(
                                 booker: $member,
                                 contactName: $member->name,
-                                contactEmail: GuestClaimService::normalizeEmail($member->email),
+                                contactEmail: $member->email !== null ? mb_strtolower(trim($member->email)) : null,
                                 contactPhone: $member->phone_e164,
                                 attendees: array_map(fn (int $id): array => ['name' => $attendeeMembers[$id]->name, 'member_user_id' => $id], $ids),
                                 byAdmin: true,

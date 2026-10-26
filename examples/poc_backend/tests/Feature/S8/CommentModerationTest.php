@@ -345,7 +345,6 @@ it('resumes ordinary report moderation when the admin alias flag is removed', fu
     expect(CommentModerationCase::query()->sole()->report_count)->toBe(1);
 });
 
-
 it('limits each member to one report per Taiwan calendar day and two per rolling ten days', function () {
     Queue::fake();
     $member = User::factory()->create();

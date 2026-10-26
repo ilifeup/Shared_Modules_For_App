@@ -32,6 +32,22 @@ it('propagates real notifier validation failures without swallowing them', funct
         ->toThrow(ApiException::class);
 });
 
+
+it('delivers a real member booking notification using the existing notifier', function (): void {
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+
+    (new DispatchBookingNotification($group->id, 'Booking update', 'Your booking was updated'))
+        ->handle(app(MemberNotifier::class));
+
+    expect($member->fresh()->notifications()->where('data->title', 'Booking update')->count())->toBe(1);
+});
+
 it('sets bounded retry policy for booking notification handoff', function (): void {
     $job = new DispatchBookingNotification(123, 'Title', 'Body');
 

@@ -89,7 +89,7 @@ function s9Event(array $attributes = [], ?EventCategory $category = null): Calen
         'booking_enabled' => true,
         'booking_capacity' => 3,
         'booking_max_seats' => 5,
-        'event_category_id' => ($category ?? EventCategory::query()->firstOrCreate(['name' => '一般'], ['allow_proxy_booking' => true, 'allow_guest_booking' => true]))->id,
+        'event_category_id' => ($category ?? EventCategory::query()->firstOrCreate(['name' => '一般'], ['allow_proxy_booking' => true]))->id,
     ], $attributes));
 }
 

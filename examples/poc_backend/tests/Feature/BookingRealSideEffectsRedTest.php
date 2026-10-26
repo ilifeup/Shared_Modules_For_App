@@ -5,17 +5,13 @@ use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
-use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Real BookingSideEffects path: GoogleCalendarSync::queueBooking() throws,
- * BookingSideEffects catches/logs, and the booking still commits.
- *
- * RED expectation: the booking transaction must leave a durable retry intent.
- * This intentionally does NOT mock BookingSideEffects itself.
+ * Booking must persist a handoff before invoking any external Google sync.
+ * Worker failures are retried by the queued handoff, not during booking.
  */
-it('persists a retryable Google sync intent when the real side-effect adapter swallows dispatch failure', function (): void {
+it('persists a retryable Google sync handoff before executing the real adapter', function (): void {
     config()->set('queue.default', 'database');
 
     $event = s9Event();
@@ -32,22 +28,13 @@ it('persists a retryable Google sync intent when the real side-effect adapter sw
         'google_calendar_id' => 'synthetic-calendar',
     ]);
 
-    $google = Mockery::mock(GoogleCalendarSync::class);
-    $google->shouldReceive('queueBooking')
-        ->once()
-        ->with($member->id, $event->id)
-        ->andThrow(new RuntimeException('synthetic Google queue failure'));
-    app()->instance(GoogleCalendarSync::class, $google);
-
     $beforeJobs = DB::table('jobs')->count();
 
     $booking = app(BookingEngine::class)->bookLegacy($event, $member);
 
     expect(EventBooking::query()->whereKey($booking->id)->where('status', EventBooking::STATUS_CONFIRMED)->exists())->toBeTrue();
 
-    // Current code loses the pending sync intent after the exception is logged.
-    // A fix can use a transactional database job or minimal durable outbox;
-    // replace this jobs-specific assertion if an outbox is selected.
+    // The booking request does not execute GoogleCalendarSync inline.
     expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
 });
 

@@ -6,8 +6,8 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 
 it('does nothing if notification booking group no longer exists', function (): void {
     $notifier = app(MemberNotifier::class);

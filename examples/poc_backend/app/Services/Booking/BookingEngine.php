@@ -273,6 +273,20 @@ final class BookingEngine
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
 
+            if (! $byAdmin) {
+                if ((int) $locked->booker_user_id !== (int) $actor->id) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約者可以取消此預約。');
+                }
+                foreach ($locked->attendees()->get() as $attendee) {
+                    $member = $attendee->member_user_id !== null
+                        ? User::query()->find($attendee->member_user_id)
+                        : null;
+                    if ($member === null || ! app(FamilyDelegation::class)->canManage($actor, $member, true)) {
+                        throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '此預約包含目前無權代管的家庭會員，請洽管理員處理。');
+                    }
+                }
+            }
+
             if (! $locked->isActive()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此報名已取消。');
             }

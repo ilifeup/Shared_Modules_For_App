@@ -31,7 +31,6 @@ final class LegacyBookingBackfill
                         'calendar_event_id' => $row->calendar_event_id,
                         'legacy_booking_id' => $row->id,
                         'booker_user_id' => $row->user_id,
-                        'is_guest' => false,
                         'contact_name' => mb_substr((string) $row->user_name, 0, 80),
                         'contact_email' => $row->user_email,
                         'contact_phone' => $row->user_phone,

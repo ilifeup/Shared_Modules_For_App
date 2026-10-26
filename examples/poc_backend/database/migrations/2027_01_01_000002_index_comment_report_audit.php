@@ -19,7 +19,6 @@ return new class extends Migration
     {
         Schema::table('audit_events', function (Blueprint $table): void {
             $table->dropIndex('audit_report_actor_event_time_idx');
-            $table->dropIndex('audit_report_actor_fk_idx');
         });
     }
 };

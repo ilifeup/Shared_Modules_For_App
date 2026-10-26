@@ -220,7 +220,7 @@ it('sends only the comment and reasons to the AI, as untrusted data, with the ke
         return $request->hasHeader('Authorization', 'Bearer sk-test-secret')
             && ! str_contains($body, 'sk-test-secret')
             && ! str_contains($body, $author->name)
-            && ! str_contains($body, 'author-secret@example.com')
+            && ! str_contains($body, $author->email)
             && ! str_contains($body, 'secret-note')
             && str_contains($body, 'untrusted DATA')
             && str_contains($body, '<data>');

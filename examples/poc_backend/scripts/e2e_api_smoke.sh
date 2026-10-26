@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # HTTP end-to-end smoke for CI: real `php artisan serve`, MySQL and the fake SMS
 # transport (test mode). Synthetic data only; never point this at production.
-set -euo pipefail
-trap 'echo "::error title=e2e smoke::failed at line $LINENO: $BASH_COMMAND"' ERR
+set -Eeuo pipefail
+FAILED_LINE=unknown
+trap 'FAILED_LINE=$LINENO' ERR
 
 BASE="http://127.0.0.1:8001"
 LOG="storage/logs/laravel.log"
@@ -11,7 +12,7 @@ PASS="e2e-synthetic-password"
 
 APP_ENV=local LOG_CHANNEL=single nohup php artisan serve --host=127.0.0.1 --port=8001 > /tmp/s1-serve.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=HTTP E2E::failed at line $FAILED_LINE (exit $rc)"; echo "=== last API response (redacted) ==="; if [ -f /tmp/s1-body.json ]; then php -r '$d=json_decode(file_get_contents("/tmp/s1-body.json"),true); if(is_array($d)){foreach(["token","access_token","refresh_token","password","otp","code"] as $k){if(isset($d["data"][$k]))$d["data"][$k]="[REDACTED]"; if(isset($d[$k]))$d[$k]="[REDACTED]";} echo substr(json_encode($d,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),0,1200),PHP_EOL;}else{echo "non-JSON response (omitted)\n";}' || true; fi; echo "=== PHP server log ==="; tail -n 80 /tmp/s1-serve.log 2>/dev/null || true; echo "=== Laravel exception summary ==="; grep -E 'ERROR|CRITICAL|Exception' "$LOG" 2>/dev/null | tail -n 8 | cut -c1-300 || true; fi; kill "$SERVER" 2>/dev/null || true' EXIT
 
 for _ in $(seq 1 30); do
   curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break

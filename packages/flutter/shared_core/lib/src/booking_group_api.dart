@@ -191,4 +191,5 @@ class BookingGroupApi {
       '/api/v1/me/booking-groups/${s9Seg(groupId)}/cancel',
     );
     return BookingGroup.fromJson(s9Data(json));
-  }}
+  }
+}

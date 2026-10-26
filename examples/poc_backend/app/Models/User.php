@@ -36,6 +36,11 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'admin_identity_note',
+        'attachment_upload_enabled',
+        'attachment_upload_expires_at',
+        'attachment_weekly_upload_count',
+        'attachment_weekly_upload_bytes',
     ];
 
     /**
@@ -49,6 +54,8 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'is_active' => 'boolean',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
+            'attachment_upload_enabled' => 'boolean',
+            'attachment_upload_expires_at' => 'datetime',
         ];
     }
 

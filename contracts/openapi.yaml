@@ -1303,7 +1303,7 @@ paths:
       operationId: bookGroup
       x-verification: required
       x-dart: BookingGroupApi.book -> BookingGroup
-      description: 'S9 M08 group booking (self and/or named attendees, idempotent by client_request_id). Whole group confirmed or waitlisted (strict FIFO).'
+      description: 'S9 M08 members-only booking. Every attendee must have a valid member_user_id; only self-booking is allowed until authorized family delegation exists. Idempotent by client_request_id; 201 created and 200 replayed.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '201': { $ref: '#/components/responses/BookingGroupResponse' }
@@ -1345,34 +1345,6 @@ paths:
         '403': { $ref: '#/components/responses/VerificationRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
-
-  /me/guest-bookings:
-    get:
-      tags: [bookings]
-      operationId: claimableGuestBookings
-      x-verification: required
-      x-dart: BookingGroupApi.claimable -> List<BookingGroup>
-      description: 'S9 M08 guest bookings made with my verified email or phone (D07).'
-      responses:
-        '200': { $ref: '#/components/responses/BookingGroupList' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
-
-  /me/guest-bookings/{id}/claim:
-    post:
-      tags: [bookings]
-      operationId: claimGuestBooking
-      x-verification: required
-      x-dart: BookingGroupApi.claim -> BookingGroup
-      description: 'S9 M08 claim a guest booking after the original contact is verified on my account.'
-      parameters: [{ $ref: '#/components/parameters/Id' }]
-      responses:
-        '200': { $ref: '#/components/responses/BookingGroupResponse' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/calendar:
     get:

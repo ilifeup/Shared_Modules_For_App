@@ -13,6 +13,7 @@ use App\Support\Phone;
 use App\Support\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * S9 M11 check-in API (online only, D13). Members: own attendees; staff
@@ -70,10 +71,15 @@ class CheckinController extends Controller
                 throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
             }
         }
-        $results = [];
-        foreach ($ids as $attendeeId) {
-            $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
-        }
+        // Batch atomicity: a later 409/error rolls back earlier attendance + audits.
+        $results = DB::transaction(function () use ($ids, $mine, $event, $request): array {
+            $results = [];
+            foreach ($ids as $attendeeId) {
+                $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
+            }
+
+            return $results;
+        });
 
         return new JsonResponse(['data' => $results]);
     }

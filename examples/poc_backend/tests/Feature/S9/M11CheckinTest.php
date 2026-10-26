@@ -13,7 +13,7 @@ use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
-/** An occurrence open for check-in now, with the member's confirmed group (self + one guest name). */
+/** An occurrence open for check-in now, with the member's confirmed group (self + one registered managed family member). */
 function checkinEvent(array $attributes = []): array
 {
     $event = s9Event(array_merge([
@@ -21,7 +21,13 @@ function checkinEvent(array $attributes = []): array
         'checkin_enabled' => true, 'checkout_enabled' => true, 'booking_capacity' => 5,
     ], $attributes));
     $member = User::factory()->create();
-    groupBook($event, $member, ['家人'])->assertCreated();
+    $family = User::factory()->create(['name' => '家人']);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $member->id, 'member_user_id' => $family->id,
+        'relationship' => 'family', 'status' => 'active', 'started_at' => now(),
+        'created_by' => $member->id, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    groupBook($event, $member, [$family->id])->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
     return [$event, $member, $attendees];

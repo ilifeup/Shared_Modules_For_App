@@ -8,8 +8,8 @@ use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Str;
 
-it('never exposes guest registration even when legacy category flag is enabled', function () {
-    $category = EventCategory::query()->create(['name' => 'legacy-guest-open', 'allow_guest_booking' => true]);
+it('never exposes guest registration for public events without any guest setting', function () {
+    $category = EventCategory::query()->create(['name' => 'members-only-public-event']);
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC], $category);
     $this->get("/events/{$event->id}")->assertOk()->assertDontSee('訪客報名');
     $this->post("/events/{$event->id}/guest-booking", [
@@ -20,7 +20,7 @@ it('never exposes guest registration even when legacy category flag is enabled',
 });
 
 it('rejects guest booking directly in the engine even for an admin request', function () {
-    $category = EventCategory::query()->create(['name' => 'legacy-guest-admin', 'allow_guest_booking' => true]);
+    $category = EventCategory::query()->create(['name' => 'members-only-admin-event']);
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC], $category);
     try {
         app(BookingEngine::class)->book($event, new BookingRequest(

@@ -35,6 +35,16 @@ Status: design + initial database models only. **Not production ready.**
 - The uploader and authorized administrators may see original filenames in their own management flows only.
 - A count does not grant read access; expiry, removed status and comment/article permissions remain server-enforced.
 
+## Mandatory viewer watermark
+
+- Every PDF page and every image viewed in the Flutter App MUST show a watermark overlay; members have no disable toggle.
+- Authorized administrators can change watermark text and/or graphic and its opacity, size and placement in backend settings. A safe, readable default is required.
+- The authenticated reader authorization/config response MUST provide the current watermark configuration version. Each online open revalidates access and refreshes watermark settings; a changed watermark does not require re-downloading the encrypted original attachment.
+- Keep watermark presentation separate from the encrypted original-file cache; render the overlay consistently while paging, zooming or panning.
+- Adding member nickname and viewing timestamp is a **proposal only**, pending a privacy/format decision; do not treat it as approved.
+- Overlay watermarks discourage casual redistribution but are not DRM: rooted devices, screenshots, recording, reverse-engineered clients and network extraction cannot be ruled out.
+- Required tests: PDF every-page overlay, image overlay, default config, admin config version changes, expiry/access denial and cached-file reuse.
+
 ## Bookmark
 
 - A member may bookmark/unbookmark an attachment; `(user_id, attachment_id)` is unique.

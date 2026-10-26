@@ -129,10 +129,9 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
 });
 
 /**
- * Existing notification handoff is NOT transactionally wired into BookingEngine
- * yet. This tests the component's queue persistence and rollback contract only.
+ * Same-database queue handoff is now wired into BookingEngine, pending CI and
+ * worker acceptance. Other queue drivers still use the legacy fallback.
  */
-
 it('atomically enqueues the real booking notification inside the booking transaction', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);

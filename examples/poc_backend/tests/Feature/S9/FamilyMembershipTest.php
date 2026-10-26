@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 it('lists only active delegations belonging to the logged-in manager', function () {
     $manager = User::factory()->create();
@@ -59,7 +60,7 @@ it('keeps historical bookings but blocks cancellation after delegation revocatio
     $booking = $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
         'include_self' => false,
         'attendees' => [['member_user_id' => $member->id]],
-        'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+        'client_request_id' => (string) Str::uuid(),
     ])->assertCreated();
 
     $groupId = $booking->json('data.id');

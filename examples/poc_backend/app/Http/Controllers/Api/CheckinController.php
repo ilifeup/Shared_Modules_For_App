@@ -73,6 +73,9 @@ class CheckinController extends Controller
         }
         // Batch atomicity: a later 409/error rolls back earlier attendance + audits.
         $results = DB::transaction(function () use ($ids, $mine, $event, $request): array {
+            // Match check-in's deterministic lock order for reversed batches.
+            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
+                ->lockForUpdate()->get(['id']);
             $results = [];
             foreach ($ids as $attendeeId) {
                 $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));

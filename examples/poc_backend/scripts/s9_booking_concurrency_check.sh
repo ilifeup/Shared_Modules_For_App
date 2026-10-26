@@ -27,7 +27,18 @@ $event = App\Models\CalendarEvent::query()->create([
 file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;
 file_put_contents(getenv("OUT")."/legacy", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("LEGACY")))));
-file_put_contents(getenv("OUT")."/groups", implode("\n", array_map(fn () => $make(), range(1, (int) getenv("GROUP_COUNT")))));
+$groups = [];
+foreach (range(1, (int) getenv("GROUP_COUNT")) as $i) {
+    $booker = App\Models\User::factory()->create();
+    $attendee = App\Models\User::factory()->create();
+    App\Models\FamilyMembership::query()->create([
+        "manager_user_id" => $booker->id, "member_user_id" => $attendee->id,
+        "relationship" => "family", "status" => "active", "started_at" => now(),
+        "created_by" => $booker->id,
+    ]);
+    $groups[] = $booker->createToken("ci")->plainTextToken." ".$attendee->id;
+}
+file_put_contents(getenv("OUT")."/groups", implode("\n", $groups));
 ' > /dev/null
 EVENT="$(cat "$OUT/event")"
 
@@ -45,10 +56,10 @@ while IFS= read -r token || [ -n "$token" ]; do
   pids+=("$!")
 done < "$OUT/legacy"
 g=0
-while IFS= read -r token || [ -n "$token" ]; do
+while read -r token attendee_id || [ -n "$token" ]; do
   g=$((g + 1))
   uuid="$(cat /proc/sys/kernel/random/uuid)"
-  body="{\"include_self\":true,\"attendees\":[{\"name\":\"同行$g\"}],\"client_request_id\":\"$uuid\"}"
+  body="{\"include_self\":true,\"attendees\":[{\"member_user_id\":$attendee_id}],\"client_request_id\":\"$uuid\"}"
   copies=1; [ "$g" -le "$RETRIES" ] && copies=2
   for c in $(seq 1 "$copies"); do
     curl -sS --max-time 60 -o "$OUT/g$g-$c.json" -w '%{http_code}' -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \

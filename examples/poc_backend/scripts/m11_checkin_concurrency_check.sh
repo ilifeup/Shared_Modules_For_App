@@ -5,7 +5,7 @@ set -euo pipefail
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $LINENO (exit $rc)"; for f in booking.json server.log 1.json 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $LINENO (exit $rc)"; for f in booking.json fixture.log server.log 1.json 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
@@ -23,7 +23,7 @@ file_put_contents(getenv("OUT")."/bearer", $user->createToken("m11-ci")->plainTe
 ' >/dev/null
 EVENT="$(cat "$OUT/event")"
 BEARER="$(cat "$OUT/bearer")"
-PHP_CLI_SERVER_WORKERS=8 php artisan serve --host=127.0.0.1 --port="$PORT" >"$OUT/server.log" 2>&1 &
+PHP_CLI_SERVER_WORKERS=8 php artisan serve --no-reload --host=127.0.0.1 --port="$PORT" >"$OUT/server.log" 2>&1 &
 SERVER=$!
 ready=0
 for i in $(seq 1 40); do
@@ -40,7 +40,7 @@ $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)
 if (count($ids) !== 2) { throw new RuntimeException("Expected two attendees"); }
 file_put_contents(getenv("OUT")."/ids", implode(" ", $ids));
 file_put_contents(getenv("OUT")."/qr", app(App\Services\Checkin\CheckinTokens::class)->event($id));
-' >/dev/null
+' >"$OUT/fixture.log" 2>&1 || { echo 'M11 fixture tinker failed'; cat "$OUT/fixture.log"; exit 1; }
 read -r A B <"$OUT/ids"
 QR="$(cat "$OUT/qr")"
 pids=()

@@ -7,7 +7,7 @@ trap 'FAILED_LINE=$LINENO' ERR
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $FAILED_LINE (exit $rc)"; for f in booking.status booking.json fixture.log server.log storage/logs/laravel.log 1.code 1.json 2.code 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $FAILED_LINE (exit $rc)"; for f in setup.log booking.status booking.json fixture.log server.log storage/logs/laravel.log 1.code 1.json 2.code 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
@@ -22,15 +22,19 @@ $event = App\Models\CalendarEvent::query()->create([
 ]);
 $user = App\Models\User::factory()->create();
 $companion = App\Models\User::factory()->create();
-\Illuminate\Support\Facades\DB::table("family_memberships")->insert([
-    "manager_user_id" => $user->id, "member_user_id" => $companion->id,
-    "relationship" => "family", "status" => "active", "started_at" => now(),
-    "created_by" => $user->id, "created_at" => now(), "updated_at" => now(),
-]);
+// The stacked PR #40 has no family schema; #43 adds this table and enforces
+// delegation. Only the integrated fixture creates delegation records.
+if (\Illuminate\Support\Facades\Schema::hasTable("family_memberships")) {
+    \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
+        "manager_user_id" => $user->id, "member_user_id" => $companion->id,
+        "relationship" => "family", "status" => "active", "started_at" => now(),
+        "created_by" => $user->id, "created_at" => now(), "updated_at" => now(),
+    ]);
+}
 file_put_contents(getenv("OUT")."/companion", $companion->id);
 file_put_contents(getenv("OUT")."/event", $event->id);
 file_put_contents(getenv("OUT")."/bearer", $user->createToken("m11-ci")->plainTextToken);
-' >/dev/null
+' >"$OUT/setup.log" 2>&1 || { echo 'M11 fixture setup failed'; tail -n 40 "$OUT/setup.log"; exit 1; }
 EVENT="$(cat "$OUT/event")"
 BEARER="$(cat "$OUT/bearer")"
 COMPANION="$(cat "$OUT/companion")"
@@ -44,7 +48,7 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"家人\",\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
 [ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");

@@ -42,21 +42,26 @@ function r2Staff(): User
     return $user;
 }
 
-/** Open occurrence with one member booking (self + family) and one guest booking. */
+/** Open occurrence with registered members only (self and two managed family members). */
 function r2Occurrence(): array
 {
-    $category = EventCategory::query()->create(['name' => 'R2 開放', 'allow_guest_booking' => true, 'allow_proxy_booking' => true]);
+    $category = EventCategory::query()->create(['name' => 'R2 會員', 'allow_proxy_booking' => true]);
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC, 'booking_capacity' => 10, 'starts_at' => now()->addMinutes(30),
         'ends_at' => now()->addHours(2), 'checkin_enabled' => true, 'checkout_enabled' => true], $category);
     $member = User::factory()->create(['name' => '會員甲乙丙', 'email' => 'member-r2@example.com']);
-    groupBook($event, $member, ['家人丁戊'])->assertCreated();
-    $guest = app(BookingEngine::class)->book($event, new BookingRequest(
-        booker: null, contactName: '訪客己庚', contactEmail: 'guest-r2@example.com', contactPhone: '+886912000111',
-        attendees: [['name' => '訪客己庚', 'member_user_id' => null]], clientRequestId: (string) Str::uuid(),
-    ));
+    $family = User::factory()->create(['name' => '家人丁戊']);
+    $family2 = User::factory()->create(['name' => '家人己庚']);
+    foreach ([$family, $family2] as $managed) {
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $member->id, 'member_user_id' => $managed->id,
+            'relationship' => 'family', 'status' => 'active', 'started_at' => now(),
+            'created_by' => $member->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    groupBook($event, $member, [$family->id, $family2->id])->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
-    return [$event, $member, $attendees, $guest];
+    return [$event, $member, $attendees, $family2];
 }
 
 // ---- M11-D24-A / D28 ---------------------------------------------------------------
@@ -66,7 +71,7 @@ it('keeps the audit log append-only, purges check-in data and leaves no way to r
     $staff = r2Staff();
     $admin = makeAdmin();
 
-    // Member self check-in, staff manual guest check-in (contact checked), staff checkout, admin correction.
+    // Member self check-in, staff manual family-member check-in, staff checkout, admin correction.
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'contact' => '0912-000-111'])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'action' => 'checkout'])->assertOk();
@@ -75,7 +80,7 @@ it('keeps the audit log append-only, purges check-in data and leaves no way to r
     $audits = AuditEvent::query()->where('event', 'like', 'checkin.%')->orderBy('id')->get();
     $before = $audits->map(fn (AuditEvent $a) => $a->getAttributes())->all();
     $allowedKeys = ['event_id', 'source', 'actor_role', 'before', 'after', 'late', 'reason_recorded', 'correction_id'];
-    $personal = ['會員甲乙丙', '家人丁戊', '訪客己庚', 'member-r2@example.com', 'guest-r2@example.com', '912000111', '遲到補登'];
+    $personal = ['會員甲乙丙', '家人丁戊', '家人己庚', 'member-r2@example.com', '912000111', '遲到補登'];
 
     expect($audits)->toHaveCount(4);
     foreach ($audits as $audit) {
@@ -117,24 +122,19 @@ it('keeps the audit log append-only, purges check-in data and leaves no way to r
 
 // ---- M11-D11 / D17 / D02 staff manual check-in ------------------------------------------
 
-it('lets staff check in by hand and requires the booking contact for guests', function () {
+it('lets authorised staff manually check in registered family members without guest contact', function () {
     [$event, $member, $attendees] = r2Occurrence();
     $staff = r2Staff();
     $post = fn (array $body, ?User $as = null) => $this->actingAs($as ?? $staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", $body);
 
-    $post(['attendee_id' => $attendees[2]->id])->assertStatus(422)->assertJsonPath('error.code', 'CONTACT_REQUIRED');
-    $post(['attendee_id' => $attendees[2]->id, 'contact' => 'someone@example.com'])->assertStatus(422)->assertJsonPath('error.code', 'CONTACT_MISMATCH');
-    $post(['attendee_id' => $attendees[2]->id, 'contact' => 'Guest-R2@Example.com'])->assertOk()->assertJsonPath('data.result', 'checked_in');
-
-    // Members' attendees do not need a contact; members themselves cannot use the staff entry.
+    $post(['attendee_id' => $attendees[2]->id])->assertOk()->assertJsonPath('data.result', 'checked_in');
+    $post(['attendee_id' => $attendees[2]->id])->assertOk()->assertJsonPath('data.result', 'already_checked_in');
     $post(['attendee_id' => $attendees[1]->id])->assertOk();
     $post(['attendee_id' => $attendees[0]->id], $member)->assertStatus(403);
 
-    // The staff list marks the guest for the contact check and never shows the full contact.
     $list = $this->actingAs($staff, 'sanctum')->getJson("/api/v1/events/{$event->id}/attendance")->assertOk();
-    $guestRow = collect($list->json('data.attendees'))->firstWhere('id', (string) $attendees[2]->id);
-    expect($guestRow['is_guest'])->toBeTrue()
-        ->and($list->getContent())->not->toContain('guest-r2@example.com')->not->toContain('912000111');
+    expect(collect($list->json('data.attendees'))->firstWhere('id', (string) $attendees[2]->id))->not->toBeNull()
+        ->and($list->getContent())->not->toContain('member-r2@example.com');
 });
 
 // ---- Admin responsibility: permissions of the S9 admin screens ---------------------------

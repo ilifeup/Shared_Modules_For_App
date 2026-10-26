@@ -2,7 +2,6 @@
 
 use App\Jobs\SyncGoogleCalendarItem;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 /**
  * Database queue feasibility gate for Shared #25.

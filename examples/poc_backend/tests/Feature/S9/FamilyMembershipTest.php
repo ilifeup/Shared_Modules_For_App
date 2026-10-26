@@ -64,9 +64,14 @@ it('keeps historical bookings but blocks cancellation after delegation revocatio
     ])->assertCreated();
 
     $groupId = $booking->json('data.id');
+    expect($booking->json('data.can_cancel'))->toBeTrue();
     $this->actingAs($manager, 'sanctum')
         ->postJson("/api/v1/me/family-memberships/{$membershipId}/revoke")
         ->assertOk();
+
+    $this->actingAs($manager, 'sanctum')
+        ->getJson('/api/v1/me/booking-groups')
+        ->assertOk()->assertJsonPath('data.0.can_cancel', false);
 
     $this->actingAs($manager, 'sanctum')
         ->postJson("/api/v1/me/booking-groups/{$groupId}/cancel")

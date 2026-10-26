@@ -63,3 +63,30 @@ it('enqueues durable handoff in the booking transaction for a connected member',
     expect($booking->exists)->toBeTrue();
     expect(DB::table('jobs')->count())->toBeGreaterThan($before);
 });
+
+/**
+ * Worker errors must escape the handoff handler so Laravel can retry the job.
+ * Do not swallow a queue-dispatch error here: the handoff job is the durable
+ * recovery point for this failure class.
+ */
+it('propagates downstream dispatch failure so the queue worker can retry handoff', function (): void {
+    $member = User::factory()->create();
+    $event = s9Event();
+
+    $sync = Mockery::mock(GoogleCalendarSync::class, function (\Mockery\MockInterface $mock) use ($member, $event): void {
+        $mock->shouldReceive('queueBooking')
+            ->once()
+            ->with($member->id, $event->id)
+            ->andThrow(new RuntimeException('synthetic downstream dispatch outage'));
+    });
+
+    expect(fn () => (new DispatchBookingGoogleSync($member->id, $event->id))->handle($sync))
+        ->toThrow(RuntimeException::class, 'synthetic downstream dispatch outage');
+});
+
+it('configures bounded retries for durable handoff', function (): void {
+    $job = new DispatchBookingGoogleSync(123, 456);
+
+    expect($job->tries)->toBe(5);
+    expect($job->backoff())->toBe([60, 300, 900, 3600]);
+});

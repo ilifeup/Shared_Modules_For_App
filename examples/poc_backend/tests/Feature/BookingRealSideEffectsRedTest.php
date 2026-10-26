@@ -49,3 +49,30 @@ it('persists a retryable Google sync intent when the real side-effect adapter sw
     // replace this jobs-specific assertion if an outbox is selected.
     expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
 });
+
+/**
+ * Positive control: with an active connection and no injected failure, the
+ * current real Google adapter should enqueue a database job.
+ * Distinguishes a lost-intent regression from an invalid Google fixture.
+ */
+it('queues Google sync for a connected member when the real adapter succeeds', function (): void {
+    config()->set('queue.default', 'database');
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+
+    GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
+    ]);
+
+    $beforeJobs = DB::table('jobs')->count();
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+
+    expect($booking->exists)->toBeTrue();
+    expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+});

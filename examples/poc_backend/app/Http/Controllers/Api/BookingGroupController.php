@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Presenters\BookingGroupPresenter;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;
@@ -44,12 +46,11 @@ class BookingGroupController extends Controller
         }
         foreach ($data['attendees'] ?? [] as $a) {
             $attendeeId = (int) $a['member_user_id'];
-            // Until family delegation is implemented, a member cannot book for another identity.
-            // In particular, never accept a name-only attendee or an arbitrary member ID.
-            if ($attendeeId !== $member->id) {
+            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->firstOrFail();
+            if (! app(FamilyDelegation::class)->canManage($member, $attendee)) {
                 throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
             }
-            $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
+            $attendees[] = ['name' => $attendee->name, 'member_user_id' => $attendee->id];
         }
         $ids = array_column($attendees, 'member_user_id');
         if (count($ids) !== count(array_unique($ids))) {

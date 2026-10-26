@@ -1,6 +1,8 @@
 <?php
 
 use App\Jobs\DispatchBookingNotification;
+use App\Models\EventBookingGroup;
+use App\Services\Booking\BookingEngine;
 use App\Models\User;
 use App\Services\MemberNotifier;
 
@@ -17,8 +19,8 @@ it('propagates member notifier failures so the queue can retry', function (): vo
         'email_verified_at' => now(),
         'phone_verified_at' => now(),
     ]);
-    $booking = app(\App\Services\Booking\BookingEngine::class)->bookLegacy($event, $member);
-    $group = \App\Models\EventBookingGroup::query()
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()
         ->where('legacy_booking_id', $booking->id)->firstOrFail();
 
     $notifier = Mockery::mock(MemberNotifier::class);

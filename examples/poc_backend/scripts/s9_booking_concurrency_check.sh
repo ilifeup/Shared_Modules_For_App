@@ -55,6 +55,22 @@ PY
   fi
 }
 
+# Register before fixture setup so early failures are diagnosed as well.
+on_exit() {
+  local code="$1"
+  trap - EXIT
+  if [ "$code" -ne 0 ]; then diagnose_failure "$code" "${BASH_LINENO[0]:-unknown}"; fi
+  if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi
+}
+trap 'on_exit "$?"' EXIT
+
+if [ "${1:-}" = "--self-test-exit-trap" ]; then
+  OUT="$(mktemp -d)"
+  printf '409' > "$OUT/test.code"
+  printf '{"error":{"code":"BOOKING_FULL"}}' > "$OUT/test.json"
+  exit 37
+fi
+
 if [ "${1:-}" = "--self-test-diagnostics" ]; then
   OUT="$(mktemp -d)"
   trap 'rm -rf "$OUT"' EXIT
@@ -69,7 +85,14 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   grep -Fq 'BOOKING_FULL' "$OUT/diagnostics.txt"
   grep -Fq 'INVALID_OR_MISSING_JSON: 1' "$OUT/diagnostics.txt"
   grep -Fq 'LEDGER_QUERY_UNAVAILABLE_BEFORE_SETUP' "$OUT/diagnostics.txt"
-  echo 'PASS: synthetic failure diagnostics (line, exit, API status/error, invalid response, DB unavailable)'
+  set +e
+  bash "$0" --self-test-exit-trap > "$OUT/exit-trap.txt" 2>&1
+  actual_code=$?
+  set -e
+  [ "$actual_code" -eq 37 ]
+  grep -Fq 'exit_code=37' "$OUT/exit-trap.txt"
+  grep -Fq 'BOOKING_FULL' "$OUT/exit-trap.txt"
+  echo 'PASS: synthetic failure diagnostics and real nonzero EXIT trap'
   exit 0
 fi
 
@@ -99,7 +122,7 @@ EVENT="$(cat "$OUT/event")"
 
 PHP_CLI_SERVER_WORKERS=8 nohup php artisan serve --host=127.0.0.1 --port=8004 > /tmp/s9-concurrency-serve.log 2>&1 &
 SERVER=$!
-trap 'code=$?; if [ "$code" -ne 0 ]; then diagnose_failure "$code" "${BASH_LINENO[0]:-unknown}"; fi; kill "$SERVER" 2>/dev/null || true' EXIT
+# EXIT diagnostics and server cleanup registered at script start
 for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break; sleep 1; done
 
 pids=()

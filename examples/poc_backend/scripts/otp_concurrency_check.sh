@@ -2,8 +2,9 @@
 # Real concurrency check for SMS OTP issuance (CI only, synthetic data, fake SMS):
 # parallel HTTP requests against `php artisan serve` with several PHP workers and
 # MySQL. Verifies the database lock: cooldown and global limit hold, no 5xx/deadlock.
-set -euo pipefail
-trap 'echo "::error title=otp concurrency::failed at line $LINENO: $BASH_COMMAND"' ERR
+set -Eeuo pipefail
+FAILED_LINE=unknown
+trap 'FAILED_LINE=$LINENO' ERR
 
 BASE="http://127.0.0.1:8002"
 OUT="$(mktemp -d)"
@@ -17,9 +18,9 @@ foreach (["+886911000001", "+886911000002", "+886911000003", "+886911000004"] as
 app(App\Support\Settings::class)->put(["sms_global_hourly_limit" => 3, "sms_phone_hourly_limit" => 3, "sms_resend_cooldown_minutes" => 3, "sms_test_mode" => true]);
 ' > /dev/null
 
-PHP_CLI_SERVER_WORKERS=6 nohup php artisan serve --host=127.0.0.1 --port=8002 > /tmp/s1-concurrency-serve.log 2>&1 &
+PHP_CLI_SERVER_WORKERS=6 nohup php artisan serve --no-reload --host=127.0.0.1 --port=8002 > /tmp/s1-concurrency-serve.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=concurrency probe::failed at line $FAILED_LINE (exit $rc)"; echo "=== PHP server log ==="; tail -n 70 /tmp/s1-concurrency-serve.log 2>/dev/null || true; echo "=== API HTTP codes and response excerpts ==="; for f in "$OUT"/*.code; do [ -f "$f" ] || continue; echo "$(basename "$f") HTTP $(cat "$f")"; head -c 350 "${f%.code}.json" 2>/dev/null || true; echo; done; fi; kill "$SERVER" 2>/dev/null || true; rm -rf "$OUT"' EXIT
 for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break; sleep 1; done
 
 send() { # name phone

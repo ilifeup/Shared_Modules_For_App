@@ -29,7 +29,8 @@ it('rejects guest booking directly in the engine even for an admin request', fun
         ));
         test()->fail('Guest booking should have been rejected');
     } catch (ApiException $e) {
-        expect($e->getMessage())->toContain('不開放訪客');
+        expect($e->status)->toBe(403)
+            ->and($e->errorCode)->toBe('GUEST_NOT_ALLOWED');
     }
     expect(EventBookingGroup::query()->count())->toBe(0);
 });

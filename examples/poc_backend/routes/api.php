@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\LinkAnalyticsController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MeController;
@@ -114,6 +115,10 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/me/notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::get('/me/notifications/{id}', [NotificationController::class, 'show'])->whereUuid('id');
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
+
+    // Family delegation: current manager may list or voluntarily revoke authority.
+    Route::get('/me/family-memberships', [FamilyMembershipController::class, 'index']);
+    Route::post('/me/family-memberships/{id}/revoke', [FamilyMembershipController::class, 'revoke'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S9 M08 members-only group bookings and waitlist (one seat engine with S6).
     Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');

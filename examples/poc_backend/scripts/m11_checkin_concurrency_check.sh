@@ -7,7 +7,7 @@ trap 'FAILED_LINE=$LINENO' ERR
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $FAILED_LINE (exit $rc)"; for f in booking.status booking.json fixture.log server.log 1.code 1.json 2.code 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $FAILED_LINE (exit $rc)"; for f in booking.status booking.json fixture.log server.log storage/logs/laravel.log 1.code 1.json 2.code 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
@@ -83,7 +83,8 @@ for n in 1 2; do
   code="$(cat "$OUT/$n.code")"
   echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
   if [ "$code" != 200 ]; then
-    echo "::warning title=M11 concurrency::parallel request $n returned HTTP $code; review deadlock/unique-key behavior"
+    echo "::error title=M11 concurrency::parallel request $n returned HTTP $code; overlapping valid scans must not return server errors"
+    exit 1
   fi
 done
 php artisan tinker --execute='
@@ -96,6 +97,6 @@ if ($rows->count() !== 2 || $rows->where("status", App\Models\EventAttendance::C
     throw new RuntimeException("M11 incomplete attendance after parallel requests");
 }
 ' 2>&1 | tee "$OUT/check.log"
-# This probe reports collision responses and final state; do not treat it as
-# proof of complete atomicity until per-request rollback/audit assertions exist.
+# This probe checks HTTP success and final state, but does not prove complete
+# atomicity until fault-injected per-request rollback/audit assertions exist.
 echo "M11 parallel collision probe completed (not full concurrency acceptance)"

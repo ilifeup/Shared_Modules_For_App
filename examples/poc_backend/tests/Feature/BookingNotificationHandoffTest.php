@@ -132,6 +132,25 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
  * Same-database queue handoff is now wired into BookingEngine, pending CI and
  * worker acceptance. Other queue drivers still use the legacy fallback.
  */
+
+it('persists a booking notification job without sending a notification before the worker runs', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $before = DB::table('jobs')->count();
+
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+
+    expect($booking->exists)->toBeTrue();
+    expect(DB::table('jobs')->count())->toBeGreaterThan($before);
+    expect($member->fresh()->notifications()->count())->toBe(0);
+});
+
 it('atomically enqueues the real booking notification inside the booking transaction', function (): void {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database.connection', null);

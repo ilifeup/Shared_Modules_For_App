@@ -81,16 +81,19 @@ class BookingGroupsRelationManager extends RelationManager
                         $member = isset($data['member_id']) ? User::query()->find($data['member_id']) : null;
                         if ($member === null) {
                             Notification::make()->title('必須選擇正式會員')->danger()->send();
+
                             return;
                         }
                         $ids = array_map(fn (array $a): int => (int) ($a['member_user_id'] ?? 0), $data['attendees'] ?? []);
                         if (in_array(0, $ids, true) || count($ids) !== count(array_unique($ids))) {
                             Notification::make()->title('參加者會員 ID 不可空白或重複')->danger()->send();
+
                             return;
                         }
                         $attendeeMembers = User::query()->whereIn('id', $ids)->get()->keyBy('id');
                         if ($attendeeMembers->count() !== count($ids)) {
                             Notification::make()->title('參加者會員 ID 無效')->danger()->send();
+
                             return;
                         }
 

@@ -2,6 +2,7 @@
 
 use App\Models\EventBooking;
 use App\Models\GoogleCalendarConnection;
+use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Calendar\GoogleCalendarSync;
@@ -75,4 +76,8 @@ it('queues Google sync for a connected member when the real adapter succeeds', f
 
     expect($booking->exists)->toBeTrue();
     expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+    expect(GoogleCalendarEventMapping::query()
+        ->where('source_type', GoogleCalendarEventMapping::SOURCE_BOOKING)
+        ->where('source_id', $event->id)
+        ->exists())->toBeTrue();
 });

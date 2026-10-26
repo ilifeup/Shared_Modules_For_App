@@ -9,6 +9,8 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Durable booking notification handoff. The caller must enqueue this job
@@ -21,11 +23,15 @@ class DispatchBookingNotification implements ShouldQueue
 
     public int $tries = 5;
 
+    public readonly string $deliveryId;
+
     public function __construct(
         public readonly int $groupId,
         public readonly string $title,
         public readonly string $body,
-    ) {}
+    ) {
+        $this->deliveryId = (string) Str::uuid();
+    }
 
     public function backoff(): array
     {
@@ -34,19 +40,24 @@ class DispatchBookingNotification implements ShouldQueue
 
     public function handle(MemberNotifier $notifier): void
     {
-        $group = EventBookingGroup::query()->find($this->groupId);
-        if ($group === null) {
-            return;
-        }
+        DB::transaction(function () use ($notifier): void {
+            // Serialize retries for this booking group, including concurrent workers.
+            $group = EventBookingGroup::query()->lockForUpdate()->find($this->groupId);
+            if ($group === null || DB::table('notifications')->where('id', $this->deliveryId)->exists()) {
+                return;
+            }
 
-        $title = mb_substr($this->title, 0, 120);
-        $body = mb_substr($this->body, 0, 2000);
-        $booker = $group->booker()->first();
+            $title = mb_substr($this->title, 0, 120);
+            $body = mb_substr($this->body, 0, 2000);
+            $booker = $group->booker()->first();
 
-        if ($booker !== null) {
-            $notifier->send($booker, $title, $body, 'booking', 'event', (string) $group->calendar_event_id);
-        } elseif ($group->is_guest) {
-            $group->notify(new MemberNotification($title, $body, 'booking', 'event', (string) $group->calendar_event_id));
-        }
+            if ($booker !== null) {
+                $notifier->send($booker, $title, $body, 'booking', 'event', (string) $group->calendar_event_id, null, $this->deliveryId);
+            } elseif ($group->is_guest) {
+                $notification = new MemberNotification($title, $body, 'booking', 'event', (string) $group->calendar_event_id);
+                $notification->id = $this->deliveryId;
+                $group->notify($notification);
+            }
+        });
     }
 }

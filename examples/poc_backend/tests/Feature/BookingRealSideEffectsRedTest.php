@@ -1,10 +1,12 @@
 <?php
 
+use App\Jobs\DispatchBookingGoogleSync;
 use App\Models\EventBooking;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
+use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -63,6 +65,15 @@ it('queues Google sync for a connected member when the real adapter succeeds', f
 
     expect($booking->exists)->toBeTrue();
     expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+    // Booking writes a durable handoff, not a Google mapping. The mapping is
+    // created only when the worker executes the handoff after commit.
+    expect(GoogleCalendarEventMapping::query()
+        ->where('source_type', GoogleCalendarEventMapping::SOURCE_BOOKING)
+        ->where('source_id', $event->id)
+        ->exists())->toBeFalse();
+
+    (new DispatchBookingGoogleSync($member->id, $event->id))->handle(app(GoogleCalendarSync::class));
+
     expect(GoogleCalendarEventMapping::query()
         ->where('source_type', GoogleCalendarEventMapping::SOURCE_BOOKING)
         ->where('source_id', $event->id)

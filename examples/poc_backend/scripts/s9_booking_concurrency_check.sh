@@ -5,7 +5,52 @@
 # Verifies the one seat ledger: no overbooking, one active place per member, unique
 # FIFO sequences, replays return the same group, and promotion follows the queue.
 set -euo pipefail
-trap 'echo "::error title=s9 booking concurrency::failed at line $LINENO: $BASH_COMMAND"' ERR
+diagnose_failure() {
+  local code="$1" line="$2"
+  trap - ERR
+  set +e
+  echo "::error title=S9 concurrency::line=$line exit_code=$code"
+  echo "CI_DIAGNOSTICS: HTTP status, safe API error codes, response validation"
+  if [ -d "${OUT:-/nonexistent}" ]; then
+    python3 - "$OUT" <<'PY'
+import collections, glob, json, os, sys
+root = sys.argv[1]
+statuses = collections.Counter()
+errors = collections.Counter()
+invalid = 0
+for path in glob.glob(os.path.join(root, "*.code")):
+    status = open(path, encoding="utf-8").read().strip()
+    statuses[status] += 1
+    response = path[:-5] + ".json"
+    if not os.path.isfile(response):
+        invalid += 1
+        continue
+    try:
+        payload = json.load(open(response, encoding="utf-8"))
+        if not isinstance(payload, dict):
+            invalid += 1
+            continue
+        error = payload.get("error")
+        if isinstance(error, dict) and isinstance(error.get("code"), str):
+            errors[error["code"][:64]] += 1
+    except (ValueError, OSError):
+        invalid += 1
+print("HTTP_STATUS_COUNTS:", dict(statuses))
+print("API_ERROR_CODE_COUNTS:", dict(errors))
+print("INVALID_OR_MISSING_JSON:", invalid)
+for name in ("event",):
+    print("TEST_DATA_PRESENT:", name, os.path.isfile(os.path.join(root, name)))
+PY
+  fi
+  echo "PHP_SERVER_DIAGNOSTICS: warning/error type and source location (messages omitted)"
+  if [ -f /tmp/s9-concurrency-serve.log ]; then
+    grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' /tmp/s9-concurrency-serve.log | sed -E 's/^(.{0,160}).*$/\1 [truncated]/' | tail -n 12
+  else
+    echo "PHP_SERVER_LOG_UNAVAILABLE"
+  fi
+  echo "DATABASE_VALIDATION: inspect ledger / rollback markers in preceding CI log"
+}
+trap 'diagnose_failure "$?" "$LINENO"' ERR
 
 BASE="http://127.0.0.1:8004"
 OUT="$(mktemp -d)"

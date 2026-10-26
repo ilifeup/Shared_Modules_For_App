@@ -42,14 +42,19 @@ for name in ("event",):
 PY
   fi
   echo "PHP_SERVER_DIAGNOSTICS: warning/error type and source location (messages omitted)"
-  if [ -f /tmp/s9-concurrency-serve.log ]; then
-    grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' /tmp/s9-concurrency-serve.log | sed -E 's/.*PHP (Fatal error|Parse error|Warning|Notice).*/PHP \1 [message redacted]/; s/.*\] (ERROR|CRITICAL).*/Laravel \1 [message redacted]/' | tail -n 12
+  if [ -f "${S9_PHP_LOG:-/tmp/s9-concurrency-serve.log}" ]; then
+    grep -E 'PHP (Fatal error|Parse error|Warning|Notice)|\] (ERROR|CRITICAL)' "${S9_PHP_LOG:-/tmp/s9-concurrency-serve.log}" | sed -E 's/.*PHP (Fatal error|Parse error|Warning|Notice).*/PHP \1 [message redacted]/; s/.*\] (ERROR|CRITICAL).*/Laravel \1 [message redacted]/' | tail -n 12
   else
     echo "PHP_SERVER_LOG_UNAVAILABLE"
   fi
   echo "DATABASE_VALIDATION:"
   if declare -F check >/dev/null && [ -f "${OUT:-/nonexistent}/event" ]; then
-    check 2>/dev/null | tail -n 1 || echo "LEDGER_QUERY_FAILED"
+    local ledger_output
+    if ledger_output="$(set -o pipefail; check 2>/dev/null | tail -n 1)" && [ -n "$ledger_output" ]; then
+      printf "LEDGER_RESULT: %s\n" "$ledger_output"
+    else
+      echo "LEDGER_QUERY_FAILED"
+    fi
   else
     echo "LEDGER_QUERY_UNAVAILABLE_BEFORE_SETUP"
   fi
@@ -92,6 +97,15 @@ if [ "${1:-}" = "--self-test-diagnostics" ]; then
   [ "$actual_code" -eq 37 ]
   grep -Fq 'exit_code=37' "$OUT/exit-trap.txt"
   grep -Fq 'BOOKING_FULL' "$OUT/exit-trap.txt"
+  printf 'PHP Fatal error: secret=CANARY_TOKEN in /tmp/sample.php on line 17\n' > "$OUT/php.log"
+  S9_PHP_LOG="$OUT/php.log" diagnose_failure 37 123 > "$OUT/php-diagnostics.txt"
+  grep -Fq 'PHP Fatal error [message redacted]' "$OUT/php-diagnostics.txt"
+  if grep -Fq 'CANARY_TOKEN' "$OUT/php-diagnostics.txt"; then echo "Sensitive PHP log leaked"; exit 1; fi
+  printf 'fixture-event' > "$OUT/event"
+  check() { return 19; }
+  S9_PHP_LOG="$OUT/php.log" diagnose_failure 37 123 > "$OUT/db-diagnostics.txt"
+  grep -Fq 'LEDGER_QUERY_FAILED' "$OUT/db-diagnostics.txt"
+  unset -f check
   echo 'PASS: synthetic failure diagnostics and real nonzero EXIT trap'
   exit 0
 fi

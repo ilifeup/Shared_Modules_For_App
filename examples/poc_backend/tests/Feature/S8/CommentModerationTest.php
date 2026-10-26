@@ -77,7 +77,7 @@ it('counts one report per member, needs a preset reason and refuses own comments
     reportBy($member, $comment, 'nonsense')->assertStatus(422);
     reportBy(User::query()->find($comment->user_id), $comment)->assertStatus(422);
     reportBy($member, $comment, 'abuse', '補充說明')->assertCreated()->assertJsonPath('data.reported', true);
-    reportBy($member, $comment)->assertStatus(409)->assertJsonPath('error.code', 'ALREADY_REPORTED');
+    reportBy($member, $comment)->assertStatus(429)->assertJsonPath('error.code', 'REPORT_DAILY_LIMIT');
 
     $case = CommentModerationCase::query()->sole();
     expect($case->report_count)->toBe(1)->and($case->ai_status)->toBe('none')
@@ -119,7 +119,8 @@ it('opens a new round after the old one is closed; old reports never trigger aga
     $first = CommentModerationCase::query()->sole();
     app(CommentModerationService::class)->resolve($first, 'close', $this->admin);
 
-    // The same member may report again in a new round; one report does not reach the threshold.
+    // The same member may report in a new round only after the daily quota resets.
+    $this->travel(1)->days();
     reportBy($members[0], $comment)->assertCreated();
     $second = CommentModerationCase::query()->where('round', 2)->sole();
     expect($second->report_count)->toBe(1)->and($second->ai_status)->toBe('none')

@@ -467,17 +467,23 @@ final class BookingEngine
      */
     public function notifyChange(CalendarEvent $event, string $title, string $body): int
     {
-        $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
-            ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
-        foreach ($groups as $group) {
-            $this->notice($group, $title, $body);
-            if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
-                $this->queueSync($group->booker_user_id, $event->id);
+        // The public change-notification entry point must also create durable
+        // jobs inside a DB transaction, not only when called by another writer.
+        $count = $this->transaction(function () use ($event, $title, $body): int {
+            $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
+                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
+            foreach ($groups as $group) {
+                $this->notice($group, $title, $body);
+                if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
+                    $this->queueSync($group->booker_user_id, $event->id);
+                }
             }
-        }
+
+            return $groups->count();
+        });
         $this->flush();
 
-        return $groups->count();
+        return $count;
     }
 
     public function assertEligible(CalendarEvent $event, ?User $booker): void

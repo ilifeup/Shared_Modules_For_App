@@ -3,7 +3,6 @@
 namespace App\Services\Booking;
 
 use App\Models\AuditEvent;
-use App\Services\Family\FamilyDelegation;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\EventBookingAttendee;
@@ -11,6 +10,7 @@ use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -240,7 +240,7 @@ final class BookingEngine
                 AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
                     'event_id' => $event->id,
                     'seats' => $group->seat_count,
-                            'by' => $request->byAdmin ? 'admin' : 'member',
+                    'by' => $request->byAdmin ? 'admin' : 'member',
                 ]);
 
                 return $group;

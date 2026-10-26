@@ -89,9 +89,13 @@ it('rolls back event changes if notification intent cannot be persisted', functi
     ]);
     app(BookingEngine::class)->bookLegacy($event, $member);
 
-    $engine = Mockery::mock(BookingEngine::class)->makePartial();
-    $engine->shouldReceive('notifyChange')->once()->andThrow(new RuntimeException('synthetic notification handoff failure'));
-    app()->instance(BookingEngine::class, $engine);
+    // BookingEngine is final: inject failure at the real database-queue insert
+    // rather than mocking its methods. Query listeners run inside the transaction.
+    DB::listen(static function ($query): void {
+        if (preg_match('/insert\\s+into\\s+[`"]?jobs/i', $query->sql)) {
+            throw new RuntimeException('synthetic notification handoff failure');
+        }
+    });
 
     expect(fn () => app(EventSeriesService::class)->update($event, 'single', [
         'location' => 'After',

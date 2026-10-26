@@ -4,7 +4,6 @@ use App\Models\EventBooking;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingSideEffects;
-use RuntimeException;
 
 /**
  * RED regression for Shared #25 / Tiandi #34.

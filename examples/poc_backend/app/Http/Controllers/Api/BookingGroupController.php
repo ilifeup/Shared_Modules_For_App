@@ -33,7 +33,7 @@ class BookingGroupController extends Controller
         $data = $request->validate([
             'include_self' => ['sometimes', 'boolean'],
             'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.name' => ['required', 'string', 'min:1', 'max:80'],
+            'attendees.*.member_user_id' => ['required', 'integer', 'exists:users,id'],
             'client_request_id' => ['required', 'uuid'],
         ]);
 
@@ -44,7 +44,17 @@ class BookingGroupController extends Controller
             $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
         }
         foreach ($data['attendees'] ?? [] as $a) {
-            $attendees[] = ['name' => trim($a['name']), 'member_user_id' => null];
+            $attendeeId = (int) $a['member_user_id'];
+            // Until family delegation is implemented, a member cannot book for another identity.
+            // In particular, never accept a name-only attendee or an arbitrary member ID.
+            if ($attendeeId !== $member->id) {
+                throw new \App\Support\Api\ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+            }
+            $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
+        }
+        $ids = array_column($attendees, 'member_user_id');
+        if (count($ids) !== count(array_unique($ids))) {
+            throw new \App\Support\Api\ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
         }
 
         // The engine determines whether this was created or replayed under its event lock.

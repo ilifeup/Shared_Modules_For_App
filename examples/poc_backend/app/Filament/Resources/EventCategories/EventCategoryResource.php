@@ -59,7 +59,6 @@ class EventCategoryResource extends Resource
             TextInput::make('name')->label('名稱')->required()->maxLength(50)->unique(ignoreRecord: true),
             ColorPicker::make('color')->label('日曆顏色')->regex('/^#[0-9A-Fa-f]{6}$/')->default('#3366CC')->required(),
             TextInput::make('sort')->label('排序')->numeric()->minValue(0)->default(0),
-            Toggle::make('allow_guest_booking')->label('開放訪客報名（僅公開活動）'),
             Toggle::make('allow_proxy_booking')->label('開放代報名（一次多位參加者）'),
             Select::make('required_verification_type_id')->label('報名需具備的認證（選填，報名當下檢查）')
                 ->options(fn (): array => VerificationType::query()->orderBy('sort')->pluck('name', 'id')->all())->nullable(),
@@ -71,7 +70,6 @@ class EventCategoryResource extends Resource
         return $table->columns([
             TextColumn::make('name')->label('名稱')->searchable(),
             TextColumn::make('color')->label('顏色')->formatStateUsing(fn (string $state): string => '■ '.$state),
-            TextColumn::make('allow_guest_booking')->label('訪客')->formatStateUsing(fn ($state): string => $state ? '可' : '不可'),
             TextColumn::make('allow_proxy_booking')->label('代報名')->formatStateUsing(fn ($state): string => $state ? '可' : '不可'),
             TextColumn::make('requiredVerificationType.name')->label('需認證')->placeholder('—'),
             TextColumn::make('events_count')->label('活動數')->counts('events'),

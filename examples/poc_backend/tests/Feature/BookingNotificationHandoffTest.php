@@ -7,6 +7,7 @@ use App\Services\Booking\BookingEngine;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 
 it('does nothing if notification booking group no longer exists', function (): void {
     $notifier = app(MemberNotifier::class);
@@ -144,6 +145,31 @@ it('persists an actual booking change notification job before the worker runs', 
 
     expect(DB::table('jobs')->count())->toBeGreaterThan($before);
     expect($member->fresh()->notifications()->count())->toBe(0);
+});
+
+it('processes a real queued booking notification with the database worker', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
+
+    expect(app(BookingEngine::class)->notifyChange($event, 'Worker update', 'Processed by queue worker'))->toBe(1);
+    expect($member->fresh()->notifications()->where('data->title', 'Worker update')->count())->toBe(0);
+    expect(DB::table('jobs')->count())->toBeGreaterThan(0);
+
+    Artisan::call('queue:work', [
+        'connection' => 'database',
+        '--once' => true,
+        '--tries' => 1,
+        '--sleep' => 0,
+    ]);
+
+    expect($member->fresh()->notifications()->where('data->title', 'Worker update')->count())->toBe(1);
 });
 
 it('rolls back an actual booking change notification with its transaction', function (): void {

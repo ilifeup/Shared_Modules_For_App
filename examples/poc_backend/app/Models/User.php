@@ -72,6 +72,20 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         return $this->hasRole(self::ADMIN_ROLE);
     }
 
+    /**
+     * S8: Manual administrator entitlement. Membership tier or payment history
+     * never implicitly enables uploads; member verification remains mandatory.
+     */
+    public function canUploadArticleAttachments(): bool
+    {
+        return $this->is_active
+            && $this->hasVerifiedEmail()
+            && $this->hasVerifiedPhone()
+            && $this->attachment_upload_enabled === true
+            && ($this->attachment_upload_expires_at === null
+                || $this->attachment_upload_expires_at->isFuture());
+    }
+
     public function hasVerifiedPhone(): bool
     {
         return $this->phone_verified_at !== null;

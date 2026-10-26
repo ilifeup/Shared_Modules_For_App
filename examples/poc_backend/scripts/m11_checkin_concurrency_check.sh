@@ -11,7 +11,11 @@ trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at l
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
-$category = App\Models\EventCategory::query()->firstOrCreate(["name" => "M11 CI"], ["allow_proxy_booking" => true, "allow_guest_booking" => false]);
+ $categoryOptions = ["allow_proxy_booking" => true];
+if (\Illuminate\Support\Facades\Schema::hasColumn("event_categories", "allow_guest_booking")) {
+    $categoryOptions["allow_guest_booking"] = false;
+}
+$category = App\Models\EventCategory::query()->firstOrCreate(["name" => "M11 CI"], $categoryOptions);
 $event = App\Models\CalendarEvent::query()->create([
 "title" => "M11 concurrency CI", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHours(2),
 "status" => "published", "audience" => "members", "booking_enabled" => true,
@@ -20,11 +24,19 @@ $event = App\Models\CalendarEvent::query()->create([
 "event_category_id" => $category->id,
 ]);
 $user = App\Models\User::factory()->create();
+$companion = App\Models\User::factory()->create();
+\Illuminate\Support\Facades\DB::table("family_memberships")->insert([
+    "manager_user_id" => $user->id, "member_user_id" => $companion->id,
+    "relationship" => "family", "status" => "active", "started_at" => now(),
+    "created_by" => $user->id, "created_at" => now(), "updated_at" => now(),
+]);
+file_put_contents(getenv("OUT")."/companion", $companion->id);
 file_put_contents(getenv("OUT")."/event", $event->id);
 file_put_contents(getenv("OUT")."/bearer", $user->createToken("m11-ci")->plainTextToken);
 ' >/dev/null
 EVENT="$(cat "$OUT/event")"
 BEARER="$(cat "$OUT/bearer")"
+COMPANION="$(cat "$OUT/companion")"
 PHP_CLI_SERVER_WORKERS=8 php artisan serve --no-reload --host=127.0.0.1 --port="$PORT" >"$OUT/server.log" 2>&1 &
 SERVER=$!
 ready=0
@@ -35,7 +47,7 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 parallel guest\"}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 member companion\\\",\\\"member_user_id\\\":$COMPANION\"}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
 [ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");

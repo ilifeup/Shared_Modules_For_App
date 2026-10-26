@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # M11 #36: dedicated MySQL + multi-worker parallel HTTP probe.
 # Run only against disposable CI DB. Requires PHP, curl and migrated backend.
-set -euo pipefail
+set -Eeuo pipefail
+FAILED_LINE=unknown
+trap 'FAILED_LINE=$LINENO' ERR
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $LINENO (exit $rc)"; for f in booking.json fixture.log server.log 1.json 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $FAILED_LINE (exit $rc)"; for f in booking.status booking.json fixture.log server.log 1.code 1.json 2.code 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
@@ -31,9 +33,10 @@ for i in $(seq 1 40); do
   sleep 1
 done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
-curl -fsS --max-time 30 -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
+curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 parallel guest\"}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.json"
+  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"M11 parallel guest\"}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+[ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->orderBy("id")->pluck("id")->all();
@@ -69,7 +72,7 @@ if ($audits !== 2) { throw new RuntimeException("M11 expected exactly two check-
 if ($rows->count() !== 2 || $rows->where("status", App\Models\EventAttendance::CHECKED_IN)->count() !== 2) {
     throw new RuntimeException("M11 incomplete attendance after parallel requests");
 }
-' | tee "$OUT/check.log"
+' 2>&1 | tee "$OUT/check.log"
 # This probe reports collision responses and final state; do not treat it as
 # proof of complete atomicity until per-request rollback/audit assertions exist.
 echo "M11 parallel collision probe completed (not full concurrency acceptance)"

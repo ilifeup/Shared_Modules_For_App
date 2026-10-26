@@ -38,6 +38,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'password',
         'remember_token',
         'admin_identity_note',
+        'is_admin_alias',
         'attachment_upload_enabled',
         'attachment_upload_expires_at',
         'attachment_weekly_upload_count',
@@ -56,6 +57,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
             'attachment_upload_enabled' => 'boolean',
+            'is_admin_alias' => 'boolean',
             'attachment_upload_expires_at' => 'datetime',
         ];
     }

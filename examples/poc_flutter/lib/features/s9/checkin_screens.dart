@@ -79,7 +79,7 @@ class _CheckinScreenState extends ConsumerState<CheckinScreen> {
       final api = ref.read(checkinApiProvider);
       final status = ref.read(checkinStatusProvider(widget.eventId)).value;
       GpsFix? gps;
-      if (locationToken != null && (status?.settings.gpsRequired ?? false)) {
+      if (!checkout && locationToken != null && (status?.settings.gpsRequired ?? false)) {
         gps = await ref.read(gpsProvider)();
         if (gps == null) {
           if (mounted) {
@@ -138,7 +138,7 @@ class _CheckinScreenState extends ConsumerState<CheckinScreen> {
             StatusBox(
               key: const Key('checkin-window'),
               label: s.settings.openNow ? '【開放簽到中】' : '【目前不在簽到時間】',
-              detail: s.settings.gpsRequired ? '此場次使用地點 QR Code 時需要定位。' : '',
+              detail: s.settings.gpsRequired ? '此場次使用地點 QR Code 簽到時需要定位；簽退免定位。' : '',
             ),
             for (final a in s.attendees)
               CheckboxListTile(

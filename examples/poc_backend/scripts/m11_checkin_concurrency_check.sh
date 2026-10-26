@@ -12,9 +12,6 @@ export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);
 $categoryOptions = ["allow_proxy_booking" => true];
-if (\Illuminate\Support\Facades\Schema::hasColumn("event_categories", "allow_guest_booking")) {
-    $categoryOptions["allow_guest_booking"] = false;
-}
 $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "M11 CI"], $categoryOptions);
 $event = App\Models\CalendarEvent::query()->create([
 "title" => "M11 concurrency CI", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHours(2),
@@ -25,13 +22,11 @@ $event = App\Models\CalendarEvent::query()->create([
 ]);
 $user = App\Models\User::factory()->create();
 $companion = App\Models\User::factory()->create();
-if (\Illuminate\Support\Facades\Schema::hasTable("family_memberships")) {
 \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
     "manager_user_id" => $user->id, "member_user_id" => $companion->id,
     "relationship" => "family", "status" => "active", "started_at" => now(),
     "created_by" => $user->id, "created_at" => now(), "updated_at" => now(),
 ]);
-}
 file_put_contents(getenv("OUT")."/companion", $companion->id);
 file_put_contents(getenv("OUT")."/event", $event->id);
 file_put_contents(getenv("OUT")."/bearer", $user->createToken("m11-ci")->plainTextToken);

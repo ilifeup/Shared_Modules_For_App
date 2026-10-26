@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Models\AuditEvent;
+use App\Services\Family\FamilyDelegation;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\EventBookingAttendee;
@@ -533,7 +534,7 @@ final class BookingEngine
                     throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
                 }
                 // Do not permit arbitrary proxy booking before verified family delegation exists.
-                if (! $request->byAdmin && (int) $memberId !== (int) $request->booker->id) {
+                if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($memberId))) {
                     throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
                 }
             }

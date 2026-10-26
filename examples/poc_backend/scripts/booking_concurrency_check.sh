@@ -2,8 +2,9 @@
 # Real concurrency check for S6 bookings (CI only, synthetic data): parallel HTTP
 # requests from different members for the last seat, against `php artisan serve`
 # with several PHP workers and MySQL. Verifies the row lock: no overbooking.
-set -euo pipefail
-trap 'echo "::error title=booking concurrency::failed at line $LINENO: $BASH_COMMAND"' ERR
+set -Eeuo pipefail
+FAILED_LINE=unknown
+trap 'FAILED_LINE=$LINENO' ERR
 
 BASE="http://127.0.0.1:8003"
 OUT="$(mktemp -d)"
@@ -30,9 +31,9 @@ file_put_contents(getenv("OUT")."/tokens", implode("\n", $tokens));
 ' > /dev/null
 EVENT="$(cat "$OUT/event")"
 
-PHP_CLI_SERVER_WORKERS=6 nohup php artisan serve --host=127.0.0.1 --port=8003 > /tmp/s6-concurrency-serve.log 2>&1 &
+PHP_CLI_SERVER_WORKERS=6 nohup php artisan serve --no-reload --host=127.0.0.1 --port=8003 > /tmp/s6-concurrency-serve.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=concurrency probe::failed at line $FAILED_LINE (exit $rc)"; echo "=== PHP server log ==="; tail -n 70 /tmp/s6-concurrency-serve.log 2>/dev/null || true; echo "=== API HTTP codes and response excerpts ==="; for f in "$OUT"/*.code; do [ -f "$f" ] || continue; echo "$(basename "$f") HTTP $(cat "$f")"; head -c 350 "${f%.code}.json" 2>/dev/null || true; echo; done; fi; kill "$SERVER" 2>/dev/null || true; rm -rf "$OUT"' EXIT
 for _ in $(seq 1 30); do curl -fsS "$BASE/api/v1/health" > /dev/null 2>&1 && break; sleep 1; done
 
 pids=()

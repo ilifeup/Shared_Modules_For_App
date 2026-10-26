@@ -2,7 +2,6 @@
 
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
-use App\Models\EventCategory;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\MembershipLevel;

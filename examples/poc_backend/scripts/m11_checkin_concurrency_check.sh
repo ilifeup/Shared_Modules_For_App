@@ -44,6 +44,15 @@ if (count($ids) !== 2) { throw new RuntimeException("Expected two attendees"); }
 file_put_contents(getenv("OUT")."/ids", implode(" ", $ids).PHP_EOL);
 file_put_contents(getenv("OUT")."/qr", app(App\Services\Checkin\CheckinTokens::class)->event($id));
 ' >"$OUT/fixture.log" 2>&1 || { echo 'M11 fixture tinker failed'; cat "$OUT/fixture.log"; exit 1; }
+# Booking requires a future event; move it into the active check-in window only
+# after booking and attendee fixtures have been created.
+php artisan tinker --execute='
+$id = (int) file_get_contents(getenv("OUT")."/event");
+App\\Models\\CalendarEvent::query()->whereKey($id)->update([
+    "starts_at" => now()->subMinutes(5),
+    "ends_at" => now()->addHours(2),
+]);
+' >"$OUT/window.log" 2>&1 || { echo 'M11 check-in window setup failed'; cat "$OUT/window.log"; exit 1; }
 read -r A B <"$OUT/ids"
 QR="$(cat "$OUT/qr")"
 pids=()

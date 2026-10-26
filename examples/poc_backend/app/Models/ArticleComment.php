@@ -39,6 +39,12 @@ class ArticleComment extends Model
     /**
      * @return HasMany<CommentModerationCase, $this>
      */
+    /** @return HasMany<ArticleCommentAttachment, $this> */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(ArticleCommentAttachment::class, 'article_comment_id');
+    }
+
     public function moderationCases(): HasMany
     {
         return $this->hasMany(CommentModerationCase::class);

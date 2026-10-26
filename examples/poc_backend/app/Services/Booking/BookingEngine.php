@@ -516,6 +516,27 @@ final class BookingEngine
             throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每筆報名最多 '.max(1, (int) $event->booking_max_seats).' 人。');
         }
 
+        // Enforce member identity at the service boundary as well as the HTTP controller.
+        // This also protects admin and internal callers from name-only attendees.
+        if ($request->booker !== null) {
+            $memberIds = array_map(static fn (array $a) => $a['member_user_id'] ?? null, $request->attendees);
+            if (in_array(null, $memberIds, true)) {
+                throw new ApiException(422, 'MEMBER_ID_REQUIRED', '每位參加者都必須有正式會員 ID。');
+            }
+            if (count($memberIds) !== count(array_unique($memberIds))) {
+                throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
+            }
+            foreach ($memberIds as $memberId) {
+                if (! User::query()->whereKey($memberId)->where('is_active', true)->exists()) {
+                    throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
+                }
+                // Do not permit arbitrary proxy booking before verified family delegation exists.
+                if (! $request->byAdmin && (int) $memberId !== (int) $request->booker->id) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+                }
+            }
+        }
+
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         } else {

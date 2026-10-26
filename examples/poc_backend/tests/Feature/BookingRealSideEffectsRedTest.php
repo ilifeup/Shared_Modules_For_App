@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\EventBooking;
+use App\Models\GoogleCalendarConnection;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Calendar\GoogleCalendarSync;
@@ -20,6 +21,14 @@ it('persists a retryable Google sync intent when the real side-effect adapter sw
     $member = User::factory()->create([
         'email_verified_at' => now(),
         'phone_verified_at' => now(),
+    ]);
+
+    // A Google sync job is only expected for a connected member. Without this
+    // fixture, an empty jobs table is legitimate and the RED test is misleading.
+    GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
     ]);
 
     $google = Mockery::mock(GoogleCalendarSync::class);

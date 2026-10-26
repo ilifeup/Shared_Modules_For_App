@@ -57,6 +57,14 @@ Status: design + initial database models only. **Not production ready.**
 - Expiry and client denial are **not** dependent on scheduler success.
 - No automatic deletion of original server files until a separate retention policy is explicitly approved.
 
+## Future Windows desktop support (deferred)
+
+- **Current delivery priority: Android and iOS only.** No Windows implementation, packaging or Windows CI is required for this MVP.
+- Future Windows 10/11 desktop client should reuse Flutter/Dart shared business logic and the same authenticated attachment API, expiration, bookmark, and mandatory watermark contracts.
+- Keep platform-specific encrypted-cache key storage behind an interface (Android Keystore, iOS Keychain, future Windows DPAPI or equivalent). Do not assume a mobile-only PDF renderer or filesystem path in shared domain logic.
+- Future desktop work includes mouse/keyboard/responsive layout, PDF/image viewer compatibility, watermark coverage, encrypted cache, Windows runner/toolchain, packaging, signing, and platform acceptance tests.
+- A Windows-specific implementation must be explicitly approved later. Do not mark Windows as implemented or block mobile MVP on Windows tasks.
+
 ## Required before PR review/merge
 
 Private file upload + MIME validation; authorization and atomic quota accounting; expiry and read API; bookmark API; administrator audit; policy and concurrency tests; Flutter cache and reader integration; passing CI and manual acceptance. CI green alone is not acceptance.

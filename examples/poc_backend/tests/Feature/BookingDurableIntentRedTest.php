@@ -1,11 +1,11 @@
 <?php
 
 use App\Models\EventBooking;
-use App\Support\Api\ApiException;
 use App\Models\GoogleCalendarConnection;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingSideEffects;
+use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\DB;
 
 /**

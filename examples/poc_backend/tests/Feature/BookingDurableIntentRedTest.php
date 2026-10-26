@@ -19,7 +19,7 @@ it('keeps booking response successful and durable when post-commit sync dispatch
         'phone_verified_at' => now(),
     ]);
 
-    $effects = \Mockery::mock(BookingSideEffects::class);
+    $effects = Mockery::mock(BookingSideEffects::class);
     $effects->shouldReceive('syncBooking')
         ->once()
         ->with($member->id, $event->id)
@@ -42,7 +42,7 @@ it('keeps booking response successful and durable when post-commit sync dispatch
  * boundary, not a demand for a particular outbox table.
  */
 it('does not depend on a post-transaction flush for durable booking effects', function (): void {
-    $method = new \ReflectionMethod(BookingEngine::class, 'bookLegacy');
+    $method = new ReflectionMethod(BookingEngine::class, 'bookLegacy');
     $file = file($method->getFileName());
     $body = implode('', array_slice($file, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
 

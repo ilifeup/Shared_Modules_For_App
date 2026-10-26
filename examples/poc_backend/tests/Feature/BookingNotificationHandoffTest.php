@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
+use Illuminate\Support\Facades\DB;
 
 it('does nothing if notification booking group no longer exists', function (): void {
     $notifier = app(MemberNotifier::class);
@@ -36,4 +37,28 @@ it('sets bounded retry policy for booking notification handoff', function (): vo
 
     expect($job->tries)->toBe(5);
     expect($job->backoff())->toBe([60, 300, 900, 3600]);
+});
+
+/**
+ * Existing notification handoff is NOT transactionally wired into BookingEngine
+ * yet. This tests the component's queue persistence and rollback contract only.
+ */
+it('rolls back a queued notification handoff with its enclosing transaction', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $before = DB::table('jobs')->count();
+
+    try {
+        DB::transaction(function () use ($before): void {
+            DispatchBookingNotification::dispatch(123, 'Title', 'Body')->onConnection('database');
+
+            expect(DB::table('jobs')->count())->toBe($before + 1);
+            throw new RuntimeException('synthetic notification handoff rollback');
+        });
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toBe('synthetic notification handoff rollback');
+    }
+
+    expect(DB::table('jobs')->count())->toBe($before);
 });

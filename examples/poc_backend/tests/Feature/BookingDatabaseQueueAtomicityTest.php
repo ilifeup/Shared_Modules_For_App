@@ -2,10 +2,10 @@
 
 use App\Jobs\SyncGoogleCalendarItem;
 use App\Models\EventBooking;
-use App\Services\Booking\BookingEngine;
 use App\Models\GoogleCalendarConnection;
 use App\Models\GoogleCalendarEventMapping;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Services\Calendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 

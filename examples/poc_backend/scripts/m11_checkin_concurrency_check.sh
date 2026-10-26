@@ -48,7 +48,7 @@ file_put_contents(getenv("OUT")."/qr", app(App\Services\Checkin\CheckinTokens::c
 # after booking and attendee fixtures have been created.
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
-App\\Models\\CalendarEvent::query()->whereKey($id)->update([
+App\Models\CalendarEvent::query()->whereKey($id)->update([
     "starts_at" => now()->subMinutes(5),
     "ends_at" => now()->addHours(2),
 ]);

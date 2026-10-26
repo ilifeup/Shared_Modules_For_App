@@ -2,20 +2,24 @@
 
 Status: **DESIGN / NOT ACCEPTED**. Draft PR #42; do not merge or deploy on the basis of this document.
 
-## Confirmed current behavior
+## Implementation evidence (2026-10-26; PARTIALLY VERIFIED)
+
+At commit `2aa50e46fe0c35a8d234b4188711be84f9debc34`, Shared PR #42 has green Backend, Mobile, and documentation workflows (Backend run 40294091714; Mobile 40294091684; docs 40294091725). These verify the CI environment only, not production acceptance. `BookingNotificationHandoffTest.php` exercises a real `queue:work --once` and notification persistence. The same-job retry and distinct-job tests exercise stable delivery IDs. **Known limitations:** concurrent independent worker processes, crash/restart, recipient changes, guest claim, and production queue service/configuration are not yet verified. The non-database queue fallback remains non-durable. Keep this document at DESIGN / NOT ACCEPTED.
+
+## Historical baseline before PR #42 (superseded where noted)
 
 - `BookingEngine::notice()` accumulates `pendingNotices` in PHP memory. `flush()` invokes `BookingSideEffects::notify()` after the engine transaction. A process crash between commit and flush can lose notices.
 - `BookingSideEffects::notify()` registers `DB::afterCommit` and catches/logs exceptions. This prevents booking rollback but does **not** provide durable delivery or worker retries.
-- `DispatchBookingNotification` is a new standalone queued worker, not yet used by BookingEngine. It preserves the existing member/guest notification channels and has bounded retry settings.
+- **Updated:** `DispatchBookingNotification` is now used by `BookingEngine::notice()` inside a booking DB transaction when the database queue shares the same connection. It preserves member/guest database notifications and bounded retry settings. Other queue configurations still fall back to `pendingNotices`.
 - `MemberNotifier` is `final`; tests must use its real implementation, not a Mockery class mock.
-- `notifyChange()` iterates active booking groups and calls `notice()` and `queueSync()` **outside its own BookingEngine transaction**. A transaction-only replacement must explicitly handle this path.
+- **Updated:** `notifyChange()` now wraps its notification/sync scheduling in `BookingEngine::transaction()`; direct calls no longer require a caller-provided transaction.
 - The database queue configuration currently has `after_commit=false`. Transactional queue insertion requires the queue's database connection to match the booking DB connection, and a running worker.
 
 ## Important risks / not yet verified
 
-1. **Idempotency**: retrying the notification job can create duplicate database notifications if a worker crashes after writing the notification but before acknowledging the queue job. The current job has no stable delivery ID / unique constraint. Do not enable automatic retry delivery without a tested deduplication strategy.
-2. **Lost delivery**: replacing `pendingNotices` with `dispatch()` must occur within the booking transaction, and must not silently fall back to post-commit memory when durable delivery is required.
-3. **External call paths**: `notifyChange()` is outside the booking transaction; its queue insertion and Google sync must be explicitly designed/tested.
+1. **Idempotency**: each notification job now has a stable UUID used as the database notification ID, with an existence check and a group row lock in the worker transaction. Sequential replay tests pass; concurrent multi-worker/crash-recovery behavior is still unverified. Do not claim exactly-once delivery.
+2. **Lost delivery**: same-database queue insertion is transactional in the tested paths. The other queue-driver fallback still uses post-commit memory and is a KNOWN ISSUE requiring an explicit deployment policy.
+3. **External call paths**: `notifyChange()` now owns a DB transaction and has an integration test. Deployment and cross-process recovery remain unverified.
 4. **Guest claim**: guest notifications are stored on `EventBookingGroup` and later claimed. Preserve this behavior and test it.
 5. **Worker restart / failed jobs**: current unit/integration tests are not an independent worker crash/recovery acceptance test.
 6. **Runtime configuration**: confirm `QUEUE_CONNECTION`, `DB_QUEUE_CONNECTION`, database queue worker service, retry/timeout settings in the deployment environment.
@@ -23,11 +27,11 @@ Status: **DESIGN / NOT ACCEPTED**. Draft PR #42; do not merge or deploy on the b
 
 ## Existing tests
 
-- `BookingNotificationHandoffTest.php`: missing group, real notifier exception propagation, member delivery, guest delivery, retry policy, database queue rollback.
+- `BookingNotificationHandoffTest.php`: missing group, real notifier exception propagation, member/guest delivery, sequential replay deduplication, distinct notification identities, booking change transactional queue rollback, and actual `queue:work --once` processing.
 - `BookingDatabaseQueueAtomicityTest.php`: Google handoff / booking rollback atomicity.
 - `BookingGoogleSyncHandoffTest.php`: Google handoff worker behavior.
 
-These tests do **not** prove exactly-once notification delivery, production worker recovery, or complete BookingEngine integration.
+These tests do **not** prove exactly-once notification delivery under concurrent workers, production worker recovery, or all BookingEngine entry-point behavior.
 
 ## Gate before enabling the notification handoff
 

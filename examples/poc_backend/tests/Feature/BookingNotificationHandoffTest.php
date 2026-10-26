@@ -66,6 +66,28 @@ it('delivers a real guest booking notification to the guest group', function ():
     expect($group->fresh()->notifications()->where('data->title', 'Guest update')->count())->toBe(1);
 });
 
+
+it('currently creates duplicate notifications when the same worker payload is replayed', function (): void {
+    $event = s9Event();
+    $group = EventBookingGroup::query()->create([
+        'calendar_event_id' => $event->id,
+        'is_guest' => true,
+        'contact_name' => 'Replay Guest',
+        'contact_email' => 'replay@example.test',
+        'status' => EventBookingGroup::STATUS_CONFIRMED,
+        'seat_count' => 1,
+        'booked_at' => now(),
+    ]);
+
+    $job = new DispatchBookingNotification($group->id, 'Replay update', 'Replay notification');
+    $job->handle(app(MemberNotifier::class));
+    $job->handle(app(MemberNotifier::class));
+
+    // Characterization of the CURRENT BUG, not a desired acceptance criterion.
+    // Change expected count to 1 when stable delivery-id deduplication is implemented.
+    expect($group->fresh()->notifications()->where('data->title', 'Replay update')->count())->toBe(2);
+});
+
 it('sets bounded retry policy for booking notification handoff', function (): void {
     $job = new DispatchBookingNotification(123, 'Title', 'Body');
 

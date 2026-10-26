@@ -9,6 +9,7 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
+use App\Services\Family\FamilyDelegation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

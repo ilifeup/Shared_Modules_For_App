@@ -5,7 +5,7 @@ set -euo pipefail
 OUT="$(mktemp -d)"
 PORT=8011
 BASE="http://127.0.0.1:$PORT"
-trap 'if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=M11 probe::failed at line $LINENO (exit $rc)"; for f in booking.json server.log 1.json 2.json check.log; do if [ -f "$OUT/$f" ]; then echo "=== $f ==="; tail -c 1600 "$OUT/$f"; echo; fi; done; fi; if [ -n "${SERVER:-}" ]; then kill "$SERVER" 2>/dev/null || true; fi; rm -rf "$OUT"' EXIT
 export OUT
 php artisan tinker --execute='
 app(App\Support\Settings::class)->put(["verification_policy" => "email_required"]);

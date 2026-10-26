@@ -312,3 +312,17 @@ it('rolls back an entire checkout batch and its audits on a later 409', function
         ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
 });
+
+// #36: a later valid-owned attendee can fail eligibility after an earlier write.
+it('rolls back an entire check-in batch and its audits when a later attendee is waitlisted', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $attendees[1]->forceFill(['status' => EventBookingAttendee::STATUS_WAITLISTED])->save();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'WAITLISTED');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+});

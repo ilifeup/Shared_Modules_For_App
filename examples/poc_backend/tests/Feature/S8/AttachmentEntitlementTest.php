@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use App\Support\Settings;
 
 it('denies attachment upload by default regardless of membership tier', function () {
     $member = User::factory()->create();

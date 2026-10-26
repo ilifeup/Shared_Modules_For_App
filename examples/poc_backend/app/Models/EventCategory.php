@@ -8,16 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * S9 M09/M08 event category: calendar colour (M09-D10) and who may book
- * (M08-D01 guests, D02 proxy bookings, D10 required M03 verification).
+ * (M08 proxy bookings and required M03 verification).
  */
 class EventCategory extends Model
 {
-    protected $fillable = ['name', 'color', 'sort', 'allow_guest_booking', 'allow_proxy_booking', 'required_verification_type_id'];
+    protected $fillable = ['name', 'color', 'sort', 'allow_proxy_booking', 'required_verification_type_id'];
 
     protected function casts(): array
     {
         return [
-            'allow_guest_booking' => 'boolean',
             'allow_proxy_booking' => 'boolean',
             'sort' => 'integer',
         ];

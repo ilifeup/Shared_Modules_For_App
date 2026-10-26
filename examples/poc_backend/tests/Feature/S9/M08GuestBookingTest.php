@@ -46,7 +46,7 @@ it('requires authentication and rejects nonexistent attendee member IDs', functi
 
     $this->postJson($url, $payload)->assertUnauthorized();
 
-    $member = \\App\\Models\\User::factory()->create();
+    $member = User::factory()->create();
     $this->actingAs($member, 'sanctum')->postJson($url, $payload)
         ->assertUnprocessable()->assertJsonValidationErrors(['attendees.0.member_user_id']);
     expect(EventBookingGroup::query()->count())->toBe(0);
@@ -54,8 +54,8 @@ it('requires authentication and rejects nonexistent attendee member IDs', functi
 
 it('rejects name-only attendees and arbitrary member identities in the group API', function () {
     $event = s9Event();
-    $member = \App\Models\User::factory()->create();
-    $other = \App\Models\User::factory()->create();
+    $member = User::factory()->create();
+    $other = User::factory()->create();
     $url = "/api/v1/events/{$event->id}/booking-groups";
 
     $this->actingAs($member, 'sanctum')->postJson($url, [
@@ -81,7 +81,7 @@ it('rejects name-only attendees and arbitrary member identities in the group API
 
 it('rejects name-only and duplicate member identities for direct engine callers', function () {
     $event = s9Event();
-    $member = \App\Models\User::factory()->create();
+    $member = User::factory()->create();
     $request = fn (array $attendees) => new BookingRequest(
         booker: $member, contactName: $member->name,
         contactEmail: $member->email, contactPhone: $member->phone_e164,
@@ -101,7 +101,7 @@ it('rejects name-only and duplicate member identities for direct engine callers'
 });
 
 it('does not expose guest claim endpoints after guest bookings are retired', function () {
-    $member = \App\Models\User::factory()->create();
+    $member = User::factory()->create();
     $this->actingAs($member, 'sanctum')
         ->postJson('/api/v1/me/guest-bookings/123/claim')
         ->assertNotFound();

@@ -22,6 +22,7 @@ class EditMember extends EditRecord
         // These settings are admin-only and deliberately not mass assignable
         // through member-facing controllers.
         foreach ([
+            'is_admin_alias',
             'attachment_upload_enabled',
             'attachment_upload_expires_at',
             'attachment_weekly_upload_count',

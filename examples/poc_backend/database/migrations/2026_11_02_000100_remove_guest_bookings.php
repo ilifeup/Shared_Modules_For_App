@@ -14,6 +14,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // MySQL DDL implicitly commits: the transaction below only protects row deletion,
+        // not subsequent DROP COLUMN / ALTER TABLE operations.
+        // This migration must be deployed only after a verified, restorable backup.
         DB::transaction(function (): void {
             $groups = DB::table('event_booking_groups')
                 ->where('is_guest', true)

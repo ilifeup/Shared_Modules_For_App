@@ -1,9 +1,11 @@
 <?php
 
+use App\Models\EventBookingGroup;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 return new class extends Migration
 {
@@ -31,7 +33,7 @@ return new class extends Migration
                 DB::table('event_waitlist_entries')->whereIn('event_booking_group_id', $ids)->delete();
                 // Group is a morph-notifiable; no FK protects orphan notifications.
                 DB::table('notifications')
-                    ->where('notifiable_type', (new \App\Models\EventBookingGroup())->getMorphClass())
+                    ->where('notifiable_type', (new EventBookingGroup)->getMorphClass())
                     ->whereIn('notifiable_id', $ids)->delete();
                 DB::table('event_booking_attendees')->whereIn('event_booking_group_id', $ids)->delete();
                 DB::table('event_booking_groups')->whereIn('id', $ids)->delete();
@@ -50,6 +52,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        throw new \RuntimeException('Guest booking purge is irreversible; restore the verified database backup instead.');
+        throw new RuntimeException('Guest booking purge is irreversible; restore the verified database backup instead.');
     }
 };

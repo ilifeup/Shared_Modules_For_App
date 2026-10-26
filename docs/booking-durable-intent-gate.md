@@ -1,6 +1,6 @@
 # Booking durable side-effect implementation gate (S9)
 
-Status: **CONFIRMED DESIGN GAP / IMPLEMENTATION NOT STARTED / NOT ACCEPTED**  
+Status: **CONFIRMED DESIGN GAP / MYSQL FEASIBILITY TESTS PASS / IMPLEMENTATION NOT STARTED / NOT ACCEPTED**  
 Tracked by [Shared #25](https://github.com/ilifeup/Shared_Modules_For_App/issues/25) and [Tiandi #34](https://github.com/ilifeup/tiandi-app/issues/34).
 
 ## Existing verified mechanisms — do not rebuild
@@ -58,3 +58,12 @@ If a same-transaction durable queue job can be proven safe, prototype it without
 4. Update API/OpenAPI and Flutter states only where required.
 5. Attach CI links, commit SHA, root cause, rejected alternatives and deployment prerequisites to #25, #34 and master trackers #35/#38.
 6. Keep PR Draft until code review and real integration acceptance; **CI green is not acceptance**. Never auto-merge, deploy or close.
+
+## CI evidence and implementation boundary (2026-10-26)
+
+- Backend run [40284937752](https://github.com/ilifeup/Shared_Modules_For_App/actions/runs/40284937752): **289 pass, 3 intentional RED, 2146 assertions**. The test for mapping and database queue job rollback together passes. The connected-member positive control passes; injected Google queue failure still loses the expected durable job.
+- The above Pest tests use `RefreshDatabase` with an outer test transaction. This proves transaction/savepoint feasibility in CI MySQL, **not** process-kill survival or production worker availability.
+- `GoogleCalendarSync::queueBooking` intentionally skips users without an ACTIVE connection. Never require a Google job for an unconnected user. A connected user has both a mapping and queued job in the positive control.
+- `BookingEngine::notifyChange` queues notifications/sync outside its own transaction and calls `flush()`. Other booking methods call `flush()` after their transaction. Any change must handle both paths; blindly moving `flush()` inside the transaction would call `BookingSideEffects::afterCommit`, **not** make the effect durable.
+- **Next minimal implementation:** enqueue a small durable booking-effect command on the same database connection **inside** each booking transaction, with `after_commit=false`; worker performs the existing `BookingSideEffects` operations after commit. Do not enqueue the existing Google job alone for every booking: connection state, guest notices, waitlist promotions, and retry semantics differ. Preserve existing `SyncGoogleCalendarItem` and Google mapping logic.
+- **Hard stop:** do not switch production queue driver, remove post-commit notifications, or replace `flush()` until a job/worker contract and tests cover `notifyChange`, cancellation, guest notifications, retry idempotency, and the non-database queue configuration. The first two RED tests currently assume implementation shape and must be revised into behavioral assertions before acceptance.

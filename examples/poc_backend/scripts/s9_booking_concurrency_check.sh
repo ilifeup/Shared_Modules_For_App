@@ -34,11 +34,15 @@ $groups = [];
 foreach (range(1, (int) getenv("GROUP_COUNT")) as $index) {
     $manager = App\Models\User::factory()->create();
     $member = App\Models\User::factory()->create();
-    \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
-        "manager_user_id" => $manager->id, "member_user_id" => $member->id,
-        "relationship" => "family", "status" => "active", "started_at" => now(),
-        "created_by" => $manager->id, "created_at" => now(), "updated_at" => now(),
-    ]);
+    // PR #40 predates #43's family schema; the integrated contract creates
+    // delegation rows only when that migration exists.
+    if (\Illuminate\Support\Facades\Schema::hasTable("family_memberships")) {
+        \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
+            "manager_user_id" => $manager->id, "member_user_id" => $member->id,
+            "relationship" => "family", "status" => "active", "started_at" => now(),
+            "created_by" => $manager->id, "created_at" => now(), "updated_at" => now(),
+        ]);
+    }
     $groups[] = $manager->createToken("ci")->plainTextToken." ".$member->id;
 }
 file_put_contents(getenv("OUT")."/groups", implode("\n", $groups));
@@ -62,7 +66,7 @@ g=0
 while read -r token companion || [ -n "$token" ]; do
   g=$((g + 1))
   uuid="$(cat /proc/sys/kernel/random/uuid)"
-  body="{\"include_self\":true,\"attendees\":[{\"member_user_id\":$companion}],\"client_request_id\":\"$uuid\"}"
+  body="{\"include_self\":true,\"attendees\":[{\"name\":\"同行$g\",\"member_user_id\":$companion}],\"client_request_id\":\"$uuid\"}"
   copies=1; [ "$g" -le "$RETRIES" ] && copies=2
   for c in $(seq 1 "$copies"); do
     curl -sS --max-time 60 -o "$OUT/g$g-$c.json" -w '%{http_code}' -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \

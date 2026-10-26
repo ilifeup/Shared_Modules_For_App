@@ -10,9 +10,12 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 it('does nothing if notification booking group no longer exists', function (): void {
-    $notifier = app(MemberNotifier::class);
+    $before = DB::table('notifications')->count();
 
-    (new DispatchBookingNotification(999999999, 'Title', 'Body'))->handle($notifier);
+    (new DispatchBookingNotification(999999999, 'Title', 'Body'))
+        ->handle(app(MemberNotifier::class));
+
+    expect(DB::table('notifications')->count())->toBe($before);
 });
 
 it('propagates real notifier validation failures without swallowing them', function (): void {
@@ -162,14 +165,17 @@ it('processes a real queued booking notification with the database worker', func
     expect($member->fresh()->notifications()->where('data->title', 'Worker update')->count())->toBe(0);
     expect(DB::table('jobs')->count())->toBeGreaterThan(0);
 
-    Artisan::call('queue:work', [
+    $exitCode = Artisan::call('queue:work', [
         'connection' => 'database',
         '--once' => true,
         '--tries' => 1,
         '--sleep' => 0,
     ]);
 
+    expect($exitCode)->toBe(0);
     expect($member->fresh()->notifications()->where('data->title', 'Worker update')->count())->toBe(1);
+    expect(DB::table('jobs')->count())->toBe(0);
+    expect(DB::table('failed_jobs')->count())->toBe(0);
 });
 
 it('rolls back an actual booking change notification with its transaction', function (): void {

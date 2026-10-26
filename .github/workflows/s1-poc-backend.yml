@@ -138,9 +138,9 @@ jobs:
             # S8 attachment tables were added after S9. Peel off the empty S8 batch first
             # so --step=1 below targets S9 rather than silently rolling back S8.
             # This is permitted ONLY in the disposable CI database, after checking emptiness.
-            php artisan tinker --execute='$empty = Illuminate\\Support\\Facades\\Schema::hasTable("article_comment_attachments") && Illuminate\\Support\\Facades\\Schema::hasTable("article_attachment_bookmarks") && Illuminate\\Support\\Facades\\DB::table("article_comment_attachments")->count() === 0 && Illuminate\\Support\\Facades\\DB::table("article_attachment_bookmarks")->count() === 0; echo $empty ? "S8_EMPTY" : "S8_NOT_EMPTY", PHP_EOL;' | tee /dev/stderr | grep -q S8_EMPTY
+            php artisan tinker --execute='$empty = Schema::hasTable("article_comment_attachments") && Schema::hasTable("article_attachment_bookmarks") && DB::table("article_comment_attachments")->count() === 0 && DB::table("article_attachment_bookmarks")->count() === 0; echo $empty ? "S8_EMPTY" : "S8_NOT_EMPTY", PHP_EOL;' | tee /dev/stderr | grep -q S8_EMPTY
             php artisan migrate:rollback --step=1 --force --no-interaction
-            php artisan tinker --execute='$gone = ! Illuminate\\Support\\Facades\\Schema::hasTable("article_comment_attachments") && ! Illuminate\\Support\\Facades\\Schema::hasTable("article_attachment_bookmarks"); echo $gone ? "S8_PEELED" : "S8_STILL_PRESENT", PHP_EOL;' | tee /dev/stderr | grep -q S8_PEELED
+            php artisan tinker --execute='$gone = ! Schema::hasTable("article_comment_attachments") && ! Schema::hasTable("article_attachment_bookmarks"); echo $gone ? "S8_PEELED" : "S8_STILL_PRESENT", PHP_EOL;' | tee /dev/stderr | grep -q S8_PEELED
             # Earlier steps left S9 data behind: the guard must refuse without explicit acceptance.
             php artisan s9:data-report
             if php artisan migrate:rollback --step=1 --force --no-interaction > "$RUNNER_TEMP/refused.log" 2>&1; then

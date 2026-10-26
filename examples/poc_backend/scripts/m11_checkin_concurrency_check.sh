@@ -41,7 +41,7 @@ php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->orderBy("id")->pluck("id")->all();
 if (count($ids) !== 2) { throw new RuntimeException("Expected two attendees"); }
-file_put_contents(getenv("OUT")."/ids", implode(" ", $ids));
+file_put_contents(getenv("OUT")."/ids", implode(" ", $ids).PHP_EOL);
 file_put_contents(getenv("OUT")."/qr", app(App\Services\Checkin\CheckinTokens::class)->event($id));
 ' >"$OUT/fixture.log" 2>&1 || { echo 'M11 fixture tinker failed'; cat "$OUT/fixture.log"; exit 1; }
 read -r A B <"$OUT/ids"

@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 

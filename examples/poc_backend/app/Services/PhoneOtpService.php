@@ -150,7 +150,13 @@ final class PhoneOtpService
             $otp->forceFill(['status' => PhoneOtp::STATUS_USED, 'used_at' => now()])->save();
 
             if ($purpose === PhoneOtp::PURPOSE_VERIFY) {
-                $user->forceFill(['phone_verified_at' => now()])->save();
+                $user->forceFill([
+                    'phone_verified_at' => now(),
+                    // Contact verification completes membership only under the active phone policy.
+                    'verified_status' => $this->settings->string('verification_policy') === Settings::POLICY_PHONE
+                        ? 2
+                        : $user->verified_status,
+                ])->save();
             }
 
             if ($onVerified !== null) {

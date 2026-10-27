@@ -40,7 +40,8 @@ final class FamilyApplicationController extends Controller
         if ($alreadyCreated >= $max) {
             throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的家庭會員上限。');
         }
-        if ($alreadyCreated >= 1) {
+        if ($alreadyCreated >= 1 && ! DB::table('family_member_paid_credits')
+            ->where('manager_user_id', $actor->id)->whereNull('used_application_id')->exists()) {
             throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '第二位起須先完成付費，才能提出申請。');
         }
 

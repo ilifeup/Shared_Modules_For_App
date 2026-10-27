@@ -1336,6 +1336,46 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/family-memberships:
+    post:
+      tags: [bookings]
+      operationId: createFamilyMember
+      x-verification: required
+      description: Create a separate verified FamilyUser with no independent login, profile and active delegation in one transaction. Family contacts are not login credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, birth_date, address]
+              properties:
+                name: { type: string, maxLength: 255 }
+                relationship: { type: [string, 'null'], maxLength: 40 }
+                birth_date: { type: string, format: date }
+                address: { type: string, maxLength: 500 }
+                contact_phone: { type: [string, 'null'], maxLength: 40 }
+                contact_email: { type: [string, 'null'], format: email }
+      responses:
+        '201':
+          description: Family member and active delegation created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, member_user_id, verified_status, FamilyUser]
+                    properties:
+                      id: { type: integer }
+                      member_user_id: { type: integer }
+                      verified_status: { type: integer, enum: [2] }
+                      FamilyUser: { type: boolean, enum: [true] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     get:
       tags: [bookings]
       operationId: myFamilyMemberships

@@ -1,13 +1,13 @@
 # S8 attachment reader and cache contract (Draft)
 
-Status: design + initial database models only. **Not production ready.**
+Status: private attachment backend APIs, access rechecks, weekly quota and discovery are implemented in PR #53. Flutter reader, encrypted client cache, watermark and end-to-end device acceptance remain incomplete. **Not production ready.**
 
 ## Entitlement and separation
 
 - Uploading is manually enabled/disabled by an administrator on the member record, including when payment is collected outside the App. Membership level and payment transaction records do not grant it automatically.
 - The sole membership qualification authority is `users.verified_status = 2` (and `users.is_active = true`). Email/phone verification timestamps and policy are workflow inputs, never independent membership grants. A policy change must not revoke existing verified membership.
 - Upload entitlement and article/attachment read permission are independent. Disabling uploads does not revoke authorized reading.
-- Defaults for an enabled uploader: one file and 5 MiB total per Asia/Taipei calendar week (Monday 00:00). The upload API enforces administrator count/byte overrides inside a database transaction with a locked `users` row; independent-process MySQL concurrency acceptance remains NOT TESTED.
+- Defaults for an enabled uploader: one file and 5 MiB total per Asia/Taipei calendar week (Monday 00:00). The upload API enforces administrator count/byte overrides inside a database transaction with a locked `users` row; **independent-process MySQL upload concurrency acceptance remains NOT TESTED**.
 
 ## Reader and expiry
 
@@ -70,3 +70,11 @@ Status: design + initial database models only. **Not production ready.**
 ## Required before PR review/merge
 
 Private file upload + MIME validation; authorization and atomic quota accounting; expiry and read API; bookmark API; administrator audit; policy and concurrency tests; Flutter cache and reader integration; passing CI and manual acceptance. CI green alone is not acceptance.
+
+## PR #53 MVP acceptance split (2026-10-28)
+
+**Must complete before claiming the attachment feature MVP accepted:** verify the database grant/defaults, one-file/byte quota and independent MySQL concurrency; enforce every-open authorization and revocation/expiry; verify private path isolation and no URL/path disclosure; implement and test Flutter authenticated PDF/image viewing, mandatory watermark, encrypted app-private cache, logout/account-switch eviction and denial-driven eviction. The user-approved watermark contract is mandatory, not an optional enhancement. Confirm mobile tests on the exact integration HEAD.
+
+**Explicitly deferred (not grounds to claim implemented):** Windows 10/11 desktop client; scheduled low-priority server cleanup and permanent-file retention policy (expiry denial must work without it); optional viewer nickname/timestamp watermark proposal, pending approval. Administrative configuration of watermark and default expiry is **not implemented** and requires a separate explicit MVP-scope decision before being deferred. Existing per-member quota overrides do not imply these settings exist.
+
+**Acceptance evidence:** link exact HEAD, API/DB/Flutter tests and any independent-process concurrency run in Shared #35; CI green alone is not feature acceptance. Do not merge automatically.

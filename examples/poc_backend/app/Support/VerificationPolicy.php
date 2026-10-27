@@ -38,10 +38,14 @@ final class VerificationPolicy
     /** Grant verified membership once the configured contact check succeeds. */
     public function grantIfEligible(User $user): void
     {
-        $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-        if ((int) $fresh->verified_status === 1 && $this->missing($fresh) === null) {
-            $fresh->forceFill(['verified_status' => 2])->save();
-        }
+        // Keep the membership qualification decision and update atomic even
+        // when callers do not already have an open database transaction.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user): void {
+            $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if ((int) $fresh->verified_status === 1 && $this->missing($fresh) === null) {
+                $fresh->forceFill(['verified_status' => 2])->save();
+            }
+        });
     }
 
     public function isSatisfiedBy(User $user): bool

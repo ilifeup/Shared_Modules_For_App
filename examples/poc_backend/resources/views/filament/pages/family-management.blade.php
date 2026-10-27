@@ -35,7 +35,7 @@
                             <td class="p-2 space-x-2">
                                 <x-filament::button size="sm" wire:click="review({{ $item->id }}, 'approved')" wire:confirm="確定核准？">核准</x-filament::button>
                                 <x-filament::button size="sm" color="danger" wire:click="review({{ $item->id }}, 'rejected')" wire:confirm="確定駁回？">駁回</x-filament::button>
-                                <a href="{{ url('/api/v1/admin/family-applications/'.$item->id.'/evidence') }}" class="underline">證明檔（API）</a>
+                                <x-filament::button size="sm" color="gray" wire:click="downloadEvidence({{ $item->id }})">下載證明</x-filament::button>
                             </td>
                         </tr>
                     @empty

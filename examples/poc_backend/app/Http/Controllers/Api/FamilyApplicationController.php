@@ -123,7 +123,10 @@ final class FamilyApplicationController extends Controller
                 throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
             }
             if ($data['decision'] === 'approved') {
-                DB::table('users')->where('id', $application->manager_user_id)->lockForUpdate()->first();
+                $manager = DB::table('users')->where('id', $application->manager_user_id)->lockForUpdate()->first();
+                if ($manager === null || ! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser) {
+                    throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '主要會員目前不符合家庭會員資格。');
+                }
                 $max = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
                 $count = DB::table('family_memberships')->where('manager_user_id', $application->manager_user_id)->count();
                 if ($count >= $max) {

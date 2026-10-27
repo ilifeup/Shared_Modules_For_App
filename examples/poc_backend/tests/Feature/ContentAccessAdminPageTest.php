@@ -15,7 +15,7 @@ it('lets an administrator configure all three levels in the Filament page', func
     Livewire::test(ContentAccessSettings::class)
         ->set('scope', 'page')
         ->set('resourceCode', 'articles')
-        ->set('audience', 'guest')
+        ->set('audienceType', 'guest')
         ->set('decision', 'allow')
         ->call('saveRule')
         ->assertHasNoErrors();
@@ -45,4 +45,22 @@ it('rejects ordinary members from the administration page and mutations', functi
         ->assertForbidden();
 
     expect(DB::table('app_content_access_rules')->count())->toBe(0);
+});
+
+it('accepts an existing VIP level selector through the same administrator settings page', function (): void {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $this->actingAs(makeAdmin());
+    $vip = \App\Models\MembershipLevel::query()->where('code', 'vip')->firstOrFail();
+
+    Livewire::test(ContentAccessSettings::class)
+        ->set('scope', 'page')
+        ->set('resourceCode', 'av')
+        ->set('audienceType', 'level')
+        ->set('audienceId', (string) $vip->id)
+        ->set('decision', 'allow')
+        ->call('saveRule')
+        ->assertHasNoErrors();
+
+    expect(DB::table('app_content_access_rules')->where('resource_code', 'av')
+        ->where('audience', 'level:'.$vip->id)->exists())->toBeTrue();
 });

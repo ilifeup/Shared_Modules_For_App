@@ -172,7 +172,21 @@ it('is idempotent for retried single-member requests', function () {
     $member->update(['name' => '會員新顯示名稱']);
     groupBook($event, $member, [], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
 
-    groupBook($event, User::factory()->create(), [], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    // A different member must not retrieve or replay the first member's booking.
+    groupBook($event, User::factory()->create(), [], true, $id)
+        ->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
+});
+
+it('refuses idempotency replay after the booking member loses verification', function () {
+    $event = s9Event();
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = (string) Str::uuid();
+    groupBook($event, $member, [], true, $id)->assertCreated();
+
+    $member->update(['verified_status' => 1]);
+    groupBook($event, $member, [], true, $id)->assertForbidden();
     expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
 });
 

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -37,11 +38,11 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_private_encrypted_track_requires_live_grant_and_never_leaks_storage_path(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('local');
+        Storage::fake('local');
         $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
         Sanctum::actingAs($member);
         $path = 'av/private-test.enc';
-        \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'encrypted-fixture');
+        Storage::disk('local')->put($path, 'encrypted-fixture');
         $trackId = DB::table('av_music_tracks')->insertGetId([
             'title' => 'Private test', 'category' => 'test',
             'encrypted_storage_path' => $path, 'is_published' => true,
@@ -54,7 +55,7 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks/'.$trackId.'/access')
             ->assertOk()->assertDontSee('private-test.enc');
         $this->get('/api/v1/av/tracks/'.$trackId.'/content')
-            ->assertOk()->assertHeader('Cache-Control', 'private, no-store');
+            ->assertOk()->assertHeader('Cache-Control', 'no-store, private');
         DB::table('av_track_member_access')->where('track_id', $trackId)->update(['allowed' => false]);
         $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertForbidden();
     }

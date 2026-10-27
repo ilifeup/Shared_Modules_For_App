@@ -100,7 +100,8 @@ it('does not duplicate member notifications when the same worker payload is repl
     $job->handle(app(MemberNotifier::class));
     $job->handle(app(MemberNotifier::class));
 
-    expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(1);
+    expect($member->fresh()->notifications()->where('data->title', 'Member replay')->count())->toBe(1)
+        ->and($member->fresh()->notifications()->where('data->title', 'Member replay')->value('id'))->toBe($job->deliveryId);
 });
 
 it('delivers to the current booker when booking ownership changes before processing', function (): void {

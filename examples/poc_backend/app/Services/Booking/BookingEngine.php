@@ -570,15 +570,13 @@ final class BookingEngine
             }
         }
 
-        {
-            $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
-            if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
-                throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');
-            }
-            if (! $request->byAdmin && $this->activeAttendeeOf($event, $request->booker) !== null
-                && collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) === $request->booker->id)) {
-                throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
-            }
+        $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
+        if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
+            throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');
+        }
+        if (! $request->byAdmin && $this->activeAttendeeOf($event, $request->booker) !== null
+            && collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) === $request->booker->id)) {
+            throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
         }
 
         // D05 "每人名額": the limit is per booker and occurrence, not

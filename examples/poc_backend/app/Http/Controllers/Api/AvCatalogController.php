@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Av\AvEntitlement;
 use App\Services\ContentAccess\ContentAccessPolicy;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AvCatalogController extends Controller
 {
@@ -44,7 +47,7 @@ class AvCatalogController extends Controller
     }
 
     /** Authorization-only handoff; no protected file path or permanent URL. */
-    public function trackAccess(Request $request, ContentAccessPolicy $access, \App\Services\Av\AvEntitlement $entitlement, int $id): JsonResponse
+    public function trackAccess(Request $request, ContentAccessPolicy $access, AvEntitlement $entitlement, int $id): JsonResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
@@ -54,7 +57,7 @@ class AvCatalogController extends Controller
     }
 
     /** Recheck video entitlement when a member opens the item. */
-    public function videoAccess(Request $request, ContentAccessPolicy $access, \App\Services\Av\AvEntitlement $entitlement, int $id): JsonResponse
+    public function videoAccess(Request $request, ContentAccessPolicy $access, AvEntitlement $entitlement, int $id): JsonResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);
@@ -64,14 +67,14 @@ class AvCatalogController extends Controller
     }
 
     /** Encrypted private track bytes, checked against current member grants. */
-    public function trackContent(Request $request, ContentAccessPolicy $access, \App\Services\Av\AvEntitlement $entitlement, int $id): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function trackContent(Request $request, ContentAccessPolicy $access, AvEntitlement $entitlement, int $id): StreamedResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
         abort_unless($entitlement->track($member, $id), 403);
         $path = DB::table('av_music_tracks')->where('id', $id)->value('encrypted_storage_path');
         abort_unless(is_string($path) && str_starts_with($path, 'av/') && ! str_contains($path, '..'), 404);
-        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        $disk = Storage::disk('local');
         abort_unless($disk->exists($path), 404);
 
         return $disk->response($path, null, [

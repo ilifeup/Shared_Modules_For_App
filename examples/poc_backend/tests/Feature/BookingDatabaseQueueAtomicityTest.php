@@ -156,3 +156,55 @@ it('fails closed for production booking when queue driver is not database', func
         app()->detectEnvironment(fn (): string => $previousEnvironment);
     }
 });
+
+/** Production queue safety must also cover notifications triggered outside booking transactions. */
+it('rejects a non-atomic queue for event-change notifications in production', function (): void {
+    $previousEnvironment = app()->environment();
+    $previousQueue = config('queue.default');
+
+    try {
+        app()->detectEnvironment(fn (): string => 'production');
+        config()->set('queue.default', 'sync');
+        $event = s9Event();
+
+        expect(fn () => app(BookingEngine::class)->notifyChange($event, 'Changed', 'New details'))
+            ->toThrow(LogicException::class, 'Booking durable handoff requires');
+    } finally {
+        config()->set('queue.default', $previousQueue);
+        app()->detectEnvironment(fn (): string => $previousEnvironment);
+    }
+});
+
+it('rejects a different database queue connection in production', function (): void {
+    $previousEnvironment = app()->environment();
+    $previousConnection = config('queue.connections.database.connection');
+
+    try {
+        app()->detectEnvironment(fn (): string => 'production');
+        config()->set('queue.connections.database.connection', 'not_the_booking_database');
+        $event = s9Event();
+
+        expect(fn () => app(BookingEngine::class)->notifyChange($event, 'Changed', 'New details'))
+            ->toThrow(LogicException::class, 'Booking durable handoff requires');
+    } finally {
+        config()->set('queue.connections.database.connection', $previousConnection);
+        app()->detectEnvironment(fn (): string => $previousEnvironment);
+    }
+});
+
+it('rejects database queue after_commit true in production', function (): void {
+    $previousEnvironment = app()->environment();
+    $previousAfterCommit = config('queue.connections.database.after_commit');
+
+    try {
+        app()->detectEnvironment(fn (): string => 'production');
+        config()->set('queue.connections.database.after_commit', true);
+        $event = s9Event();
+
+        expect(fn () => app(BookingEngine::class)->notifyChange($event, 'Changed', 'New details'))
+            ->toThrow(LogicException::class, 'Booking durable handoff requires');
+    } finally {
+        config()->set('queue.connections.database.after_commit', $previousAfterCommit);
+        app()->detectEnvironment(fn (): string => $previousEnvironment);
+    }
+});

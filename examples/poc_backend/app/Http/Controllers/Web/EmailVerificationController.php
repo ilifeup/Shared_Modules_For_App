@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Settings;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Contracts\View\View;
 
@@ -21,6 +22,10 @@ class EmailVerificationController extends Controller
 
         if (! $user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
+            if (app(Settings::class)->string('verification_policy') === Settings::POLICY_EMAIL
+                && $user->membership_verified_at === null) {
+                $user->forceFill(['membership_verified_at' => now()])->save();
+            }
             event(new Verified($user));
         }
 

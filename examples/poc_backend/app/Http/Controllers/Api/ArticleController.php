@@ -233,6 +233,7 @@ class ArticleController extends Controller
     {
         $this->attachmentAccess($request, $id);
         $attachment = \App\Models\ArticleCommentAttachment::query()->findOrFail($id);
+        abort_unless($attachment->isViewable(), 404);
         abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
 
         return Storage::disk('local')->response($attachment->storage_path, 'attachment-'.$attachment->id, [

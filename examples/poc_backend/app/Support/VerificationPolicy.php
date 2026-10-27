@@ -31,9 +31,18 @@ final class VerificationPolicy
         };
     }
 
+    /** Grant verified membership once the configured contact check succeeds. */
+    public function grantIfEligible(User $user): void
+    {
+        $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+        if ((int) $fresh->verified_status === 1 && $this->missing($fresh) === null) {
+            $fresh->forceFill(['verified_status' => 2])->save();
+        }
+    }
+
     public function isSatisfiedBy(User $user): bool
     {
-        return $this->missing($user) === null;
+        return (int) $user->verified_status === 2;
     }
 
     /**
@@ -45,7 +54,7 @@ final class VerificationPolicy
 
         return [
             'policy' => $this->current(),
-            'satisfied' => $missing === null,
+            'satisfied' => (int) $user->verified_status === 2,
             'missing' => $missing,
         ];
     }

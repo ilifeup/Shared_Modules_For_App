@@ -686,6 +686,15 @@ final class BookingEngine
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
+        // Replays must not expose a booking after the attendee loses verified membership.
+        foreach ($stored as $attendee) {
+            if ($attendee['member_user_id'] === null
+                || ! User::query()->whereKey($attendee['member_user_id'])
+                    ->where('is_active', true)->where('verified_status', 2)->exists()) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者已不具備有效會員資格。');
+            }
+        }
+
         return $existing->load('attendees', 'waitlistEntry');
     }
 

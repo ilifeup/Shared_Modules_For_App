@@ -59,6 +59,15 @@ class AvCatalogAccessTest extends TestCase
         $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertForbidden();
     }
 
+    public function test_unverified_member_cannot_open_protected_media_even_with_direct_url(): void
+    {
+        $member = User::factory()->unverified()->create(['verified_status' => 1]);
+        Sanctum::actingAs($member);
+        $this->get('/api/v1/av/tracks/1/content')->assertForbidden();
+        $this->getJson('/api/v1/av/tracks/1/access')->assertForbidden();
+        $this->getJson('/api/v1/av/videos/1/access')->assertForbidden();
+    }
+
     public function test_unverified_member_cannot_access_music_or_video_catalog(): void
     {
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);

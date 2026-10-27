@@ -209,6 +209,25 @@ class ArticleController extends Controller
         return new JsonResponse(['data' => $this->comment($comment->load('user:id,nickname'), $request->user())], 201);
     }
 
+    /** Recheck permissions and expiry for each private attachment open. */
+    public function attachmentAccess(Request $request, int $id): JsonResponse
+    {
+        $attachment = \App\Models\ArticleCommentAttachment::query()
+            ->with('comment.article.accessRules')->findOrFail($id);
+        abort_unless($attachment->isViewable(), 404);
+        $comment = $attachment->comment;
+        abort_unless($comment !== null && $comment->status === ArticleComment::STATUS_VISIBLE, 404);
+        $article = $comment->article;
+        abort_unless($article !== null && $article->isLive(), 404);
+        $this->authorizeRead($article, $request->user());
+
+        return new JsonResponse(['data' => [
+            'id' => $attachment->id,
+            'allowed' => true,
+            'view_expires_at' => $attachment->view_expires_at,
+        ]]);
+    }
+
     /**
      * POST /api/v1/article-comments/{id}/reports
      */

@@ -88,7 +88,7 @@ class AvEntitlementTest extends TestCase
         $this->assertTrue($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->subMinute()]);
         $this->assertFalse($service->video($member, $videoId));
-        $assignment->update(['ends_at' => now()->addDay(), 'revoked_at' => now()]);
+        $assignment->forceFill(['ends_at' => now()->addDay(), 'revoked_at' => now()])->save();
         $this->assertFalse($service->video($member, $videoId));
     }
 }

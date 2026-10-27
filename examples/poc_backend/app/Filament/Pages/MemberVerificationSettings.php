@@ -16,6 +16,8 @@ class MemberVerificationSettings extends Page implements HasForms
 
     protected static ?string $navigationLabel = '會員驗證政策';
 
+    protected static bool $shouldRegisterNavigation = true;
+
     protected static ?string $title = '會員驗證政策';
 
     protected static ?int $navigationSort = 10;

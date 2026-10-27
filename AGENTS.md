@@ -1,5 +1,18 @@
 # AGENTS.md｜Shared Modules 多 AI 共用開發規則
 
+## 最高優先級工作入口：永久問題追蹤與 AI 避免重工規範
+
+**每次開發、修 Bug、審查 PR、跑 CI 或交接之前，必讀 [本專案總追蹤 Issue #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35) 的最新正文與相關歷史。** 此規則是兩個 Repository 共同的最高**流程**原則；仍須遵守使用者明確核准的決策、正式功能規格及安全邊界。
+
+1. 先搜尋相關 **Open/Closed Issues、合併/未合併 PR、Commit、ADR、回歸測試與 CI**；查明曾經的根因、失敗修法及版本差異，再開始動手。跨 App 契約同時查閱 [Shared #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35) 與 [Tiandi #38](https://github.com/ilifeup/tiandi-app/issues/38)。
+2. **CI PASS 不等於功能驗收或結案**；必須核對 Commit SHA、實際 Request → Controller → Service → Model → Database → Response → Client 契約、必要的失敗／並發／重試測試及目標分支。缺少證據標記 NOT TESTED／BLOCKED。
+3. 即使 VERIFIED/CLOSED，未來復發仍須先查歷史、REOPEN 或建立互相連結的新 Issue；永久保留失敗嘗試、根因、測試證據與回退資訊，不得反覆踩同一個坑。
+4. 優先更新既有 Issue，避免重複開案、重複 PR 和無意義 CI 重跑；新問題建立獨立 Issue，並在總追蹤留下索引。每次結束都回寫已做／未做、證據、SHA、狀態及下一步。
+5. 只引用已實際讀取的紀錄；不可假裝工具自動讀過 Issue。**若無法存取 GitHub，須明確說明未讀取，不能以推測替代。**
+
+詳細狀態、結案／重開門檻與完整欄位，以總追蹤 Issue 為單一規範來源，不在本檔重複維護。
+
+
 > 適用 Repository：`ilifeup/Shared_Modules_For_App`。本文件是 ChatGPT、Codex、Claude、Copilot 與其他支援 AGENTS.md 的 AI 開發者的共用工作規範。**不保證所有 AI 工具自動讀取**；工具不支援時應明確提供此文件。
 
 ## 1. 專案主軸（不可偏離）

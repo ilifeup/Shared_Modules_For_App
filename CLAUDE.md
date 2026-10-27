@@ -7,3 +7,7 @@
 Claude 與 ChatGPT 均可依已核准範圍操作 GitHub；重大架構、付費、正式部署、敏感資料 Schema 等仍需使用者明確核准。每次 PR 必須提供變更摘要、測試證據、風險與回退方式。不要複製 AGENTS.md 的整套規則到本檔，以免雙方規範分歧。
 
 本檔保留名稱 `CLAUDE.md` 是為了 Claude Code 的原生自動讀取能力；其他 AI 應使用 `AGENTS.md`。自訂 `AI.md` 不保證自動載入。
+
+## 啟動前必讀的問題知識庫
+
+Claude Code 必須在修改、PR 審查、CI 判定之前，**實際開啟並閱讀 [總追蹤 Issue #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35)**，並搜尋相關已結案及未結案的 Issue／PR／失敗紀錄；只讀 AGENTS.md 不代表已讀取 GitHub 的最新問題紀錄。**CI 綠燈不自動結案；驗收後復發要 REOPEN 或交叉連結**。遵循 AGENTS.md 的精簡入口與總追蹤的完整規範，避免重複耗費 Token／CI 分鐘。

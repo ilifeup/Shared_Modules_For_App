@@ -38,12 +38,14 @@ it('never serializes private admin notes or attachment settings', function () {
         'attachment_upload_enabled' => true,
         'attachment_weekly_upload_count' => 8,
         'attachment_weekly_upload_bytes' => 8388608,
+        'attachment_upload_expires_at' => now()->addDay(),
     ])->save();
 
     $json = json_encode($member->fresh()->toArray());
     expect($json)->not->toContain('private-admin-only-marker')
         ->not->toContain('admin_identity_note')
         ->not->toContain('attachment_upload_enabled')
+        ->not->toContain('attachment_upload_expires_at')
         ->not->toContain('attachment_weekly_upload_count')
         ->not->toContain('attachment_weekly_upload_bytes');
 });
@@ -58,4 +60,17 @@ it('requires stored verified membership for manual attachment entitlement', func
 
     $member->forceFill(['verified_status' => 2])->save();
     expect($member->fresh()->canUploadArticleAttachments())->toBeTrue();
+});
+
+it('does not grant attachment upload through a contact verification timestamp or membership tier alone', function () {
+    $member = User::factory()->unverified()->create([
+        'email_verified_at' => now(),
+    ]);
+    $member->forceFill(['attachment_upload_enabled' => true])->save();
+
+    expect($member->fresh()->canUploadArticleAttachments())->toBeFalse();
+    $member->forceFill(['verified_status' => 2])->save();
+    expect($member->fresh()->canUploadArticleAttachments())->toBeTrue();
+    $member->forceFill(['verified_status' => 1])->save();
+    expect($member->fresh()->canUploadArticleAttachments())->toBeFalse();
 });

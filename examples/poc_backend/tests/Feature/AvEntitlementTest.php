@@ -8,7 +8,6 @@ use App\Services\Av\AvEntitlement;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AvEntitlementTest extends TestCase
@@ -84,17 +83,10 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
-        // PR #49 preserves already verified members during an email-to-phone
-        // policy switch. Until both PRs share a branch, retain the standalone
-        // baseline; on the combined schema, assert the grandfathered behavior.
-        if (Schema::hasColumn('users', 'verification_grandfathered_at')) {
-            $member->refresh();
-            $this->assertNotNull($member->verification_grandfathered_at);
-            $this->assertTrue($service->video($member, $videoId));
-
-        } else {
-            $this->assertFalse($service->video($member, $videoId));
-        }
+        // PR #49 grants existing verified members persisted eligibility.
+        $member->refresh();
+        $this->assertNotNull($member->verification_grandfathered_at);
+        $this->assertTrue($service->video($member, $videoId));
         // Email-only accounts created after the switch are not grandfathered.
         $newMember = User::factory()->create([
             'is_active' => true,

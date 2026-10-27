@@ -75,3 +75,12 @@ it('audits administrator rule creation, changes and deletion without duplicate e
         ->and(\App\Models\AuditEvent::query()->where('event', 'content.access_rule_removed')->count())->toBe(1)
         ->and(DB::table('app_content_access_rules')->where('resource_code', 'av')->exists())->toBeFalse();
 });
+
+it('respects existing settings.manage permission without creating another administrator role', function (): void {
+    $admin = makeAdmin();
+    \Spatie\Permission\Models\Role::findByName(User::ADMIN_ROLE, 'web')->revokePermissionTo('settings.manage');
+
+    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+        ->save($admin->refresh(), 'page', 'av', 'guest', true))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+});

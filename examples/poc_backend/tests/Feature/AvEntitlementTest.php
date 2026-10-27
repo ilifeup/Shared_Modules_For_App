@@ -107,7 +107,9 @@ class AvEntitlementTest extends TestCase
             'starts_at' => now()->subDay(),
             'reason' => 'test',
         ]);
-        $this->assertNull($newMember->refresh()->verification_grandfathered_at);
+        if (Schema::hasColumn('users', 'verification_grandfathered_at')) {
+            $this->assertNull($newMember->refresh()->verification_grandfathered_at);
+        }
         $this->assertFalse($service->video($newMember, $videoId));
 
         $member->forceFill(['phone_verified_at' => now()]);

@@ -25,6 +25,10 @@ final myBookingGroupsProvider = FutureProvider.autoDispose<BookingGroupPage>(
   (ref) => ref.watch(bookingGroupApiProvider).mine(),
 );
 
+final manageableFamilyMemberIdsProvider = FutureProvider.autoDispose<List<int>>(
+  (ref) => ref.watch(bookingGroupApiProvider).manageableMemberIds(),
+);
+
 /// Text for a group status (shown with words, not colour only).
 String groupStatusLabel(BookingGroup g) => switch (g.status) {
   'confirmed' => '【正式報名】',
@@ -33,7 +37,7 @@ String groupStatusLabel(BookingGroup g) => switch (g.status) {
   _ => '【已取消】',
 };
 
-/// S9 M08 group booking: the member and/or named attendees, booked or
+/// S9 M08 group booking: the member and/or authorized family members, booked or
 /// waitlisted together. One request id per attempt, reused on retry, so a
 /// double tap or a network retry never books twice.
 class GroupBookingScreen extends ConsumerStatefulWidget {
@@ -46,38 +50,39 @@ class GroupBookingScreen extends ConsumerStatefulWidget {
 }
 
 class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
-  final _names = <TextEditingController>[];
+  final _memberIds = <int?>[];
   bool _includeSelf = true;
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
   String _requestId = newRequestId();
   // Keep the exact original payload for retries whose server outcome is unknown.
-  List<String>? _pendingNames;
+  List<int>? _pendingMemberIds;
   bool? _pendingIncludeSelf;
-
-  @override
-  void dispose() {
-    for (final c in _names) {
-      c.dispose();
-    }
-    super.dispose();
-  }
 
   Future<void> _submit() async {
     if (_busy) return;
-    final names =
-        _pendingNames ??
-        _names.map((c) => c.text.trim()).where((n) => n.isNotEmpty).toList();
+    final memberIds = _pendingMemberIds ?? _memberIds.whereType<int>().toList();
     final includeSelf = _pendingIncludeSelf ?? _includeSelf;
-    if (!includeSelf && names.isEmpty) {
-      setState(() => _error = '請至少填寫一位參加者。');
+    if (_pendingMemberIds == null) {
+      final allowed = ref.read(manageableFamilyMemberIdsProvider).value;
+      if (_memberIds.any((id) => id == null) ||
+          memberIds.toSet().length != memberIds.length ||
+          (memberIds.isNotEmpty &&
+              (allowed == null ||
+                  memberIds.any((id) => !allowed.contains(id))))) {
+        setState(() => _error = '請選擇不同且已授權的家庭會員。');
+        return;
+      }
+    }
+    if (!includeSelf && memberIds.isEmpty) {
+      setState(() => _error = '請至少選擇一位會員參加。');
       return;
     }
     setState(() {
       _busy = true;
       _error = null;
-      _pendingNames ??= List<String>.unmodifiable(names);
+      _pendingMemberIds ??= List<int>.unmodifiable(memberIds);
       _pendingIncludeSelf ??= includeSelf;
     });
     try {
@@ -87,12 +92,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             widget.eventId,
             clientRequestId: _requestId,
             includeSelf: _pendingIncludeSelf!,
-            attendeeNames: _pendingNames!,
+            attendeeMemberIds: _pendingMemberIds!,
           );
       if (!mounted) return;
       setState(() {
         _result = group;
-        _pendingNames = null;
+        _pendingMemberIds = null;
         _pendingIncludeSelf = null;
         _requestId = newRequestId(); // the next booking is a new request
       });
@@ -109,7 +114,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             error.statusCode! < 500 &&
             error.statusCode != 408 &&
             error.statusCode != 429) {
-          _pendingNames = null;
+          _pendingMemberIds = null;
           _pendingIncludeSelf = null;
           _requestId = newRequestId();
         }
@@ -122,6 +127,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   @override
   Widget build(BuildContext context) {
     final event = ref.watch(eventDetailProvider(widget.eventId));
+    final family = ref.watch(manageableFamilyMemberIdsProvider);
+    final availableIds = family.value;
     final result = _result;
 
     return Scaffold(
@@ -152,35 +159,73 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               key: const Key('group-include-self'),
               title: const Text('我本人參加'),
               value: _includeSelf,
-              onChanged: _busy || _pendingNames != null
+              onChanged: _busy || _pendingMemberIds != null
                   ? null
                   : (v) => setState(() => _includeSelf = v),
             ),
-            for (var i = 0; i < _names.length; i++)
+            if (family.hasError)
+              ErrorRetry(
+                error: ErrorBox(error: family.error!),
+                onRetry: () =>
+                    ref.invalidate(manageableFamilyMemberIdsProvider),
+              ),
+            if (availableIds != null && availableIds.isEmpty)
+              const Text('目前沒有已授權可代訂的家庭會員。'),
+            for (var i = 0; i < _memberIds.length; i++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: TextField(
-                  key: Key('group-name-$i'),
-                  controller: _names[i],
-                  enabled: !_busy && _pendingNames == null,
-                  maxLength: 80,
-                  decoration: InputDecoration(
-                    labelText: '同行者 ${i + 1} 姓名',
-                    border: const OutlineInputBorder(),
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        key: Key('group-member-$i'),
+                        value: _memberIds[i],
+                        items: [
+                          for (final id in availableIds ?? <int>[])
+                            DropdownMenuItem<int>(
+                              value: id,
+                              child: Text('會員 ID $id'),
+                            ),
+                        ],
+                        onChanged:
+                            _busy ||
+                                _pendingMemberIds != null ||
+                                availableIds == null
+                            ? null
+                            : (id) => setState(() => _memberIds[i] = id),
+                        decoration: InputDecoration(
+                          labelText: '同行會員 ${i + 1}（已授權）',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      key: Key('group-remove-member-$i'),
+                      tooltip: '移除同行會員',
+                      onPressed: _busy || _pendingMemberIds != null
+                          ? null
+                          : () => setState(() => _memberIds.removeAt(i)),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                  ],
                 ),
               ),
             OutlinedButton(
-              key: const Key('group-add-name'),
-              onPressed: _busy || _pendingNames != null || _names.length >= 9
+              key: const Key('group-add-member'),
+              onPressed:
+                  _busy ||
+                      _pendingMemberIds != null ||
+                      availableIds == null ||
+                      _memberIds.length >= availableIds.length ||
+                      _memberIds.length >= 9
                   ? null
-                  : () => setState(() => _names.add(TextEditingController())),
-              child: const Text('新增同行者'),
+                  : () => setState(() => _memberIds.add(null)),
+              child: const Text('新增已授權家庭會員'),
             ),
             const SizedBox(height: 8),
             const Text('名額不足時整組進入候補，依順序遞補；遞補成功會通知您。'),
             const SizedBox(height: 8),
-            if (_pendingNames != null && !_busy)
+            if (_pendingMemberIds != null && !_busy)
               const StatusBox(
                 label: '【結果待確認】',
                 detail:
@@ -197,7 +242,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               child: Text(
                 _busy
                     ? '處理中…'
-                    : _pendingNames != null
+                    : _pendingMemberIds != null
                     ? '重試原請求'
                     : '送出報名',
               ),

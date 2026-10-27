@@ -210,5 +210,4 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonCount(0, 'data');
         $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonCount(0, 'data');
     }
-
 }

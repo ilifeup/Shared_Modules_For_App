@@ -90,3 +90,15 @@ it('does not grandfather an unverified account during the email-to-phone switch'
     expect($unverified->fresh()->verification_grandfathered_at)->toBeNull()
         ->and(app(VerificationPolicy::class)->missing($unverified->fresh()))->toBe('phone');
 });
+
+it('does not grandfather an email verification completed after the phone-policy switch', function (): void {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create(['email_verified_at' => null, 'phone_verified_at' => null]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+
+    $member->forceFill(['email_verified_at' => now()])->save();
+
+    expect($member->fresh()->verification_grandfathered_at)->toBeNull()
+        ->and(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');
+});

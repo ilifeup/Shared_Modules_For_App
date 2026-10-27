@@ -37,7 +37,7 @@ return new class extends Migration
             $table->string('payment_reference', 120)->unique();
             $table->foreignId('used_application_id')->nullable()->unique()->constrained('family_member_applications');
             $table->timestamps();
-            $table->index(['manager_user_id', 'used_application_id']);
+            $table->index(['manager_user_id', 'used_application_id'], 'fam_paid_mgr_used_idx');
         });
         Schema::create('family_member_settings', function (Blueprint $table): void {
             $table->unsignedTinyInteger('id')->primary();

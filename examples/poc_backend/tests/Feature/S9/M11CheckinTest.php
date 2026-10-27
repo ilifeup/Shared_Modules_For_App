@@ -180,7 +180,6 @@ it('checks out by a linked location QR without GPS while keeping event binding a
         ->toBe(EventAttendance::CHECKED_OUT);
 });
 
-
 // G11 / G16 / D29 — staff scan the attendee pass; only staff see the list.
 it('lets authorised staff scan attendee passes and read the attendance list', function () {
     [$event, $member, $attendees] = checkinEvent();

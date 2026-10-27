@@ -123,7 +123,12 @@ final class FamilyApplicationController extends Controller
                 throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
             }
             if ($data['decision'] === 'approved') {
+                DB::table('users')->where('id', $application->manager_user_id)->lockForUpdate()->first();
+                $max = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
                 $count = DB::table('family_memberships')->where('manager_user_id', $application->manager_user_id)->count();
+                if ($count >= $max) {
+                    throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的上限。');
+                }
                 if ($count >= 1 && ! $application->payment_verified) {
                     throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '第二位起須先確認付款才能核准。');
                 }

@@ -155,3 +155,33 @@ it('blocks an expired or removed attachment before private file streaming', func
     $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
     $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
 });
+
+it('denies private attachment access when its comment is hidden or article withdrawn', function () {
+    \Illuminate\Support\Facades\Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $article = \App\Models\Article::query()->create([
+        'title' => 'Revocation test', 'body_html' => '<p>test</p>',
+        'status' => \App\Models\Article::STATUS_PUBLISHED,
+        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = \App\Models\ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Revocation comment', 'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+    ]);
+    $path = 'private/article-comment-attachments/revocation.pdf';
+    \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'private-pdf');
+    $attachment = \App\Models\ArticleCommentAttachment::query()->create([
+        'article_comment_id' => $comment->id, 'user_id' => $member->id,
+        'storage_path' => $path, 'original_name' => 'revocation.pdf',
+        'mime_type' => 'application/pdf', 'size_bytes' => 11,
+        'view_expires_at' => now()->addDay(),
+    ]);
+    $this->actingAs($member, 'sanctum');
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertOk();
+    $comment->update(['status' => \App\Models\ArticleComment::STATUS_HIDDEN]);
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+    $comment->update(['status' => \App\Models\ArticleComment::STATUS_VISIBLE]);
+    $article->update(['status' => \App\Models\Article::STATUS_WITHDRAWN]);
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+});

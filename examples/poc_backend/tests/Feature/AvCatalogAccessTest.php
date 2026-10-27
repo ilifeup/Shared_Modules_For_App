@@ -34,7 +34,7 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_verified_member_receives_empty_catalog_without_grants(): void
     {
-        $member = User::factory()->create();
+        $member = User::factory()->create(['verified_status' => 2]);
         Sanctum::actingAs($member);
 
         $this->getJson('/api/v1/av/tracks')->assertOk()->assertJson(['data' => []]);
@@ -43,7 +43,7 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_configured_page_or_list_denial_blocks_catalog_without_changing_legacy_default(): void
     {
-        $member = User::factory()->create();
+        $member = User::factory()->create(['verified_status' => 2]);
         Sanctum::actingAs($member);
 
         $this->getJson('/api/v1/av/tracks')->assertOk();
@@ -68,7 +68,7 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_catalog_sql_preserves_explicit_music_deny_and_active_level_grants(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2, 'email_verified_at' => now()]);
         Sanctum::actingAs($member);
         $levelId = DB::table('membership_levels')->insertGetId([
             'code' => 'av_catalog_sql', 'name' => 'Catalog SQL', 'rank' => 97,

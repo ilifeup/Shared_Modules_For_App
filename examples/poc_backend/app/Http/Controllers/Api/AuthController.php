@@ -52,6 +52,7 @@ class AuthController extends Controller
             'password' => $request->string('password')->toString(),
             'is_active' => true,
             'verified_status' => 1,
+            'FamilyUser' => false,
         ]));
 
         AuditEvent::record('member.registered', $user->id, $user);

@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\VerificationPolicy;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Target of the signed link in the verification email (route name verification.verify).

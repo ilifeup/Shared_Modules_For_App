@@ -186,6 +186,8 @@ it('requires verified payment before applying for the second family member', fun
         ->assertCreated()->assertJsonPath('data.status', 'pending');
     $id = $response->json('data.id');
     expect(DB::table('family_member_applications')->where('id', $id)->value('payment_verified'))->toBeTruthy();
+    expect((int) DB::table('family_member_paid_credits')
+        ->where('payment_reference', 'test-paid-second-1')->value('used_application_id'))->toBe((int) $id);
     $this->actingAs($admin, 'sanctum')->postJson("/api/v1/admin/family-applications/{$id}/review", [
         'decision' => 'approved',
     ])->assertOk();
@@ -193,6 +195,14 @@ it('requires verified payment before applying for the second family member', fun
         'application_id' => $id,
     ])->assertCreated();
     expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(2);
+    $this->actingAs($admin, 'sanctum')->putJson('/api/v1/admin/family-settings', [
+        'max_members' => 3,
+    ])->assertOk();
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', [
+        'name' => 'Third', 'relationship' => 'child', 'birth_date' => '2013-01-01',
+        'address' => 'Home',
+        'relationship_evidence' => UploadedFile::fake()->create('third.pdf', 20, 'application/pdf'),
+    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_PAYMENT_REQUIRED');
 });
 
 it('does not allow a family member session to apply for or manage family accounts', function () {

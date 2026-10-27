@@ -179,7 +179,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                     Expanded(
                       child: DropdownButtonFormField<int>(
                         key: Key('group-member-$i'),
-                        value: _memberIds[i],
+                        initialValue: _memberIds[i],
                         items: [
                           for (final id in availableIds ?? <int>[])
                             DropdownMenuItem<int>(

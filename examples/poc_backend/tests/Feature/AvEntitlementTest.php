@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Av\AvEntitlement;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -86,7 +87,7 @@ class AvEntitlementTest extends TestCase
         // PR #49 preserves already verified members during an email-to-phone
         // policy switch. Until both PRs share a branch, retain the standalone
         // baseline; on the combined schema, assert the grandfathered behavior.
-        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'verification_grandfathered_at')) {
+        if (Schema::hasColumn('users', 'verification_grandfathered_at')) {
             $member->refresh();
             $this->assertNotNull($member->verification_grandfathered_at);
             $this->assertTrue($service->video($member, $videoId));

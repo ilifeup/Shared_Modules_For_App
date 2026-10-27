@@ -17,3 +17,11 @@ Anonymous versus authenticated registered versus verified; inactive account; ver
 ## Cross-PR review gate
 
 This contract applies to every open Shared Modules PR, not only the AV implementation. Review PR #39/#40/#45 for check-in attendee ownership, PR #41 for article attachment reads, PR #42/#43/#47 for member-only bookings and notification recipients, PR #49 for grandfathered verification, and PR #46 for navigation and AV. A passing CI result is necessary but not sufficient; verify request authentication, database ownership, active membership, verification policy and direct API access before acceptance. Do not merge a conflicting PR until it is fixed and regression-tested.
+
+## Verification policy integration: PR #49
+
+The persisted `verification_grandfathered_at` eligibility from PR #49 must be evaluated exclusively by the shared `VerificationPolicy`. Never interpret the field as phone verification, login status, an admin role, or a new membership level. Existing grandfathered eligibility survives logout; requests without an authenticated user remain Guest. Before merging PR #46 or #49, test both changes together on the same branch to prevent a stale verification-policy implementation from overriding the other PR.
+
+## Member-only booking integration: PR #43
+
+For group bookings, `member_user_id` is an attendee reference, not an authentication token. The booking actor must come from the authenticated server request. Each attendee must be an existing active member and must be either the actor or explicitly authorized through the existing family delegation relationship. Do not infer authorization from the supplied attendee ID. Guest booking is prohibited, including admin-created bookings without a registered member. Validate authorization again for cancellation and changes, not only on initial booking.

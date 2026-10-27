@@ -160,4 +160,46 @@ final class FamilyApplicationController extends Controller
         return new JsonResponse(['data' => $rows->items(), 'meta' => ['total' => $rows->total()]]);
     }
 
+    public function settings(Request $request): JsonResponse
+    {
+        $this->requireAdmin($request);
+        $max = DB::table('family_member_settings')->where('id', 1)->value('max_members');
+        $counts = DB::table('family_memberships')->select('manager_user_id')
+            ->selectRaw('COUNT(*) as family_count')->groupBy('manager_user_id')->get();
+        return new JsonResponse(['data' => ['max_members' => (int) $max, 'free_members' => 1,
+            'members' => $counts]]);
+    }
+
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $this->requireAdmin($request);
+        $data = $request->validate(['max_members' => ['required', 'integer', 'min:1', 'max:100']]);
+        DB::table('family_member_settings')->where('id', 1)
+            ->update(['max_members' => $data['max_members'], 'updated_at' => now()]);
+        return new JsonResponse(['data' => ['max_members' => (int) $data['max_members'], 'free_members' => 1]]);
+    }
+
+    public function verifyPayment(Request $request): JsonResponse
+    {
+        $this->requireAdmin($request);
+        $data = $request->validate([
+            'manager_user_id' => ['required', 'integer', 'exists:users,id'],
+            'payment_reference' => ['required', 'string', 'max:120'],
+        ]);
+        $id = DB::table('family_member_paid_credits')->insertGetId([
+            'manager_user_id' => $data['manager_user_id'],
+            'payment_reference' => $data['payment_reference'],
+            'verified_by' => $request->user()->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return new JsonResponse(['data' => ['id' => $id, 'verified' => true]], 201);
+    }
+
+    private function requireAdmin(Request $request): void
+    {
+        if (! $request->user()->is_active || ! $request->user()->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator required.');
+        }
+    }
+
 }

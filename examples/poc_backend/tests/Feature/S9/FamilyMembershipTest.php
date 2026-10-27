@@ -23,62 +23,6 @@ it('lists only active delegations belonging to the logged-in manager', function 
         ->assertJsonPath('data.0.member_user_id', $member->id);
 });
 
-it('revokes only the current managers own delegation and writes an audit', function () {
-    $manager = User::factory()->create();
-    $stranger = User::factory()->create();
-    $member = User::factory()->create();
-    $now = now();
-    $id = DB::table('family_memberships')->insertGetId([
-        'manager_user_id' => $manager->id, 'member_user_id' => $member->id,
-        'status' => 'active', 'started_at' => $now, 'created_at' => $now, 'updated_at' => $now,
-    ]);
-    $url = "/api/v1/me/family-memberships/{$id}/revoke";
-
-    $this->actingAs($stranger, 'sanctum')->postJson($url)->assertNotFound();
-    $this->actingAs($manager, 'sanctum')->postJson($url)
-        ->assertOk()->assertJsonPath('data.status', 'revoked');
-    expect(DB::table('family_memberships')->where('id', $id)->value('status'))->toBe('revoked')
-        ->and(DB::table('family_membership_audits')->where('membership_id', $id)->where('action', 'revoked')->count())->toBe(1);
-
-    $this->actingAs($manager, 'sanctum')->postJson($url)->assertNotFound();
-});
-
-it('keeps historical bookings but blocks cancellation after delegation revocation', function () {
-    $manager = User::factory()->create();
-    $member = User::factory()->create();
-    $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
-    $now = now();
-    $membershipId = DB::table('family_memberships')->insertGetId([
-        'manager_user_id' => $manager->id,
-        'member_user_id' => $member->id,
-        'status' => 'active',
-        'started_at' => $now,
-        'created_at' => $now,
-        'updated_at' => $now,
-    ]);
-
-    $booking = $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
-        'member_user_id' => $member->id,
-        'client_request_id' => (string) Str::uuid(),
-    ])->assertCreated();
-
-    $groupId = $booking->json('data.id');
-    expect($booking->json('data.can_cancel'))->toBeTrue();
-    $this->actingAs($manager, 'sanctum')
-        ->postJson("/api/v1/me/family-memberships/{$membershipId}/revoke")
-        ->assertOk();
-
-    $this->actingAs($manager, 'sanctum')
-        ->getJson('/api/v1/me/booking-groups')
-        ->assertOk()->assertJsonPath('data.0.can_cancel', false);
-
-    $this->actingAs($manager, 'sanctum')
-        ->postJson("/api/v1/me/booking-groups/{$groupId}/cancel")
-        ->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
-
-    expect(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed');
-});
-
 it('replays by member ID after a delegated attendee changes their display name', function () {
     $manager = User::factory()->create();
     $member = User::factory()->create(['name' => '原姓名']);
@@ -107,34 +51,6 @@ it('replays by member ID after a delegated attendee changes their display name',
         ->and(DB::table('event_booking_attendees')->where('event_booking_group_id', $first->json('data.id'))->value('name'))->toBe('原姓名');
 });
 
-it('rejects idempotent booking replay after family delegation is revoked', function () {
-    $manager = User::factory()->create();
-    $member = User::factory()->create();
-    $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
-    $now = now();
-    $membershipId = DB::table('family_memberships')->insertGetId([
-        'manager_user_id' => $manager->id,
-        'member_user_id' => $member->id,
-        'status' => 'active',
-        'started_at' => $now,
-        'created_at' => $now,
-        'updated_at' => $now,
-    ]);
-    $payload = [
-        'member_user_id' => $member->id,
-        'client_request_id' => (string) Str::uuid(),
-    ];
-    $url = "/api/v1/events/{$event->id}/booking-groups";
-    $this->actingAs($manager, 'sanctum')->postJson($url, $payload)->assertCreated();
-    $this->actingAs($manager, 'sanctum')->postJson($url, $payload)->assertOk();
-    $this->actingAs($manager, 'sanctum')
-        ->postJson("/api/v1/me/family-memberships/{$membershipId}/revoke")
-        ->assertOk();
-    $this->actingAs($manager, 'sanctum')->postJson($url, $payload)
-        ->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
-    expect(DB::table('event_booking_groups')->where('client_request_id', $payload['client_request_id'])->count())->toBe(1);
-});
-
 it('does not reveal whether an unauthorized family member ID exists', function () {
     $manager = User::factory()->create();
     $stranger = User::factory()->create();
@@ -150,3 +66,30 @@ it('does not reveal whether an unauthorized family member ID exists', function (
 
     expect(DB::table('event_booking_groups')->count())->toBe(0);
 });
+
+it('rejects the forbidden client family unlink endpoint', function () {
+    $manager = User::factory()->create();
+    $this->actingAs($manager, 'sanctum')
+        ->postJson('/api/v1/me/family-memberships/1/revoke')
+        ->assertNotFound();
+});
+
+it('creates only three free verified family members and rejects a fourth', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $url = '/api/v1/me/family-memberships';
+    $payload = [
+        'name' => '家庭會員', 'relationship' => 'child',
+        'birth_date' => '2010-01-01', 'address' => '台中市',
+    ];
+    $this->actingAs($manager, 'sanctum');
+    for ($i = 1; $i <= 3; $i++) {
+        $response = $this->postJson($url, $payload)->assertCreated()
+            ->assertJsonPath('data.verified_status', 2);
+        expect(DB::table('users')->where('id', $response->json('data.member_user_id'))
+            ->value('verified_status'))->toBe(2);
+    }
+    $this->postJson($url, $payload)
+        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_MEMBER_LIMIT_REACHED');
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(3);
+});
+

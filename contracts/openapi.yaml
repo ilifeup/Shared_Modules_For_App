@@ -42,6 +42,60 @@ tags:
 security:
   - bearer: []
 paths:
+  /av/tracks:
+    get:
+      tags: [av]
+      summary: List published music tracks the verified member may access
+      operationId: avTracks
+      x-verification: required
+      responses:
+        '200':
+          description: Authorized music track catalog, without encrypted storage paths
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, category]
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        category: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /av/videos:
+    get:
+      tags: [av]
+      summary: List published YouTube videos the verified member may access
+      operationId: avVideos
+      x-verification: required
+      responses:
+        '200':
+          description: Authorized video catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, youtube_id]
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        youtube_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /health:
     get:
       tags: [system]

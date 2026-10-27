@@ -33,6 +33,17 @@ final class FamilyMembershipController extends Controller
         ]);
 
         $result = DB::transaction(function () use ($manager, $data): array {
+            // Serialize creation per manager; counting without this row lock allows
+            // concurrent requests to bypass the three-member free allowance.
+            User::query()->whereKey($manager->id)->lockForUpdate()->firstOrFail();
+            $existingCount = DB::table('family_memberships')
+                ->where('manager_user_id', $manager->id)->count();
+            // External Services paid expansion is not implemented/authorized yet.
+            // Never assume payment from a client-supplied flag or stale UI.
+            if ($existingCount >= 3) {
+                throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '免費家庭會員上限為 3 位；增加名額需先啟用 External Services 付費擴充。');
+            }
+
             $now = now();
             // Trusted family creation sets protected membership/login flags atomically.
             $member = new User;
@@ -79,44 +90,6 @@ final class FamilyMembershipController extends Controller
         });
 
         return new JsonResponse(['data' => $result], 201);
-    }
-
-    /**
-     * Current manager may voluntarily revoke delegation. Historical bookings stay.
-     * A member cannot be reassigned by this endpoint; transfer is an admin workflow.
-     */
-    public function revoke(Request $request, int $id): JsonResponse
-    {
-        $actor = $request->user();
-        if ((int) $actor->verified_status !== 2 || ! $actor->is_active) {
-            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證會員使用。');
-        }
-        DB::transaction(function () use ($id, $actor): void {
-            $membership = DB::table('family_memberships')->where('id', $id)->lockForUpdate()->first();
-            if ($membership === null || $membership->status !== 'active'
-                || (int) $membership->manager_user_id !== (int) $actor->id) {
-                abort(404);
-            }
-
-            $now = now();
-            DB::table('family_memberships')->where('id', $id)->update([
-                'status' => 'revoked',
-                'ended_at' => $now,
-                'revoked_by' => $actor->id,
-                'updated_at' => $now,
-            ]);
-            DB::table('family_membership_audits')->insert([
-                'membership_id' => $id,
-                'actor_user_id' => $actor->id,
-                'action' => 'revoked',
-                'before_data' => json_encode(['status' => 'active'], JSON_THROW_ON_ERROR),
-                'after_data' => json_encode(['status' => 'revoked'], JSON_THROW_ON_ERROR),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-        });
-
-        return new JsonResponse(['data' => ['id' => $id, 'status' => 'revoked']]);
     }
 
     /**

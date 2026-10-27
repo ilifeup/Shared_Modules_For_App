@@ -10,7 +10,7 @@ use App\Models\User;
  * - phone_required: phone OTP verification may grant membership.
  *
  * The selected contact workflow is not a membership status. Only the
- * persisted users.membership_verified_at determines verified membership.
+ * persisted users.verified_status determines verified membership.
  * Changing the workflow never revokes an existing verified member.
  */
 final class VerificationPolicy

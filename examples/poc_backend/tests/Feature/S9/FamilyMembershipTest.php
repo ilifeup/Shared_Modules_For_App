@@ -194,3 +194,14 @@ it('requires verified payment before applying for the second family member', fun
     ])->assertCreated();
     expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(2);
 });
+
+it('does not allow a family member session to apply for or manage family accounts', function () {
+    $family = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    $this->actingAs($family, 'sanctum')->getJson('/api/v1/me/family-memberships')
+        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+    $this->actingAs($family, 'sanctum')->getJson('/api/v1/me/family-applications')
+        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+    $this->actingAs($family, 'sanctum')->postJson('/api/v1/me/family-memberships', [
+        'application_id' => 1,
+    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+});

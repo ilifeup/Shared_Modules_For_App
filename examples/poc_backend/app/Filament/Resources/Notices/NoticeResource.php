@@ -54,7 +54,7 @@ class NoticeResource extends Resource
      */
     public static function canDelete(Model $record): bool
     {
-        return $record instanceof Notice && $record->status === Notice::STATUS_DRAFT;
+        return static::canViewAny() && $record instanceof Notice && $record->status === Notice::STATUS_DRAFT;
     }
 
     public static function form(Schema $schema): Schema

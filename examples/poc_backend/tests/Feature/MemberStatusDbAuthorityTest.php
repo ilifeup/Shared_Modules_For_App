@@ -23,6 +23,21 @@ it('uses only persisted membership status to authorize a registered user', funct
         ->and(app(VerificationPolicy::class)->isSatisfiedBy($pending->fresh()))->toBeFalse();
 });
 
+it('does not mistake a verified contact for verified membership', function (): void {
+    app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create([
+        'verified_status' => 1,
+        'email_verified_at' => now(),
+    ]);
+
+    expect(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('email')
+        ->and(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeFalse();
+
+    app(VerificationPolicy::class)->grantIfEligible($member);
+    expect($member->fresh()->verified_status)->toBe(2)
+        ->and(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeTrue();
+});
+
 it('never changes stored membership when contact verification policy changes', function (): void {
     $settings = app(Settings::class);
     $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);

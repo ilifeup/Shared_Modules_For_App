@@ -20,7 +20,9 @@ Status: **IN PROGRESS / NOT ACCEPTED / DO NOT MERGE** (2026-10-27).
 
 ## Remaining evidence required
 
-- [ ] PR #47 latest Backend, Mobile and documentation CI all pass at the same head SHA.
+Current main comparison (2026-10-27): PR #47 is 26 commits ahead and 23 behind main; GitHub reports mergeable, but the branch must still be checked against the latest main. This gate remains NOT ACCEPTED.
+
+- [x] PR #47 Backend, Mobile and documentation CI passed at head `53cd991a7eb4078eb393a7c9d020a23f0c1faeb5` (2026-10-27). This is branch-level evidence, not latest-main integration acceptance.
 - [ ] Diff PR #43's latest head against the #47 base and integrate all applicable fixes; run guest-inbox and guest-booking tests on the final combined tree.
 - [ ] Review PR #42's latest head against #47's durable job implementation and tests; resolve conflicts explicitly.
 - [ ] Run MySQL tests for notification replay, missing booking/member, cancellation, waitlist promotion and Google worker retry.

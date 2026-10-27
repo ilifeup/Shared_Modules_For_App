@@ -102,3 +102,21 @@ it('does not grandfather an email verification completed after the phone-policy 
     expect($member->fresh()->verification_grandfathered_at)->toBeNull()
         ->and(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');
 });
+
+it('requires phone verification after an administrator revokes grandfathered eligibility', function (): void {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => null,
+    ]);
+
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+    expect(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeTrue();
+
+    // Simulate the persisted effect of a future administrator revocation action.
+    // The administrator UI and audit trail are not implemented by this test.
+    $member->forceFill(['verification_grandfathered_at' => null])->save();
+
+    expect(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');
+});

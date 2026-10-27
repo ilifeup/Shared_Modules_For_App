@@ -19,10 +19,12 @@ class EmailVerificationController extends Controller
     {
         $user = User::query()->findOrFail($id);
 
-        abort_unless($user->email !== null && hash_equals(sha1($user->getEmailForVerification()), $hash), 403);
-
-        $newlyVerified = DB::transaction(function () use ($user): bool {
+        $newlyVerified = DB::transaction(function () use ($user, $hash): bool {
             $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            // Verify against the locked row: a concurrent email change must
+            // invalidate the old signed URL before any membership is granted.
+            abort_unless($fresh->email !== null
+                && hash_equals(sha1($fresh->getEmailForVerification()), $hash), 403);
             $changed = ! $fresh->hasVerifiedEmail();
             if ($changed) {
                 $fresh->markEmailAsVerified();

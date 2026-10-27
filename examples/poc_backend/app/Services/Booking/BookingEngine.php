@@ -90,6 +90,7 @@ final class BookingEngine
         try {
             $booking = $this->transaction(function () use ($event, $member): EventBooking {
                 $locked = $this->lock($event);
+                $this->assertActiveVerifiedMember($member);
 
                 if ($this->activeAttendeeOf($locked, $member) !== null) {
                     throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
@@ -521,6 +522,13 @@ final class BookingEngine
 
     // ---- internals ------------------------------------------------------------------
 
+    private function assertActiveVerifiedMember(User $member): void
+    {
+        if (! User::query()->whereKey($member->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '僅開放已驗證且啟用的會員預約。');
+        }
+    }
+
     private function validateRequest(CalendarEvent $event, BookingRequest $request): void
     {
         $seats = count($request->attendees);
@@ -537,8 +545,9 @@ final class BookingEngine
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         }
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
-            throw new ApiException(422, 'INVALID_BOOKER', '預約者必須是有效的正式會員。');
+        $this->assertActiveVerifiedMember($request->booker);
+        if ($seats !== 1 || (int) ($request->attendees[0]['member_user_id'] ?? 0) !== (int) $request->booker->id) {
+            throw new ApiException(422, 'SELF_BOOKING_ONLY', 'MVP 僅允許會員預約本人一個名額。');
         }
 
         // Enforce attendee identities for every caller, including administrators.
@@ -551,7 +560,7 @@ final class BookingEngine
                 throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
             }
             foreach ($memberIds as $memberId) {
-                if (! User::query()->whereKey($memberId)->where('is_active', true)->exists()) {
+                if (! User::query()->whereKey($memberId)->where('is_active', true)->where('verified_status', 2)->exists()) {
                     throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
                 }
                 // Do not permit arbitrary proxy booking before verified family delegation exists.
@@ -694,12 +703,10 @@ final class BookingEngine
 
         // An idempotent replay is still a read of protected booking details.
         // Recheck current identity/delegation; revocation must take effect immediately.
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
-            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '預約者已停用。');
-        }
+        $this->assertActiveVerifiedMember($request->booker);
         if (! $request->byAdmin) {
             foreach ($existing->attendees()->get() as $attendee) {
-                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->first();
+                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->where('verified_status', 2)->first();
                 if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
                     throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
                 }

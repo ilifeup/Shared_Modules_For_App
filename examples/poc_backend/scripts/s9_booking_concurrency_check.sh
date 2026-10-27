@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # S9 M08 real concurrency check (CI only, synthetic data): 100 parallel HTTP requests
-# mixing the S6 single-booking API and the S9 group-booking API (plus parallel
+# mixing the S6 single-booking API and the S9 single-member API (plus parallel
 # idempotent retries) against `php artisan serve` with several PHP workers and MySQL.
 # Verifies the one seat ledger: no overbooking, one active place per member, unique
 # FIFO sequences, replays return the same group, and promotion follows the queue.
@@ -13,7 +13,7 @@ OUT="$(mktemp -d)"
 # Fail early on fixture setup errors and print diagnostics before cleanup.
 trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::error title=S9 setup::failed at line $FAILED_LINE (exit $rc)"; for f in "$OUT"/cache.log "$OUT"/fixture.log; do [ -f "$f" ] && tail -n 50 "$f"; done; fi; rm -rf "$OUT"' EXIT
 LEGACY=50     # S6 POST /events/{id}/bookings (1 seat each)
-GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (self + 1 named attendee = 2 seats)
+GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (one member, one seat)
 RETRIES=10    # the first RETRIES groups send the same client_request_id twice in parallel
 CAPACITY=20
 export OUT LEGACY GROUP_COUNT CAPACITY
@@ -33,13 +33,7 @@ file_put_contents(getenv("OUT")."/legacy", implode("\n", array_map(fn () => $mak
 $groups = [];
 foreach (range(1, (int) getenv("GROUP_COUNT")) as $i) {
     $booker = App\Models\User::factory()->create();
-    $attendee = App\Models\User::factory()->create();
-    \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
-        "manager_user_id" => $booker->id, "member_user_id" => $attendee->id,
-        "relationship" => "family", "status" => "active", "started_at" => now(),
-        "created_by" => $booker->id, "created_at" => now(), "updated_at" => now(),
-    ]);
-    $groups[] = $booker->createToken("ci")->plainTextToken." ".$attendee->id;
+    $groups[] = $booker->createToken("ci")->plainTextToken;
 }
 file_put_contents(getenv("OUT")."/groups", implode("\n", $groups));
 ' > "$OUT/fixture.log" 2>&1
@@ -59,10 +53,10 @@ while IFS= read -r token || [ -n "$token" ]; do
   pids+=("$!")
 done < "$OUT/legacy"
 g=0
-while read -r token attendee_id || [ -n "$token" ]; do
+while IFS= read -r token || [ -n "$token" ]; do
   g=$((g + 1))
   uuid="$(cat /proc/sys/kernel/random/uuid)"
-  body="{\"include_self\":true,\"attendees\":[{\"member_user_id\":$attendee_id}],\"client_request_id\":\"$uuid\"}"
+  body="{\"client_request_id\":\"$uuid\"}"
   copies=1; [ "$g" -le "$RETRIES" ] && copies=2
   for c in $(seq 1 "$copies"); do
     curl -sS --max-time 60 -o "$OUT/g$g-$c.json" -w '%{http_code}' -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
@@ -114,7 +108,7 @@ echo "ledger: $state"
 php -r '$s = json_decode($argv[1], true); $cap = (int) $argv[2]; $groups = (int) $argv[3]; $legacyOk = (int) $argv[4];
   $errors = [];
   if ($s["seats"] > $cap || $s["seats"] < 0) $errors[] = "invalid confirmed seats {$s["seats"]} for capacity $cap";
-  // Strict FIFO may legitimately leave one seat unused when the head group needs two.
+  // Single-member FIFO should fill every available seat when a waiting member exists.
   if ($s["seats"] < $cap && ($s["head_seats"] === null || $s["head_seats"] <= $cap - $s["seats"])) $errors[] = "head of waitlist should have been promoted";
   if ($s["dup_members"] !== 0) $errors[] = "members with two active places: {$s["dup_members"]}";
   if (! $s["seq_unique"]) $errors[] = "duplicate waitlist sequence";
@@ -124,7 +118,7 @@ php -r '$s = json_decode($argv[1], true); $cap = (int) $argv[2]; $groups = (int)
   exit($errors === [] ? 0 : 1);' "$state" "$CAPACITY" "$g" "$legacy_ok"
 
 # Strict FIFO promotion: raise the capacity by 6 seats (three 2-seat groups); the waitlist
-# head must be promoted first and no later group may jump ahead.
+# head must be promoted first and no later member may jump ahead.
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $engine = app(App\Services\Booking\BookingEngine::class);
@@ -135,7 +129,7 @@ $engine->changeCapacity(App\Models\CalendarEvent::query()->findOrFail($id), (int
 $promoted = App\Models\EventBookingGroup::query()->whereIn("id", $before)->where("status", "confirmed")->pluck("id")->all();
 $expected = array_slice($before, 0, count($promoted)); sort($expected);
 sort($promoted);
-$ok = count($promoted) === 3 && array_map("intval", $promoted) == array_map("intval", $expected);
+$ok = count($promoted) === 6 && array_map("intval", $promoted) == array_map("intval", $expected);
 $seats = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->where("status", "confirmed")->count();
 echo json_encode(["waiting_before" => count($before), "promoted" => count($promoted), "fifo" => $ok, "seats" => $seats]), PHP_EOL;
 ' | tail -n 1 > "$OUT/fifo.json"

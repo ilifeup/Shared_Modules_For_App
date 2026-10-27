@@ -458,8 +458,11 @@ final class BookingEngine
             // New MVP bookings have exactly one verified users.id. Historical
             // guest/group records must never be promoted into a valid seat.
             $attendees = $group->attendees()->get();
-            if ($permanent === null && ($group->seat_count !== 1 || $attendees->count() !== 1)) {
-                $permanent = 'invalid_legacy_group';
+            if ($permanent === null && ($group->status !== EventBookingGroup::STATUS_WAITLISTED
+                || $group->seat_count !== 1 || $attendees->count() !== 1
+                || $attendees->first()?->status !== EventBookingAttendee::STATUS_WAITLISTED
+                || $attendees->first()?->active != 1)) {
+                $permanent = 'invalid_waitlist_entry';
             }
             if ($permanent === null) {
                 $memberId = $attendees->first()?->member_user_id;

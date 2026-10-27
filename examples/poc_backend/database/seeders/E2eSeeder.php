@@ -24,7 +24,7 @@ class E2eSeeder extends Seeder
             'email' => 'e2e@example.com',
             'password' => (string) env('E2E_MEMBER_PASSWORD', 'e2e-synthetic-password'),
             'is_active' => true,
-        ])->markEmailAsVerified();
+        ])->forceFill(['verified_status' => 2, 'email_verified_at' => now()])->save();
 
         Notice::query()->create([
             'title' => 'E2E 已發布公告',

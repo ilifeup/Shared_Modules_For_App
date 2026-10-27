@@ -449,6 +449,19 @@ final class BookingEngine
             $group = EventBookingGroup::query()->whereKey($head->event_booking_group_id)->lockForUpdate()->firstOrFail();
 
             $permanent = $this->permanentFailure($group);
+            // New MVP bookings have exactly one verified users.id. Historical
+            // guest/group records must never be promoted into a valid seat.
+            $attendees = $group->attendees()->get();
+            if ($permanent === null && ($group->seat_count !== 1 || $attendees->count() !== 1)) {
+                $permanent = 'invalid_legacy_group';
+            }
+            if ($permanent === null) {
+                $memberId = $attendees->first()?->member_user_id;
+                $member = $memberId === null ? null : User::query()->find($memberId);
+                if ($member === null || ! $member->is_active || (int) $member->verified_status !== 2) {
+                    $permanent = 'attendee_unverified';
+                }
+            }
             if ($permanent !== null) {
                 $head->forceFill(['status' => EventWaitlistEntry::SKIPPED, 'skip_reason' => $permanent, 'resolved_at' => now()])->save();
                 $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent);

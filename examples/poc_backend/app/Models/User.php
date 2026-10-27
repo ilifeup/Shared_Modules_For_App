@@ -47,6 +47,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'email_verified_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'verification_grandfathered_at' => 'datetime',
+            'membership_verified_at' => 'datetime',
             'is_active' => 'boolean',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
@@ -64,6 +65,12 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->hasRole(self::ADMIN_ROLE);
+    }
+
+    /** Persistent DB authority for registered verified membership. */
+    public function isVerifiedMember(): bool
+    {
+        return $this->membership_verified_at !== null;
     }
 
     public function hasVerifiedPhone(): bool

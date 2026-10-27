@@ -23,24 +23,21 @@ final class FamilyMembershipController extends Controller
             throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證的一般會員使用。');
         }
 
-        // Family creation is suspended until an administrator-approved
-        // relationship-evidence application can be verified server-side.
-        // Do not treat contact verification or a client flag as approval.
-        throw new ApiException(403, 'FAMILY_APPROVAL_REQUIRED', '須先提交家庭關係證明並經管理員核准，才能新增家庭會員。');
-
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'relationship' => ['nullable', 'string', 'max:40'],
-            'birth_date' => ['required', 'date', 'before_or_equal:today'],
-            'address' => ['required', 'string', 'max:500'],
-            'contact_phone' => ['nullable', 'string', 'max:40'],
-            'contact_email' => ['nullable', 'email', 'max:255'],
+            'application_id' => ['required', 'integer', 'min:1'],
         ]);
 
         $result = DB::transaction(function () use ($manager, $data): array {
             // Serialize creation per manager; counting without this row lock allows
             // concurrent requests to bypass the one-member free allowance.
             User::query()->whereKey($manager->id)->lockForUpdate()->firstOrFail();
+            $application = DB::table('family_member_applications')
+                ->where('id', $data['application_id'])
+                ->where('manager_user_id', $manager->id)
+                ->lockForUpdate()->first();
+            if ($application === null || $application->status !== 'approved' || $application->created_member_user_id !== null) {
+                throw new ApiException(403, 'FAMILY_APPROVAL_REQUIRED', 'A valid unused administrator-approved application is required.');
+            }
             $existingCount = DB::table('family_memberships')
                 ->where('manager_user_id', $manager->id)->count();
             // External Services paid expansion is not implemented/authorized yet.
@@ -53,8 +50,8 @@ final class FamilyMembershipController extends Controller
             // Trusted family creation sets protected membership/login flags atomically.
             $member = new User;
             $member->forceFill([
-                'name' => trim($data['name']),
-                'display_name' => mb_substr(trim($data['name']), 0, 80),
+                'name' => trim($application->member_name),
+                'display_name' => mb_substr(trim($application->member_name), 0, 80),
                 'email' => null,
                 'phone_e164' => null,
                 'password' => Str::random(64),
@@ -65,7 +62,7 @@ final class FamilyMembershipController extends Controller
             $membershipId = DB::table('family_memberships')->insertGetId([
                 'member_user_id' => $member->id,
                 'manager_user_id' => $manager->id,
-                'relationship' => $data['relationship'] ?? null,
+                'relationship' => $application->relationship,
                 'status' => 'active',
                 'started_at' => $now,
                 'created_by' => $manager->id,
@@ -74,10 +71,10 @@ final class FamilyMembershipController extends Controller
             ]);
             DB::table('family_member_profiles')->insert([
                 'member_user_id' => $member->id,
-                'birth_date' => $data['birth_date'],
-                'address' => trim($data['address']),
-                'contact_phone' => $data['contact_phone'] ?? null,
-                'contact_email' => $data['contact_email'] ?? null,
+                'birth_date' => $application->birth_date,
+                'address' => trim($application->address),
+                'contact_phone' => $application->contact_phone,
+                'contact_email' => $application->contact_email,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
@@ -90,6 +87,8 @@ final class FamilyMembershipController extends Controller
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+
+            DB::table('family_member_applications')->where('id', $application->id)->update(['created_member_user_id' => $member->id, 'updated_at' => now()]);
 
             return ['id' => $membershipId, 'member_user_id' => $member->id, 'verified_status' => 2, 'FamilyUser' => true];
         });

@@ -32,8 +32,8 @@ class EmailVerificationController extends Controller
 
             $locked->markEmailAsVerified();
             if (app(Settings::class)->string('verification_policy') === Settings::POLICY_EMAIL
-                && $locked->membership_verified_at === null) {
-                $locked->forceFill(['membership_verified_at' => now()])->save();
+                && (int) $locked->verified_status !== 2) {
+                $locked->forceFill(['verified_status' => 2])->save();
             }
 
             return true;

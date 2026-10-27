@@ -33,6 +33,39 @@ final class ContentAccessPolicy
         return $topic === null || $this->allowsResource($user, 'topic', $page.'/'.$list.'/'.$topic);
     }
 
+    /**
+     * Additive enforcement for existing endpoints: an unconfigured layer keeps
+     * its legacy behavior. Once configured, every ancestor must explicitly allow.
+     * Never substitutes for per-item entitlements or verification middleware.
+     */
+    public function allowsWhenConfigured(?User $user, string $page, ?string $list = null, ?string $topic = null): bool
+    {
+        if ($topic !== null && $list === null) {
+            throw new InvalidArgumentException('Topic requires a parent list.');
+        }
+
+        $resources = [['page', $page]];
+        if ($list !== null) {
+            $resources[] = ['list', $page.'/'.$list];
+        }
+        if ($topic !== null) {
+            $resources[] = ['topic', $page.'/'.$list.'/'.$topic];
+        }
+
+        foreach ($resources as [$scope, $code]) {
+            $configured = DB::table('app_content_access_rules')
+                ->where('scope', $scope)
+                ->where('resource_code', $code)
+                ->exists();
+
+            if ($configured && ! $this->allowsResource($user, $scope, $code)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function allowsResource(?User $user, string $scope, string $code): bool
     {
         if (! in_array($scope, ['page', 'list', 'topic'], true)) {

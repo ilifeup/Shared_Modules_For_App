@@ -118,6 +118,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
 
     // Family delegation: current manager may list or voluntarily revoke authority.
     Route::get('/me/family-memberships', [FamilyMembershipController::class, 'index']);
+    Route::put('/me/family-members/{memberId}/profile', [FamilyMembershipController::class, 'saveProfile'])->whereNumber('memberId')->middleware('throttle:auth-10');
     Route::post('/me/family-memberships/{id}/revoke', [FamilyMembershipController::class, 'revoke'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S9 M08 members-only group bookings and waitlist (one seat engine with S6).

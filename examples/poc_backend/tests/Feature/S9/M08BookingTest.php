@@ -136,6 +136,39 @@ it('skips a waitlisted member whose database qualification was revoked', functio
         ->and(EventBookingGroup::query()->where('booker_user_id', $next->id)->value('status'))->toBe('confirmed');
 });
 
+it('skips a waitlisted attendee whose verified membership was revoked', function () {
+    $event = s9Event(['booking_capacity' => 1]);
+    $holder = User::factory()->create();
+    groupBook($event, $holder)->assertJsonPath('data.status', 'confirmed');
+
+    $manager = User::factory()->create();
+    $dependent = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    \Illuminate\Support\Facades\DB::table('family_memberships')->insert([
+        'member_user_id' => $dependent->id,
+        'manager_user_id' => $manager->id,
+        'relationship' => 'child',
+        'status' => 'active',
+        'started_at' => now(),
+        'created_by' => $manager->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+        'member_user_id' => $dependent->id,
+    ])->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+
+    $next = User::factory()->create();
+    groupBook($event, $next)->assertJsonPath('data.status', 'waitlisted');
+    $dependent->forceFill(['verified_status' => 1])->save();
+
+    $group = EventBookingGroup::query()->where('booker_user_id', $holder->id)->firstOrFail();
+    $this->actingAs($holder, 'sanctum')->postJson("/api/v1/me/booking-groups/{$group->id}/cancel")->assertOk();
+
+    expect(EventWaitlistEntry::query()->whereHas('group', fn ($q) => $q->where('booker_user_id', $manager->id))->value('skip_reason'))->toBe('attendee_unverified')
+        ->and(EventBookingGroup::query()->where('booker_user_id', $next->id)->value('status'))->toBe('confirmed');
+});
+
 // G05 — per-booking seat limit, proxy rule, cancel deadline (relative, recomputed).
 it('rejects legacy multi-attendee requests and enforces cancellation deadlines', function () {
     $event = s9Event(['booking_capacity' => 10]);

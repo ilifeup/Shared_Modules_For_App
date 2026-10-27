@@ -152,7 +152,7 @@ final class PhoneOtpService
             if ($purpose === PhoneOtp::PURPOSE_VERIFY) {
                 $user->forceFill([
                     'phone_verified_at' => now(),
-                    'membership_verified_at' => $user->membership_verified_at ?? ($this->settings->string('verification_policy') === Settings::POLICY_PHONE ? now() : null),
+                    'verified_status' => $this->settings->string('verification_policy') === Settings::POLICY_PHONE ? 2 : $user->verified_status,
                 ])->save();
             }
 

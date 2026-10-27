@@ -190,3 +190,35 @@ it('denies private attachment access when its comment is hidden or article withd
     $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
     $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
 });
+
+it('rejects persisted attachment paths pointing outside the private attachment directory', function () {
+    Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $article = Article::query()->create([
+        'title' => 'Attachment path isolation', 'body_html' => '<p>test</p>',
+        'author_name' => 'Test Author', 'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Path isolation', 'status' => ArticleComment::STATUS_VISIBLE,
+    ]);
+    Storage::disk('local')->put('private/unrelated-document.pdf', 'not-an-attachment');
+    $attachment = ArticleCommentAttachment::query()->create([
+        'article_comment_id' => $comment->id, 'user_id' => $member->id,
+        'storage_path' => 'private/unrelated-document.pdf',
+        'original_name' => 'unrelated-document.pdf',
+        'mime_type' => 'application/pdf', 'size_bytes' => 17,
+        'view_expires_at' => now()->addDay(),
+    ]);
+
+    $this->actingAs($member, 'sanctum');
+    expect($attachment->fresh()->isViewable())->toBeFalse();
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+
+    $attachment->update(['storage_path' => 'private/article-comment-attachments/../unrelated-document.pdf']);
+    expect($attachment->fresh()->isViewable())->toBeFalse();
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+});

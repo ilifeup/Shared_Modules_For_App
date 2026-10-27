@@ -33,6 +33,13 @@ class ArticleCommentAttachment extends Model
     {
         return $this->removed_at === null
             && $this->view_expires_at !== null
-            && $this->view_expires_at->isFuture();
+            && $this->view_expires_at->isFuture()
+            // Only files written by the private comment-attachment uploader may be served.
+            // A malformed persisted path must never expose another local-disk file.
+            && is_string($this->storage_path)
+            && str_starts_with($this->storage_path, 'private/article-comment-attachments/')
+            && strlen($this->storage_path) > strlen('private/article-comment-attachments/')
+            && ! str_contains($this->storage_path, '..')
+            && ! str_contains($this->storage_path, '\\');
     }
 }

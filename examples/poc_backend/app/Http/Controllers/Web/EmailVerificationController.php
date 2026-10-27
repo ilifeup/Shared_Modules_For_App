@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Settings;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Target of the signed link in the verification email (route name verification.verify).
@@ -20,12 +21,22 @@ class EmailVerificationController extends Controller
 
         abort_unless($user->email !== null && hash_equals(sha1($user->getEmailForVerification()), $hash), 403);
 
-        if (! $user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-            if (app(Settings::class)->string('verification_policy') === Settings::POLICY_EMAIL
-                && $user->membership_verified_at === null) {
-                $user->forceFill(['membership_verified_at' => now()])->save();
+        $newlyVerified = DB::transaction(function () use ($user): bool {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if ($locked->hasVerifiedEmail()) {
+                return false;
             }
+
+            $locked->markEmailAsVerified();
+            if (app(Settings::class)->string('verification_policy') === Settings::POLICY_EMAIL
+                && $locked->membership_verified_at === null) {
+                $locked->forceFill(['membership_verified_at' => now()])->save();
+            }
+
+            return true;
+        });
+
+        if ($newlyVerified) {
             event(new Verified($user));
         }
 

@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\MemberLevelAssignment;
-use App\Models\MembershipLevel;
 use App\Models\User;
 use App\Services\Av\AvEntitlement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,10 +16,10 @@ class AvEntitlementTest extends TestCase
     public function test_track_level_grant_and_explicit_member_override(): void
     {
         $member = User::factory()->create(['is_active' => true]);
-        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_test'], ['name' => 'AV Test']);
+        $levelId = DB::table('membership_levels')->insertGetId(['code' => 'av_test', 'name' => 'AV Test', 'rank' => 90, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
         MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
-            'membership_level_id' => $level->id,
+            'membership_level_id' => $levelId,
             'starts_at' => now()->subDay(),
             'reason' => 'test',
         ]);
@@ -56,10 +55,10 @@ class AvEntitlementTest extends TestCase
     public function test_video_access_rejects_expired_and_revoked_levels(): void
     {
         $member = User::factory()->create(['is_active' => true]);
-        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_video_test'], ['name' => 'AV Video Test']);
+        $levelId = DB::table('membership_levels')->insertGetId(['code' => 'av_video_test', 'name' => 'AV Video Test', 'rank' => 91, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
         $assignment = MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
-            'membership_level_id' => $level->id,
+            'membership_level_id' => $levelId,
             'starts_at' => now()->subDays(3),
             'ends_at' => now()->addDay(),
             'reason' => 'test',

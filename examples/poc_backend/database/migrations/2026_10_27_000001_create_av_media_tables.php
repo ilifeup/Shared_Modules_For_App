@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -79,7 +80,7 @@ return new class extends Migration
         // A placement must reference exactly one valid target. MySQL 8.4
         // enforces CHECK constraints, including for direct DB writes.
         if (Schema::getConnection()->getDriverName() === 'mysql') {
-            \Illuminate\Support\Facades\DB::statement('ALTER TABLE av_page_placements ADD CONSTRAINT av_placement_one_target CHECK ((series_id IS NOT NULL AND video_id IS NULL) OR (series_id IS NULL AND video_id IS NOT NULL))');
+            DB::statement('ALTER TABLE av_page_placements ADD CONSTRAINT av_placement_one_target CHECK ((series_id IS NOT NULL AND video_id IS NULL) OR (series_id IS NULL AND video_id IS NOT NULL))');
         }
     }
 

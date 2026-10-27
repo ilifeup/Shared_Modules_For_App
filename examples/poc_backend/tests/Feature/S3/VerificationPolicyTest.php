@@ -152,4 +152,3 @@ it('allows only an administrator to revoke grandfathering and records the member
     $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
     expect($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull();
 });
-

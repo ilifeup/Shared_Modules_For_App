@@ -40,6 +40,18 @@ class AuthController extends Controller
     }
 
     /**
+     * Public current App notices. No per-user acceptance data is stored.
+     */
+    public function notices(Settings $settings): JsonResponse
+    {
+        return new JsonResponse(['data' => [
+            'guest_disclaimer' => $settings->string('guest_disclaimer_text'),
+            'registration_privacy' => $settings->string('registration_privacy_text'),
+            'verification_privacy' => $settings->string('verification_privacy_text'),
+        ]]);
+    }
+
+    /**
      * POST /api/v1/auth/register — name, email, Taiwan mobile and password are all required.
      */
     public function register(RegisterRequest $request): JsonResponse

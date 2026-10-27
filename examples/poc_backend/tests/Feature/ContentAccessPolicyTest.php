@@ -84,3 +84,27 @@ it('respects existing settings.manage permission without creating another admini
         ->save($admin->refresh(), 'page', 'av', 'guest', true))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
+
+it('grants only currently active membership levels and rejects expired or revoked levels', function (): void {
+    $member = User::factory()->create();
+    $level = \App\Models\MembershipLevel::query()->where('code', \App\Models\MembershipLevel::VIP)->firstOrFail();
+    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $admin = makeAdmin();
+    $manager->save($admin, 'page', 'av', 'level:'.$level->id, true);
+
+    expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeFalse();
+
+    $assignment = \App\Models\MemberLevelAssignment::query()->create([
+        'user_id' => $member->id,
+        'membership_level_id' => $level->id,
+        'starts_at' => now()->subDay(),
+        'ends_at' => now()->addDay(),
+        'assigned_by' => $admin->id,
+        'reason' => 'content access test',
+    ]);
+
+    expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeTrue();
+
+    $assignment->forceFill(['revoked_at' => now()])->save();
+    expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeFalse();
+});

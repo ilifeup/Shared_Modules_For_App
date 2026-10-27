@@ -534,9 +534,6 @@ final class BookingEngine
         $seats = count($request->attendees);
         $category = $event->category;
 
-        if ($seats < 1) {
-            throw new ApiException(422, 'VALIDATION_FAILED', '請至少填寫一位參加者。', ['attendees' => ['請至少填寫一位參加者。']]);
-        }
         // The MVP contract is exactly one member per booking, regardless of
         // legacy event booking_max_seats settings or administrator privileges.
         if ($seats !== 1) {
@@ -569,17 +566,10 @@ final class BookingEngine
             }
         }
 
-        if ($request->booker === null) {
-            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
-        } else {
-            $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
-            if ($proxy && ! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($request->attendees[0]['member_user_id']), true)) {
-                throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');
-            }
-            if (! $request->byAdmin && $this->activeAttendeeOf($event, $request->booker) !== null
-                && collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) === $request->booker->id)) {
-                throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
-            }
+        // A single attendee may be the booker or one authorized family member.
+        $attendeeId = (int) $request->attendees[0]['member_user_id'];
+        if (! $request->byAdmin && $this->activeAttendeeOf($event, User::query()->findOrFail($attendeeId)) !== null) {
+            throw new ApiException(409, 'ALREADY_BOOKED', '此會員已預約此活動。');
         }
 
         // D05 "每人名額": the limit is per booker and occurrence, not

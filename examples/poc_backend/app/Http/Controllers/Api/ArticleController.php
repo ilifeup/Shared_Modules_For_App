@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleCategory;
 use App\Models\ArticleComment;
+use App\Models\ArticleCommentAttachment;
 use App\Models\ArticleLike;
 use App\Models\Bookmark;
 use App\Models\MemberVerification;
@@ -20,6 +21,7 @@ use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -212,7 +214,7 @@ class ArticleController extends Controller
     /** Recheck permissions and expiry for each private attachment open. */
     public function attachmentAccess(Request $request, int $id): JsonResponse
     {
-        $attachment = \App\Models\ArticleCommentAttachment::query()
+        $attachment = ArticleCommentAttachment::query()
             ->with('comment.article.accessRules')->findOrFail($id);
         abort_unless($attachment->isViewable(), 404);
         $comment = $attachment->comment;
@@ -232,7 +234,7 @@ class ArticleController extends Controller
     public function attachmentContent(Request $request, int $id): StreamedResponse
     {
         $this->attachmentAccess($request, $id);
-        $attachment = \App\Models\ArticleCommentAttachment::query()->findOrFail($id);
+        $attachment = ArticleCommentAttachment::query()->findOrFail($id);
         abort_unless($attachment->isViewable(), 404);
         abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
 
@@ -256,19 +258,19 @@ class ArticleController extends Controller
         $path = null;
 
         try {
-            $attachment = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $comment, $file, &$path) {
+            $attachment = DB::transaction(function () use ($user, $comment, $file, &$path) {
                 $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 abort_unless($locked->canUploadArticleAttachments(), 403);
                 $weekStart = now('Asia/Taipei')->startOfWeek()->utc();
                 $weekEnd = now('Asia/Taipei')->startOfWeek()->addWeek()->utc();
-                $uploads = \App\Models\ArticleCommentAttachment::query()
+                $uploads = ArticleCommentAttachment::query()
                     ->where('user_id', $locked->id)
                     ->where('created_at', '>=', $weekStart)
                     ->where('created_at', '<', $weekEnd);
                 abort_if($uploads->count() >= 1, 429, 'Weekly attachment quota exceeded.');
                 $path = $file->store('private/article-comment-attachments', 'local');
                 abort_unless($path !== false, 500);
-                return \App\Models\ArticleCommentAttachment::query()->create([
+                return ArticleCommentAttachment::query()->create([
                     'article_comment_id' => $comment->id,
                     'user_id' => $locked->id,
                     'storage_path' => $path,

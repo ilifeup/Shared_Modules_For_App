@@ -229,13 +229,13 @@ it('lets admins reduce capacity only by choosing whom to cancel', function () {
     groupBook($event, $b);
     $engine = app(BookingEngine::class);
 
-    expect(fn () => $engine->changeCapacity($event, 3, [], $admin))->toThrow(ApiException::class);
+    expect(fn () => $engine->changeCapacity($event, 1, [], $admin))->toThrow(ApiException::class);
     expect($event->refresh()->booking_capacity)->toBe(4);
 
     $groupB = EventBookingGroup::query()->where('booker_user_id', $b->id)->firstOrFail();
-    $engine->changeCapacity($event, 3, [$groupB->id], $admin, '場地縮小');
+    $engine->changeCapacity($event, 1, [$groupB->id], $admin, '場地縮小');
 
-    expect($event->refresh()->booking_capacity)->toBe(3)
+    expect($event->refresh()->booking_capacity)->toBe(1)
         ->and($groupB->refresh()->status)->toBe('cancelled')
         ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'event.capacity_changed')->sole()->details['cancelled_groups'])->toBe([$groupB->id])

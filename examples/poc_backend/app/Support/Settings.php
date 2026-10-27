@@ -3,8 +3,10 @@
 namespace App\Support;
 
 use App\Models\AppSetting;
+use App\Models\User;
 use EachCore\SharedCore\AuthSettings;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
@@ -189,9 +191,20 @@ final class Settings
             otpMaxAttempts: (int) $merged['otp_max_attempts'],
         );
 
-        foreach (array_keys($values) as $key) {
-            AppSetting::query()->updateOrCreate(['key' => $key], ['value' => json_encode($merged[$key])]);
-        }
+        // Snapshot existing email-verified members atomically with the policy switch.
+        DB::transaction(function () use ($values, $merged): void {
+            if (array_key_exists('verification_policy', $values)
+                && $this->string('verification_policy') === self::POLICY_EMAIL
+                && $merged['verification_policy'] === self::POLICY_PHONE) {
+                User::query()->whereNotNull('email_verified_at')
+                    ->whereNull('verification_grandfathered_at')
+                    ->update(['verification_grandfathered_at' => now()]);
+            }
+
+            foreach (array_keys($values) as $key) {
+                AppSetting::query()->updateOrCreate(['key' => $key], ['value' => json_encode($merged[$key])]);
+            }
+        });
 
         $this->values = null;
     }

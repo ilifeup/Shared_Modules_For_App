@@ -1,0 +1,64 @@
+<?php
+
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+it('books exactly one seat for the verified member', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated()->assertJsonPath('data.status', 'confirmed')
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
+
+    expect(seats($event))->toBe(1);
+});
+
+it('books one seat for a delegated family member without booking the manager', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $manager = User::factory()->create();
+    $member = User::factory()->create([
+        'FamilyUser' => true,
+        'email' => null,
+        'email_verified_at' => null,
+        'phone_e164' => null,
+        'verified_status' => 2,
+    ]);
+    DB::table('family_memberships')->insert([
+        'member_user_id' => $member->id,
+        'manager_user_id' => $manager->id,
+        'relationship' => 'child',
+        'status' => 'active',
+        'started_at' => now(),
+        'created_by' => $manager->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+        'member_user_id' => $member->id,
+    ])->assertCreated()->assertJsonPath('data.status', 'confirmed')
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
+
+    expect(seats($event))->toBe(1);
+    expect(DB::table('event_booking_attendees')->where('member_user_id', $member->id)->count())->toBe(1);
+    expect(DB::table('event_booking_attendees')->where('member_user_id', $manager->id)->count())->toBe(0);
+});
+
+it('rejects obsolete multi-attendee payloads instead of silently booking a subset', function () {
+    $event = s9Event();
+    $member = User::factory()->create();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+        'include_self' => true,
+        'attendees' => [['member_user_id' => $member->id]],
+    ])->assertUnprocessable();
+
+    expect(seats($event))->toBe(0);
+});

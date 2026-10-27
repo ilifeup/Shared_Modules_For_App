@@ -29,6 +29,7 @@ class MemberResource extends JsonResource
             'phone' => $this->phone_e164,
             'email_verified' => $this->email_verified_at !== null,
             'phone_verified' => $this->phone_verified_at !== null,
+            'verified_status' => (int) $this->verified_status,
             // S3 A02: whether the current verification policy grants full member access.
             'verification' => app(VerificationPolicy::class)->describe($this->resource),
             // S3 A03: avatar is fetched from GET /api/v1/me/avatar (owner only).

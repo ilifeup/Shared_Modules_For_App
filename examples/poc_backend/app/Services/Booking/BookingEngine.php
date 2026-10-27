@@ -738,15 +738,6 @@ final class BookingEngine
      */
     private function transaction(callable $callback): mixed
     {
-        // Durable booking handoff requires jobs and booking writes to share
-        // the same DB transaction. Fail closed rather than silently falling
-        // back to lossy post-commit side effects.
-        if (config('queue.default') !== 'database'
-            || ! in_array(config('queue.connections.database.connection'), [null, DB::getDefaultConnection()], true)
-            || config('queue.connections.database.after_commit') !== false) {
-            throw new \RuntimeException('Booking requires a same-database queue with after_commit=false.');
-        }
-
         try {
             return DB::transaction($callback);
         } catch (\Throwable $e) {

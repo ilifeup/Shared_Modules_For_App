@@ -2,14 +2,14 @@
 
 > 生效範圍：本 Repository 的 ChatGPT、Claude、Codex、Copilot、CI 與後續 AI Agent。
 > 狀態：開發流程規範；不授權自動合併、部署、破壞性遷移或改變已核准業務規則。
-> 閱讀順序：AGENTS.md → 本文件 → Shared #35 → 最新使用者決策/ADR → 相關 PR/Issue/CI → 目標程式。
+> 閱讀順序：AGENTS.md → 本文件 → AGENTS.md 第 2 節列出的模組清單/SPEC/POC/ADR → Shared #35 → 最新使用者決策 → 相關 PR/Issue/CI → 目標程式。若規範衝突，以最新明確核准的使用者決策及不可降低的安全規則為準。
 > 規範衝突：最新使用者明確核准決策與安全/資料規則優先；本文件僅優化工作方式，不降低驗收門檻。
 
 ## 1. 唯一目標
 以最少重工、最少等待、可追溯的方式完成可運作的 Shared Modules，優先支援 Tiandi Android MVP，再重用於 Wuxiang / EachCore。以「驗證完成的功能」而非 PR、Commit、CI 次數衡量進度。禁止為增加 PR 數量而拆分同一問題。
 
 ## 2. 每次工作前先查證
-1. 讀 Shared #35 與 Tiandi #38、現有 AGENTS.md、ADR、Open/Closed Issue、Open/Closed/Merged PR、分支相依、最新 main HEAD 和 CI。
+1. 依上述順序閱讀 AGENTS.md、模組清單/SPEC/POC/ADR、Shared #35、現有 Open/Closed Issue、Open/Closed/Merged PR、分支相依、最新 main HEAD 和 CI。Tiandi #38 僅作跨專案相依與歷史參照；Tiandi 開發目前暫停，不因閱讀此追蹤項目而啟動 Tiandi PR、CI 或排程。
 2. 先建立基線清單：main SHA、候選 PR head/base SHA、是否已合併、檔案差異、依賴、測試證據與阻礙；標記 VERIFIED / PASS / FAIL / BLOCKED / NOT TESTED。
 3. 對照已核准規則，避免舊程式/測試復活已禁止行為。不得僅依 PR 標題、綠燈或歷史敘述宣稱完成。
 4. 有現存對應 PR 或 Issue 時，優先延續並更新；除非不同責任邊界或必要隔離，不另開重複 PR。
@@ -54,7 +54,7 @@
 - #47: #42 + #43 整合候選；Draft，尚未完整驗收。
 - #45: M11 簽到與 #43 的整合測試；Draft。
 - #49: 會員資格 V01-A 第一切片；Draft，尚未完成全部會員管理。
-- #46: S10 影音權限初版；缺 migrations/tests/API/middleware，Draft。
+- #46: S10 影音權限 Draft；後續已加入 AV migrations、測試、受保護 catalog API 與 middleware，不能沿用「缺 migrations/tests/API/middleware」的舊判斷。仍缺完整播放/離線授權及跨 PR #49 驗證政策整合驗收；以最新 HEAD、CI 與程式實際內容重新查證。
 - #48: 公告刪除授權修正；Draft。
 - #44: Tiandi 專用 YouTube API 擴充契約；Draft。
 - 所有 PR 必須核對即時 SHA/CI，不以此快照當作即時結果。
@@ -73,4 +73,4 @@
 - 下一個最短可驗證步驟、負責分支、回退方式
 
 ## 10. 永久知識庫
-Shared #35 與 Tiandi #38 是總追蹤入口。正式驗收後仍須保存根因、失敗修法、證據、限制與回歸觸發條件；新 AI 必須先查歷史再改碼，禁止因 CI 綠燈自動結案。
+Shared #35 是目前 Shared Modules 開發的主要總追蹤入口；Tiandi #38 僅保留作跨專案歷史與相依參照，除非使用者明確恢復 Tiandi 開發。正式驗收後仍須保存根因、失敗修法、證據、限制與回歸觸發條件；新 AI 必須先查歷史再改碼，禁止因 CI 綠燈自動結案。

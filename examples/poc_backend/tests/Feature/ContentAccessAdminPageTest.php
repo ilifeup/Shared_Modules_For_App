@@ -4,10 +4,10 @@ use App\Filament\Pages\ContentAccessSettings;
 use App\Models\MembershipLevel;
 use App\Models\User;
 use App\Services\ContentAccess\ContentAccessRuleManager;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 it('lets an administrator configure all three levels in the Filament page', function (): void {
     Filament::setCurrentPanel(Filament::getPanel('admin'));

@@ -293,6 +293,11 @@ class ArticleController extends Controller
             $attachment = DB::transaction(function () use ($user, $comment, $file, &$path) {
                 $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 abort_unless($locked->canUploadArticleAttachments(), 403);
+                // Revalidate the comment under the upload transaction. An admin may
+                // hide it after the initial controller lookup.
+                $lockedComment = ArticleComment::query()->whereKey($comment->id)->lockForUpdate()->firstOrFail();
+                abort_unless($lockedComment->status === ArticleComment::STATUS_VISIBLE
+                    && (int) $lockedComment->user_id === (int) $locked->id, 403);
                 $weekStart = now('Asia/Taipei')->startOfWeek();
                 $weekEnd = $weekStart->copy()->addWeek();
                 // Locking the member row serializes concurrent uploads.

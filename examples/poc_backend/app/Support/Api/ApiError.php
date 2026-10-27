@@ -29,6 +29,9 @@ final class ApiError
     public static function register(Exceptions $exceptions): void
     {
         $exceptions->dontReport(ApiException::class);
+        // API requests must never redirect unauthenticated callers to a web login route.
+        // This applies even when clients omit Accept: application/json.
+        $exceptions->shouldRenderJsonWhen(fn (Request $request, Throwable $e): bool => $request->is('api/*') || $request->expectsJson());
 
         $exceptions->render(function (Throwable $e, Request $request): ?JsonResponse {
             if (! $request->is('api/*') || $e instanceof HttpResponseException) {

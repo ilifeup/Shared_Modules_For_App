@@ -131,3 +131,28 @@ it('rolls back BookingEngine booking and durable handoff together', function ():
     expect(DB::table('jobs')->count())->toBe($beforeJobs);
     expect(EventBooking::query()->count())->toBe($beforeBookings);
 });
+
+/** Production must reject a non-atomic queue configuration before booking writes. */
+it('fails closed for production booking when queue driver is not database', function (): void {
+    $previousEnvironment = app()->environment();
+    $previousQueue = config('queue.default');
+    $beforeBookings = EventBooking::query()->count();
+
+    try {
+        app()->detectEnvironment(fn (): string => 'production');
+        config()->set('queue.default', 'sync');
+        $event = s9Event();
+        $member = User::factory()->create([
+            'email_verified_at' => now(),
+            'phone_verified_at' => now(),
+        ]);
+        $beforeBookings = EventBooking::query()->count();
+
+        expect(fn () => app(BookingEngine::class)->bookLegacy($event, $member))
+            ->toThrow(LogicException::class, 'Booking durable handoff requires');
+        expect(EventBooking::query()->count())->toBe($beforeBookings);
+    } finally {
+        config()->set('queue.default', $previousQueue);
+        app()->detectEnvironment(fn (): string => $previousEnvironment);
+    }
+});

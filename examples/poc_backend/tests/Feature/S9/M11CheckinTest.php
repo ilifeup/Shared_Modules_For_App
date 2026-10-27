@@ -22,6 +22,9 @@ function checkinEvent(array $attributes = []): array
     ], $attributes));
     $member = User::factory()->create();
     groupBook($event, $member)->assertCreated();
+    // Two independent verified-member bookings, never a multi-attendee booking.
+    $secondMember = User::factory()->create();
+    groupBook($event, $secondMember)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
     return [$event, $member, $attendees];

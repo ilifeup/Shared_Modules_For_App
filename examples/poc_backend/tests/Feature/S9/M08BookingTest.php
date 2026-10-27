@@ -119,21 +119,19 @@ it('skips a waiting group whose member account was disabled and promotes the nex
 });
 
 // G05 — per-booking seat limit, proxy rule, cancel deadline (relative, recomputed).
-it('enforces the seat limit, the proxy setting and the cancel deadline', function () {
-    $noProxy = EventCategory::query()->create(['name' => '只限本人', 'allow_proxy_booking' => false]);
-    $event = s9Event(['booking_capacity' => 10, 'booking_max_seats' => 2], $noProxy);
+it('rejects legacy multi-attendee requests and enforces cancellation deadlines', function () {
+    $event = s9Event(['booking_capacity' => 10]);
     $member = User::factory()->create();
 
-    groupBook($event, $member, ['友人'])->assertStatus(422)->assertJsonPath('error.code', 'PROXY_NOT_ALLOWED');
-    $noProxy->update(['allow_proxy_booking' => true]);
-    groupBook($event, $member, ['友人', '友人2'])->assertStatus(422)->assertJsonPath('error.code', 'BOOKING_LIMIT_EXCEEDED');
+    groupBook($event, $member, ['友人'])->assertStatus(422)
+        ->assertJsonPath('error.code', 'VALIDATION_FAILED');
 
-    $created = groupBook($event, $member, ['友人'])->assertCreated();
-    $event->update(['cancel_offset_minutes' => 7 * 24 * 60 + 60]); // deadline already passed
+    $created = groupBook($event, $member)->assertCreated()
+        ->assertJsonPath('data.seat_count', 1);
+    $event->update(['cancel_offset_minutes' => 7 * 24 * 60 + 60]);
     $this->actingAs($member, 'sanctum')->postJson('/api/v1/me/booking-groups/'.$created->json('data.id').'/cancel')
         ->assertStatus(409)->assertJsonPath('error.code', 'CANCEL_DEADLINE_PASSED');
 
-    // Rescheduling a week later recomputes the relative deadline (S9-L02 A).
     $event->update(['starts_at' => now()->addDays(14), 'ends_at' => now()->addDays(14)->addHour()]);
     $this->actingAs($member, 'sanctum')->postJson('/api/v1/me/booking-groups/'.$created->json('data.id').'/cancel')->assertOk();
 });

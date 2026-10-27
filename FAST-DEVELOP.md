@@ -62,6 +62,16 @@
 
 參考：GitHub Docs — [Control the concurrency of workflows and jobs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)、[Using conditions to control job execution](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/using-conditions-to-control-job-execution)。
 
+### 5B. 會員資格唯一資料庫契約（2026-10-27 最新核准）
+
+- 會員資格只有三種：`guest`（無 `users.id`）、註冊未驗證會員（有 `users.id` 且 `users.verified_status != 2`）、註冊且已驗證會員（有 `users.id` 且 **`users.verified_status = 2`**）。
+- **唯一正式判斷來源：資料庫 `users.verified_status = 2`。** 本決策取代先前以 `users.membership_verified_at` 作為唯一判斷欄位的提議；不得同時建立第二套會員資格真值。
+- Email／手機驗證是取得已驗證會員資格的流程，不是會員資格本身；不得單獨用 `email_verified_at`、`phone_verified_at`、`membership_verified_at`、前端狀態或 Token claim 代替資料庫資格判斷。
+- 會員唯一身分以 `users.id` 關聯；家庭會員有獨立 `users.id`。代管權限須另外依資料庫家庭關係與授權判斷，不得由登入者與被代管者的聯絡方式推定。
+- 會員資格變更須明確定義資料庫寫入、授權者、交易邊界、稽核及回歸測試；切換 Email／手機驗證政策或修改聯絡資料，不得意外將既有已驗證會員降級。
+- #41／#46／#47／#49／#53 的程式、Migration、測試、文件應以此契約整合；如發現衝突，先審查現有資料表與資料遷移安全，再集中修正，不得為了 CI 綠燈放寬權限。
+- 此處的 `verified_status = 2` 是會員資格狀態，**不是會員等級、付費權益、影音內容授權**；其他授權仍須讀取其各自的資料庫關係及規則。
+
 ## 6. 不可犧牲的功能/安全規則
 - 活動永遠僅限會員預約；管理員也不可開放訪客預約。所有參加者必須有有效、唯一且經授權的會員 ID。訪客僅可閱讀公開公告，沒有個人通知收件匣或預約異動通知。
 - 家庭代管、候補 FIFO、交易原子性、取消授權、稽核、重試冪等、401/403/404/409/422 必須依最新決策驗證。

@@ -3,11 +3,13 @@
 namespace App\Filament\Pages;
 
 use App\Models\AuditEvent;
+use App\Models\User;
 use App\Support\Settings;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Checkbox;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\DB;
 use UnitEnum;
 
 /**
@@ -80,6 +82,27 @@ class VerificationPolicySettings extends Page
                 ])
                 ->action(fn () => $this->switchTo(Settings::POLICY_PHONE)),
         ];
+    }
+
+    /**
+     * Explicit administrator action: revocation is permanent across policy switches.
+     * Completing phone OTP remains a separate way to satisfy phone policy.
+     */
+    public function revokeGrandfathering(int $memberId): void
+    {
+        abort_unless(static::canAccess(), 403);
+
+        DB::transaction(function () use ($memberId): void {
+            $member = User::query()->lockForUpdate()->findOrFail($memberId);
+            if ($member->verification_grandfathered_at === null || $member->verification_grandfather_revoked_at !== null) {
+                return;
+            }
+
+            $member->forceFill(['verification_grandfather_revoked_at' => now()])->save();
+            AuditEvent::record('member.verification_grandfather_revoked', auth()->id(), $member, [
+                'verification_grandfathered_at' => $member->verification_grandfathered_at->toIso8601String(),
+            ]);
+        });
     }
 
     public function switchTo(string $policy): void

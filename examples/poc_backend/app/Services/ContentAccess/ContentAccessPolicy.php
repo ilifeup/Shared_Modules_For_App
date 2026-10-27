@@ -48,6 +48,7 @@ final class ContentAccessPolicy
             $audiences[] = 'verified';
         }
 
+        // A public rule never overrides an explicit guest/member denial.
         $rules = DB::table('app_content_access_rules')
             ->where('scope', $scope)
             ->where('resource_code', $code)

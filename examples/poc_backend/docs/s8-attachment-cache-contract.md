@@ -29,6 +29,8 @@ Status: design + initial database models only. **Not production ready.**
 
 ## Comment list minimal attachment presentation
 
+- Implemented: authenticated `GET /api/v1/article-comments/{id}/attachments` returns only currently viewable attachment IDs and expiry for a visible comment on a readable live article. No filename, MIME, size, storage path, or permanent URL is returned. This is discovery only; every access/content request repeats authorization. Client reader integration remains TODO.
+
 - Other members see only one attachment/paperclip icon and an aggregate count, e.g. `3 個附件`, on each comment.
 - Public comment JSON exposes only `attachment_count` and a minimal access/expiry state where necessary; it MUST NOT expose attachment names, extensions, MIME types, file sizes, private paths, or file URLs.
 - Attachment identifiers needed for viewing are resolved only after an authenticated, article-authorized reader request, never as an unauthenticated bulk comment payload.

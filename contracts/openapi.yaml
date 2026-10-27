@@ -111,10 +111,38 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Attachment unavailable or expired }
   /article-comments/{id}/attachments:
+    get:
+      tags: [articles]
+      operationId: listArticleCommentAttachments
+      summary: Discover readable attachment IDs and expiry without private file metadata
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: IDs and expiry of currently viewable attachments; each open rechecks authorization
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, view_expires_at]
+                      properties:
+                        id: { type: integer }
+                        view_expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Comment hidden or article unavailable }
+        '429': { $ref: '#/components/responses/RateLimited' }
     post:
       tags: [articles]
       operationId: uploadArticleCommentAttachment
-      summary: Upload one private PDF or image per Taiwan calendar week with admin grant
+      summary: Upload a private PDF or image within administrator weekly count and byte limits
       x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }

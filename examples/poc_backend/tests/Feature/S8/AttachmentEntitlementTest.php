@@ -286,3 +286,64 @@ it('enforces the administrator weekly byte quota independently of count', functi
     ])->assertCreated();
     $this->assertDatabaseCount('article_comment_attachments', 2);
 });
+
+it('discovers only authorized private attachment IDs and expiry without leaking file metadata', function () {
+    $owner = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $reader = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $article = Article::query()->create([
+        'title' => 'Attachment discovery', 'body_html' => '<p>test</p>',
+        'author_name' => 'Test Author', 'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $owner->id,
+        'body' => 'Discover private files', 'status' => ArticleComment::STATUS_VISIBLE,
+    ]);
+    $base = [
+        'article_comment_id' => $comment->id, 'user_id' => $owner->id,
+        'original_name' => 'secret-document.pdf', 'mime_type' => 'application/pdf',
+        'size_bytes' => 12, 'view_expires_at' => now()->addDay(),
+    ];
+    $visible = ArticleCommentAttachment::query()->create($base + [
+        'storage_path' => 'private/article-comment-attachments/valid.pdf',
+    ]);
+    ArticleCommentAttachment::query()->create(array_merge($base, [
+        'storage_path' => 'private/article-comment-attachments/expired.pdf',
+        'view_expires_at' => now()->subDay(),
+    ]));
+    ArticleCommentAttachment::query()->create(array_merge($base, [
+        'storage_path' => 'private/article-comment-attachments/removed.pdf',
+        'removed_at' => now(),
+    ]));
+    ArticleCommentAttachment::query()->create(array_merge($base, [
+        'storage_path' => 'private/unrelated.pdf',
+    ]));
+
+    $this->actingAs($reader, 'sanctum');
+    $this->getJson('/api/v1/article-comments/'.$comment->id.'/attachments')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $visible->id)
+        ->assertJsonStructure(['data' => [['id', 'view_expires_at']]])
+        ->assertDontSee('secret-document.pdf')
+        ->assertDontSee('storage_path')
+        ->assertDontSee('mime_type')
+        ->assertDontSee('size_bytes');
+    $this->getJson('/api/v1/attachments/'.$visible->id.'/access')->assertOk();
+
+    $article->update(['visibility' => Article::VISIBILITY_RESTRICTED]);
+    $this->getJson('/api/v1/article-comments/'.$comment->id.'/attachments')->assertForbidden();
+    $article->update(['visibility' => Article::VISIBILITY_PUBLIC]);
+    $comment->update(['status' => ArticleComment::STATUS_HIDDEN]);
+    $this->getJson('/api/v1/article-comments/'.$comment->id.'/attachments')->assertNotFound();
+    $comment->update(['status' => ArticleComment::STATUS_VISIBLE]);
+    $article->update(['status' => Article::STATUS_WITHDRAWN]);
+    $this->getJson('/api/v1/article-comments/'.$comment->id.'/attachments')->assertNotFound();
+});
+
+it('requires an authenticated database-verified member to discover comment attachments', function () {
+    $this->getJson('/api/v1/article-comments/123/attachments')->assertUnauthorized();
+    $member = User::factory()->unverified()->create(['verified_status' => 1]);
+    $this->actingAs($member, 'sanctum')
+        ->getJson('/api/v1/article-comments/123/attachments')->assertForbidden();
+});

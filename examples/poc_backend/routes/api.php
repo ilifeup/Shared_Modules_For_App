@@ -120,6 +120,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/article-comments/{id}/reports', [ArticleController::class, 'report'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::get('/attachments/{id}/access', [ArticleController::class, 'attachmentAccess'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/attachments/{id}/content', [ArticleController::class, 'attachmentContent'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/article-comments/{id}/attachments', [ArticleController::class, 'commentAttachments'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::post('/article-comments/{id}/attachments', [ArticleController::class, 'uploadCommentAttachment'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S4 M04 in-app notifications (own notifications only).

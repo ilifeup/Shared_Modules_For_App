@@ -211,6 +211,35 @@ class ArticleController extends Controller
         return new JsonResponse(['data' => $this->comment($comment->load('user:id,nickname'), $request->user())], 201);
     }
 
+    /** Discover only IDs and expiry of private files on a readable, visible comment. */
+    public function commentAttachments(Request $request, int $id): JsonResponse
+    {
+        $comment = ArticleComment::query()
+            ->with('article.accessRules')
+            ->where('status', ArticleComment::STATUS_VISIBLE)
+            ->findOrFail($id);
+        $article = $comment->article;
+        abort_unless($article !== null && $article->isLive(), 404);
+        $this->authorizeRead($article, $request->user());
+
+        // This discovery response is not a file grant. Every open must still
+        // pass attachmentAccess/attachmentContent with fresh authorization.
+        $items = $comment->attachments()
+            ->whereNull('removed_at')
+            ->where('view_expires_at', '>', now())
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (ArticleCommentAttachment $attachment): bool => $attachment->isViewable())
+            ->map(fn (ArticleCommentAttachment $attachment): array => [
+                'id' => (int) $attachment->id,
+                'view_expires_at' => $attachment->view_expires_at->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
+        return new JsonResponse(['data' => $items]);
+    }
+
     /** Recheck permissions and expiry for each private attachment open. */
     public function attachmentAccess(Request $request, int $id): JsonResponse
     {
@@ -246,7 +275,7 @@ class ArticleController extends Controller
         ]);
     }
 
-    /** Upload one private PDF/image per Taiwan calendar week. */
+    /** Upload a private PDF/image within the administrator's weekly limits. */
     public function uploadCommentAttachment(Request $request, int $id): JsonResponse
     {
         $request->validate(['file' => ['required', 'file', 'max:5120', 'mimetypes:application/pdf,image/jpeg,image/png,image/webp']]);

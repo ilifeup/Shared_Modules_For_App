@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Route;
 // S10: AV catalogs require authenticated, verified and active membership.
 Route::middleware(['auth:sanctum', 'member.verified', 'throttle:auth-60'])->prefix('av')->group(function () {
     Route::get('/tracks', [AvCatalogController::class, 'tracks']);
+    Route::get('/tracks/{id}/access', [AvCatalogController::class, 'trackAccess'])->whereNumber('id');
     Route::get('/videos', [AvCatalogController::class, 'videos']);
 });
 

@@ -194,8 +194,16 @@ final class Settings
         // V01-A: snapshot existing verified members BEFORE switching to phone-only.
         // This grant is permanent unless an administrator explicitly revokes it.
         DB::transaction(function () use ($values, $merged): void {
+            // Serialize policy changes on the existing settings row; do not
+            // rely on a request-scoped cached value for the transition check.
+            $storedPolicy = AppSetting::query()->where('key', 'verification_policy')
+                ->lockForUpdate()->first();
+            $currentPolicy = $storedPolicy === null
+                ? self::POLICY_EMAIL
+                : (string) json_decode((string) $storedPolicy->value, true);
+
             if (array_key_exists('verification_policy', $values)
-                && $this->string('verification_policy') === self::POLICY_EMAIL
+                && $currentPolicy === self::POLICY_EMAIL
                 && $merged['verification_policy'] === self::POLICY_PHONE) {
                 User::query()->whereNotNull('email_verified_at')
                     ->whereNull('verification_grandfathered_at')

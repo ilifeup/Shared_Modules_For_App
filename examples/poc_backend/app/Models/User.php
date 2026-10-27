@@ -30,6 +30,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'phone_e164',
         'password',
         'is_active',
+        'verified_status',
     ];
 
     /** @var list<string> */
@@ -47,6 +48,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'email_verified_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'verified_status' => 'integer',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
         ];

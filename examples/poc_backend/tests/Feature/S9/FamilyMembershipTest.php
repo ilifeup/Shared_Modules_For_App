@@ -58,8 +58,7 @@ it('keeps historical bookings but blocks cancellation after delegation revocatio
     ]);
 
     $booking = $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
-        'include_self' => false,
-        'attendees' => [['member_user_id' => $member->id]],
+        'member_user_id' => $member->id,
         'client_request_id' => (string) Str::uuid(),
     ])->assertCreated();
 
@@ -94,8 +93,7 @@ it('replays by member ID after a delegated attendee changes their display name',
         'updated_at' => $now,
     ]);
     $payload = [
-        'include_self' => false,
-        'attendees' => [['member_user_id' => $member->id]],
+        'member_user_id' => $member->id,
         'client_request_id' => (string) Str::uuid(),
     ];
     $url = "/api/v1/events/{$event->id}/booking-groups";
@@ -123,8 +121,7 @@ it('rejects idempotent booking replay after family delegation is revoked', funct
         'updated_at' => $now,
     ]);
     $payload = [
-        'include_self' => false,
-        'attendees' => [['member_user_id' => $member->id]],
+        'member_user_id' => $member->id,
         'client_request_id' => (string) Str::uuid(),
     ];
     $url = "/api/v1/events/{$event->id}/booking-groups";
@@ -146,8 +143,7 @@ it('does not reveal whether an unauthorized family member ID exists', function (
 
     foreach ([$stranger->id, 999999999] as $memberId) {
         $this->actingAs($manager, 'sanctum')->postJson($url, [
-            'include_self' => false,
-            'attendees' => [['member_user_id' => $memberId]],
+            'member_user_id' => $memberId,
             'client_request_id' => (string) Str::uuid(),
         ])->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
     }

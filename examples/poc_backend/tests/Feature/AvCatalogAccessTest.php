@@ -39,6 +39,7 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks')->assertOk()->assertJson(['data' => []]);
         $this->getJson('/api/v1/av/videos')->assertOk()->assertJson(['data' => []]);
     }
+
     public function test_configured_page_or_list_denial_blocks_catalog_without_changing_legacy_default(): void
     {
         $member = User::factory()->create();
@@ -48,7 +49,7 @@ class AvCatalogAccessTest extends TestCase
 
         \Illuminate\Support\Facades\DB::table('app_content_access_rules')->insert([
             'scope' => 'page', 'resource_code' => 'av',
-            'audience' => 'member', 'allowed' => false,
+            'audience' => 'register_member', 'allowed' => false,
         ]);
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertForbidden();
@@ -63,5 +64,4 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertOk();
     }
-
 }

@@ -34,7 +34,9 @@ final class FamilyMembershipController extends Controller
 
         $result = DB::transaction(function () use ($manager, $data): array {
             $now = now();
-            $member = User::query()->create([
+            // Trusted family creation sets protected membership/login flags atomically.
+            $member = new User;
+            $member->forceFill([
                 'name' => trim($data['name']),
                 'display_name' => mb_substr(trim($data['name']), 0, 80),
                 'email' => null,
@@ -43,7 +45,7 @@ final class FamilyMembershipController extends Controller
                 'is_active' => true,
                 'verified_status' => 2,
                 'FamilyUser' => true,
-            ]);
+            ])->save();
             $membershipId = DB::table('family_memberships')->insertGetId([
                 'member_user_id' => $member->id,
                 'manager_user_id' => $manager->id,

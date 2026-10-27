@@ -45,7 +45,9 @@ class AuthController extends Controller
     public function register(RegisterRequest $request): JsonResponse
     {
         $user = DB::transaction(function () use ($request): User {
-            $user = User::query()->create([
+            // Registration sets identity flags explicitly; generic mass assignment cannot.
+            $user = new User;
+            $user->forceFill([
                 'name' => $request->string('name')->toString(),
                 'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
                 'email' => $request->input('email'),
@@ -54,7 +56,7 @@ class AuthController extends Controller
                 'is_active' => true,
                 'verified_status' => 1,
                 'FamilyUser' => false,
-            ]);
+            ])->save();
             if (filled($request->input('family_name'))) {
                 DB::table('registration_family_info')->insert([
                     'user_id' => $user->id,

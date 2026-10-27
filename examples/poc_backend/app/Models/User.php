@@ -20,7 +20,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 
     public const ADMIN_ROLE = 'admin';
 
-    /** @var list<string> */
+    /**
+     * Membership qualification and family-login identity are server-managed.
+     * Never permit either attribute through generic model mass assignment.
+     * Trusted creation and verification flows must use forceFill explicitly.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'name',
         'display_name',
@@ -30,8 +36,6 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'phone_e164',
         'password',
         'is_active',
-        'verified_status',
-        'FamilyUser',
     ];
 
     /** @var list<string> */

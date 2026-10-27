@@ -5,6 +5,23 @@ use App\Support\Settings;
 use App\Support\VerificationPolicy;
 use Illuminate\Support\Facades\URL;
 
+it('blocks generic mass assignment of membership qualification and family-login identity', function (): void {
+    $member = User::factory()->create(['verified_status' => 1, 'FamilyUser' => false]);
+
+    expect($member->isFillable('verified_status'))->toBeFalse()
+        ->and($member->isFillable('FamilyUser'))->toBeFalse();
+
+    $member->fill([
+        'name' => 'Updated member name',
+        'verified_status' => 2,
+        'FamilyUser' => true,
+    ])->save();
+
+    expect($member->fresh()->name)->toBe('Updated member name')
+        ->and($member->fresh()->verified_status)->toBe(1)
+        ->and($member->fresh()->FamilyUser)->toBeFalse();
+});
+
 it('uses only persisted membership status to authorize a registered user', function (): void {
     $settings = app(Settings::class);
     $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);

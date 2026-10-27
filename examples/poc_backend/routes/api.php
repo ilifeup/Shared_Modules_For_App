@@ -132,6 +132,9 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 
     // Family manager may create/list/edit profiles; client-side unlink is forbidden.
+    Route::get('/admin/family-settings', [FamilyApplicationController::class, 'settings']);
+    Route::put('/admin/family-settings', [FamilyApplicationController::class, 'updateSettings']);
+    Route::post('/admin/family-payments/verify', [FamilyApplicationController::class, 'verifyPayment'])->middleware('throttle:auth-10');
     Route::get('/admin/family-applications/pending', [FamilyApplicationController::class, 'pending']);
     Route::get('/admin/family-applications/{id}/evidence', [FamilyApplicationController::class, 'evidence'])->whereNumber('id');
     Route::post('/admin/family-applications/{id}/review', [FamilyApplicationController::class, 'review'])->whereNumber('id')->middleware('throttle:auth-10');

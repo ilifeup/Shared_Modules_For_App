@@ -88,6 +88,12 @@ class AvEntitlementTest extends TestCase
         $member->refresh();
         $this->assertNotNull($member->verification_grandfathered_at);
         $this->assertTrue($service->video($member, $videoId));
+
+        // Removing the preserved qualification must immediately deny AV access
+        // unless the member has separately completed phone verification.
+        $member->forceFill(['verification_grandfathered_at' => null])->save();
+        $this->assertFalse($service->video($member, $videoId));
+
         $member->forceFill(['phone_verified_at' => now()]);
         $this->assertTrue($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->subMinute()]);

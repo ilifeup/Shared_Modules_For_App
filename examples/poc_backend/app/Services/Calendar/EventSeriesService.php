@@ -208,14 +208,17 @@ class EventSeriesService
             if ($scope !== 'single' && isset($fields['title'])) {
                 $occurrence->series?->forceFill(['title' => $fields['title']])->save();
             }
-        });
 
-        foreach ($notices as [$event, $timeChanged, $placeChanged]) {
-            $what = implode('、', array_filter([$timeChanged ? '時間' : null, $placeChanged ? '地點' : null]));
-            $body = '「'.$event->title.'」的'.$what.'已變更：'.$event->starts_at->timezone($event->timezone ?? 'Asia/Taipei')->format('Y-m-d H:i')
-                .($event->location ? '，'.implode(' ', array_filter([$event->location, $event->floor, $event->studio])) : '').'。您的報名／候補維持不變。';
-            $result['notified'] += $this->engine->notifyChange($event, '活動異動：'.$event->title, $body);
-        }
+            // Persist notification/sync intent in the same transaction as the
+            // event change. Previously the event committed before notifyChange(),
+            // leaving a crash window with no durable notification intent.
+            foreach ($notices as [$event, $timeChanged, $placeChanged]) {
+                $what = implode('、', array_filter([$timeChanged ? '時間' : null, $placeChanged ? '地點' : null]));
+                $body = '「'.$event->title.'」的'.$what.'已變更：'.$event->starts_at->timezone($event->timezone ?? 'Asia/Taipei')->format('Y-m-d H:i')
+                    .($event->location ? '，'.implode(' ', array_filter([$event->location, $event->floor, $event->studio])) : '').'。您的報名／候補維持不變。';
+                $result['notified'] += $this->engine->notifyChange($event, '活動異動：'.$event->title, $body);
+            }
+        });
 
         AuditEvent::record('event.updated', $actor->id, $occurrence, [
             'scope' => $scope,

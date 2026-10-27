@@ -9,13 +9,13 @@
 - `email_verified_at`、`phone_verified_at` 是聯絡方式驗證成功的歷史時間，僅供完成驗證流程；不得從時間戳推算會員資格。
 - 政策由 Email 改成手機或反向切換，不得自動撤銷已授予的 `verified_status = 2`。停用帳號、角色、VIP、影音個別授權仍須分別檢查。
 
-## 現有 PR 分支依賴與安全阻礙
+## #53 整合分支現況與安全阻礙
 
-- #53 已包含 `2026_11_04_000100_add_verified_status_to_users.php`（`unsignedTinyInteger`，預設 1），不以聯絡時間回填舊會員；此 Migration **目前不在 #49 分支**，不可將 #49 單獨 CI 視為可驗收。
-- #49 的 `User::isVerifiedMember()`、`VerificationPolicy`、Email／OTP 成功流程與影音授權已改讀／寫 `verified_status`。#49 測試資料必須使用 1／2，不得使用舊的 `membership_verified_at` 或 0。
+- #53 整合分支已包含 `2026_11_04_000100_add_verified_status_to_users.php`（`unsignedTinyInteger`，預設 1），不以聯絡時間回填舊會員。獨立 #49 分支不得取代 #53 的整合測試證據。
+- #53 的 `User::isVerifiedMember()`、驗證政策、Email／OTP 成功流程與影音授權以 `verified_status` 為會員資格來源。測試資料必須使用 1／2，不得以 `membership_verified_at` 或 0 判定資格。
 - #49 仍有舊的 `verification_grandfathered_at` Migration／Model cast；此歷史補救欄位不應作為授權依據，是否移除須先檢查既有資料與 Migration 相依，禁止在正式環境直接刪欄。
 - 正式資料升級時，舊會員資格不得憑 `email_verified_at` 或 `phone_verified_at` 自動推算。需有明確的舊資料盤點、經核准回填規則、隔離 MySQL 8.4 升級／回退與備份還原驗證。
-- #49 與 #53 尚未在同一測試樹整合；不得重複建立兩套資格欄位、直接合併 main 或執行正式 Migration。
+- #53 已在同一整合測試樹執行 MySQL Migration、Pest、E2E 與 CI；但正式舊資料升級及部署驗證尚未完成。不得重複建立資格欄位、直接合併 main 或執行正式 Migration。
 
 ## 最小驗收 Gate
 

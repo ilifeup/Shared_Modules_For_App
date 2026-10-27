@@ -25,3 +25,7 @@ The persisted `verification_grandfathered_at` eligibility from PR #49 must be ev
 ## Member-only booking integration: PR #43
 
 For group bookings, `member_user_id` is an attendee reference, not an authentication token. The booking actor must come from the authenticated server request. Each attendee must be an existing active member and must be either the actor or explicitly authorized through the existing family delegation relationship. Do not infer authorization from the supplied attendee ID. Guest booking is prohibited, including admin-created bookings without a registered member. Validate authorization again for cancellation and changes, not only on initial booking.
+
+## Open PR #42 / #47 conflict gate (2026-10-27)
+
+Patch review identified guest-booking language in PR #42's `docs/booking-durable-intent-gate.md` and guest notification handling in `app/Jobs/DispatchBookingNotification.php`. PR #47 instead documents member-only schema constraints. Treat this as an unresolved integration conflict, not an approved guest-booking exception. Before either PR is accepted, inspect the merged booking schema and runtime job paths together: no guest booking creation, no guest recipient delivery, no client-supplied identity as an actor, and durable notifications / Google sync only for valid authenticated member bookings. Add behavioral regression tests for enqueue, retry, cancellation and waitlist promotion. Do not remove durable-intent guarantees merely to eliminate legacy guest code.

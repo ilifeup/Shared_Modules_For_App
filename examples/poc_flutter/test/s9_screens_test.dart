@@ -196,7 +196,11 @@ void main() {
     expect(find.text('重試原請求'), findsOneWidget);
     expect(find.text('【結果待確認】'), findsOneWidget);
     expect(
-      tester.widget<DropdownButtonFormField<int>>(find.byKey(const Key('group-member-0'))).onChanged,
+      tester
+          .widget<DropdownButtonFormField<int>>(
+            find.byKey(const Key('group-member-0')),
+          )
+          .onChanged,
       isNull,
     );
     expect(
@@ -257,7 +261,11 @@ void main() {
           'POST /api/v1/events/7/booking-groups',
         )]!;
     expect(
-      tester.widget<DropdownButtonFormField<int>>(find.byKey(const Key('group-member-0'))).onChanged,
+      tester
+          .widget<DropdownButtonFormField<int>>(
+            find.byKey(const Key('group-member-0')),
+          )
+          .onChanged,
       isNotNull,
     );
     await selectFamilyMember(tester, 0, 18);

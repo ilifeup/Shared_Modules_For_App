@@ -73,6 +73,38 @@ it('rejects an empty member notification title without persisting a notification
     expect($member->fresh()->notifications()->count())->toBe(0);
 });
 
+it('rejects a blank notification body without persisting a delivery', function (): void {
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+    $job = new DispatchBookingNotification($group->id, 'Booking update', '   ');
+
+    expect(fn () => $job->handle(app(MemberNotifier::class)))->toThrow(ApiException::class);
+    expect(DB::table('notifications')->where('id', $job->deliveryId)->exists())->toBeFalse();
+});
+
+it('preserves the notification delivery key across queue serialization and replay', function (): void {
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+    $job = new DispatchBookingNotification($group->id, 'Durable replay', 'One delivery only');
+    $restored = unserialize(serialize($job));
+
+    expect($restored->deliveryId)->toBe($job->deliveryId);
+    $restored->handle(app(MemberNotifier::class));
+    $job->handle(app(MemberNotifier::class));
+
+    expect(DB::table('notifications')->where('id', $job->deliveryId)->count())->toBe(1);
+});
+
 it('rejects booking groups without a member at the database boundary', function (): void {
     $event = s9Event();
     $before = EventBookingGroup::query()->count();

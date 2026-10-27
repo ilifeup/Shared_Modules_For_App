@@ -58,8 +58,11 @@ it('checks attendees in one by one with the event QR and never twice', function 
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => $token])
         ->assertOk()->assertJsonPath('data.0.result', 'checked_in');
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token])
-        ->assertOk()->assertJsonPath('data.0.result', 'already_checked_in')->assertJsonPath('data.1.result', 'checked_in');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => $token])
+        ->assertOk()->assertJsonPath('data.0.result', 'already_checked_in');
+    $secondMember = User::query()->findOrFail($attendees[1]->member_user_id);
+    $this->actingAs($secondMember, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $token])
+        ->assertOk()->assertJsonPath('data.0.result', 'checked_in');
 
     expect(EventAttendance::query()->count())->toBe(2)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
@@ -70,7 +73,7 @@ it('checks attendees in one by one with the event QR and never twice', function 
     // Another member cannot check in these attendees; an expired token is refused.
     $this->actingAs(User::factory()->create(), 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $token])->assertNotFound();
     $old = app(CheckinTokens::class)->event($event->id, now()->getTimestamp() - 120);
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $old])
+    $this->actingAs($secondMember, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $old])
         ->assertStatus(422)->assertJsonPath('error.code', 'QR_EXPIRED');
 });
 

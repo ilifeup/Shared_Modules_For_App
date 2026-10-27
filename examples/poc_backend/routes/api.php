@@ -28,6 +28,7 @@ Route::middleware(['auth:sanctum', 'member.verified', 'throttle:auth-60'])->pref
     Route::get('/tracks', [AvCatalogController::class, 'tracks']);
     Route::get('/tracks/{id}/access', [AvCatalogController::class, 'trackAccess'])->whereNumber('id');
     Route::get('/videos', [AvCatalogController::class, 'videos']);
+    Route::get('/videos/{id}/access', [AvCatalogController::class, 'videoAccess'])->whereNumber('id');
 });
 
 Route::get('/health', HealthController::class)->name('api.health');

@@ -24,7 +24,7 @@ Current main comparison (2026-10-27): PR #47 is 26 commits ahead and 23 behind m
 
 - [x] PR #47 Backend, Mobile and documentation CI passed at head `53cd991a7eb4078eb393a7c9d020a23f0c1faeb5` (2026-10-27). This is branch-level evidence, not latest-main integration acceptance.
 - [ ] Diff PR #43's latest head against the #47 base and integrate all applicable fixes; run guest-inbox and guest-booking tests on the final combined tree.
-- [ ] Review PR #42's latest head against #47's durable job implementation and tests; resolve conflicts explicitly.
+- [ ] Review PR #42's latest head against #47's durable job implementation and tests; resolve conflicts explicitly. The three #42-only design/risk/gate documents were copied into #47 (commit `ff000c3118bd091f1381bf0bccaf4fbd2531c126`); this does not prove all differing code paths are reconciled.
 - [ ] Run MySQL tests for notification replay, missing booking/member, cancellation, waitlist promotion and Google worker retry.
 - [ ] Confirm deployment queue connection, worker supervision and rollback/restore readiness before any migration.
 - [ ] Record evidence and unresolved issues in Shared #35 and related booking trackers; do not close issues merely because CI is green.

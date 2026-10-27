@@ -155,8 +155,11 @@ class BookingGroupApi {
   }) async {
     if (attendeeMemberIds.any((id) => id <= 0) ||
         attendeeMemberIds.toSet().length != attendeeMemberIds.length) {
-      throw ArgumentError.value(attendeeMemberIds, 'attendeeMemberIds',
-          'Expected distinct positive member IDs');
+      throw ArgumentError.value(
+        attendeeMemberIds,
+        'attendeeMemberIds',
+        'Expected distinct positive member IDs',
+      );
     }
     final json = await transport.request(
       'POST',
@@ -175,21 +178,26 @@ class BookingGroupApi {
   /// IDs of active family members for whom this account can currently book.
   /// The server is authoritative; the POST rechecks delegation under its lock.
   Future<List<int>> manageableMemberIds() async {
-    final json = await transport.request('GET', '/api/v1/me/family-memberships');
+    final json = await transport.request(
+      'GET',
+      '/api/v1/me/family-memberships',
+    );
     final data = json['data'];
     if (data is! List) {
       throw const FormatException('Expected family membership list');
     }
-    return data.map((row) {
-      if (row is! Map<String, dynamic>) {
-        throw const FormatException('Invalid family membership');
-      }
-      final id = row['member_user_id'];
-      if (id is! int || id <= 0) {
-        throw const FormatException('Invalid family member ID');
-      }
-      return id;
-    }).toList(growable: false);
+    return data
+        .map((row) {
+          if (row is! Map<String, dynamic>) {
+            throw const FormatException('Invalid family membership');
+          }
+          final id = row['member_user_id'];
+          if (id is! int || id <= 0) {
+            throw const FormatException('Invalid family member ID');
+          }
+          return id;
+        })
+        .toList(growable: false);
   }
 
   /// [status]: `active`, `confirmed`, `waitlisted` or `cancelled`.

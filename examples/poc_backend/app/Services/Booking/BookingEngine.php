@@ -738,6 +738,17 @@ final class BookingEngine
      */
     private function transaction(callable $callback): mixed
     {
+        // Production bookings must never silently fall back to in-memory
+        // post-commit handoffs, which can be lost on process termination.
+        if (app()->environment('production') && (
+            config('queue.default') !== 'database'
+            || (config('queue.connections.database.connection') !== null
+                && config('queue.connections.database.connection') !== DB::getDefaultConnection())
+            || config('queue.connections.database.after_commit') !== false
+        )) {
+            throw new \LogicException('Booking durable handoff requires the database queue on the booking DB with after_commit=false.');
+        }
+
         try {
             return DB::transaction($callback);
         } catch (\Throwable $e) {

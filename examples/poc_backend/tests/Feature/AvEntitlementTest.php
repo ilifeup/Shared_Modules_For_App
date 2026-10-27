@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\MemberLevelAssignment;
 use App\Models\User;
+use App\Support\Settings;
 use App\Services\Av\AvEntitlement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,10 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->track($member, $trackId));
         DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => true]);
 
+        $member->forceFill(['email_verified_at' => null]);
+        $this->assertFalse($service->track($member, $trackId));
+        $member->forceFill(['email_verified_at' => now()]);
+
         $member->forceFill(['is_active' => false]);
         $this->assertFalse($service->track($member, $trackId));
     }
@@ -77,6 +82,10 @@ class AvEntitlementTest extends TestCase
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => false]);
         $this->assertFalse($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
+        app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
+        $this->assertFalse($service->video($member, $videoId));
+        $member->forceFill(['phone_verified_at' => now()]);
+        $this->assertTrue($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->subMinute()]);
         $this->assertFalse($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->addDay(), 'revoked_at' => now()]);

@@ -23,6 +23,11 @@ final class FamilyMembershipController extends Controller
             throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證的一般會員使用。');
         }
 
+        // Family creation is suspended until an administrator-approved
+        // relationship-evidence application can be verified server-side.
+        // Do not treat contact verification or a client flag as approval.
+        throw new ApiException(403, 'FAMILY_APPROVAL_REQUIRED', '須先提交家庭關係證明並經管理員核准，才能新增家庭會員。');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'relationship' => ['nullable', 'string', 'max:40'],
@@ -34,14 +39,14 @@ final class FamilyMembershipController extends Controller
 
         $result = DB::transaction(function () use ($manager, $data): array {
             // Serialize creation per manager; counting without this row lock allows
-            // concurrent requests to bypass the two-member free allowance.
+            // concurrent requests to bypass the one-member free allowance.
             User::query()->whereKey($manager->id)->lockForUpdate()->firstOrFail();
             $existingCount = DB::table('family_memberships')
                 ->where('manager_user_id', $manager->id)->count();
             // External Services paid expansion is not implemented/authorized yet.
             // Never assume payment from a client-supplied flag or stale UI.
-            if ($existingCount >= 2) {
-                throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '免費家庭會員上限為 2 位；增加名額需先啟用 External Services 付費擴充。');
+            if ($existingCount >= 1) {
+                throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '免費家庭會員上限為 1 位；增加名額需先啟用 External Services 付費擴充。');
             }
 
             $now = now();

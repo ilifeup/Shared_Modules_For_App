@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Presenters\BookingGroupPresenter;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\User;
+use App\Services\Family\FamilyDelegation;
+use App\Support\Api\ApiException;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use Illuminate\Http\JsonResponse;
@@ -13,7 +16,7 @@ use Illuminate\Http\Request;
 
 /**
  * MVP single-member booking and waitlist backed by the existing seat ledger.
- * Multi-attendee booking and proxy booking are not supported.
+ * Exactly one attendee: self or an authorized verified family member.
  */
 class BookingGroupController extends Controller
 {
@@ -23,7 +26,7 @@ class BookingGroupController extends Controller
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {client_request_id}. The authenticated member books only for self.
+     * Body: {client_request_id, member_user_id?}. One attendee, self by default.
      * 201 confirmed or waitlisted, 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
@@ -32,11 +35,17 @@ class BookingGroupController extends Controller
             'client_request_id' => ['required', 'uuid'],
             'include_self' => ['prohibited'],
             'attendees' => ['prohibited'],
+            'member_user_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $member = $request->user();
-        $attendees = [['name' => $member->name, 'member_user_id' => $member->id]];
+        $attendeeId = (int) ($data['member_user_id'] ?? $member->id);
+        $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者不是有效的已驗證家庭會員，或沒有代管授權。');
+        }
+        $attendees = [['name' => $attendee->name, 'member_user_id' => $attendee->id]];
 
         // The engine determines whether this was created or replayed under its event lock.
         $created = false;

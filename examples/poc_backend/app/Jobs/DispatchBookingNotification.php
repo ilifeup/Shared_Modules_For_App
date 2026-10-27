@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\EventBookingGroup;
-use App\Notifications\MemberNotification;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
 use Illuminate\Bus\Queueable;
@@ -66,13 +65,18 @@ class DispatchBookingNotification implements ShouldQueue
             }
             $booker = $group->booker()->first();
 
-            if ($booker !== null) {
-                $notifier->send($booker, $title, $body, 'booking', 'event', (string) $group->calendar_event_id, null, $this->deliveryId);
-            } elseif ($group->is_guest) {
-                $notification = new MemberNotification($title, $body, 'booking', 'event', (string) $group->calendar_event_id);
-                $notification->id = $this->deliveryId;
-                $group->notify($notification);
+            if ($booker === null) {
+                // Member-only schema forbids guest bookings. Never deliver to a
+                // booking group as a fallback if its member relation is broken.
+                Log::warning('booking notification skipped: member missing', [
+                    'group_id' => $this->groupId,
+                    'delivery_id' => $this->deliveryId,
+                ]);
+
+                return;
             }
+
+            $notifier->send($booker, $title, $body, 'booking', 'event', (string) $group->calendar_event_id, null, $this->deliveryId);
         });
     }
 }

@@ -235,7 +235,7 @@ class ArticleController extends Controller
         $attachment = \App\Models\ArticleCommentAttachment::query()->findOrFail($id);
         abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
 
-        return Storage::disk('local')->response($attachment->storage_path, null, [
+        return Storage::disk('local')->response($attachment->storage_path, 'attachment-'.$attachment->id, [
             'Content-Type' => $attachment->mime_type,
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',

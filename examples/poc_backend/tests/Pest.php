@@ -95,47 +95,18 @@ function s9Event(array $attributes = [], ?EventCategory $category = null): Calen
 }
 
 /**
- * S9 group booking fixture: every extra attendee is a real registered member.
- * Reuse the same member for the same manager/name to test idempotent retries.
- * Delegation is created explicitly; production APIs never create it implicitly.
+ * M08 single-member fixture. The obsolete group arguments are emitted only
+ * for explicit rejection tests; successful bookings use the member-only API.
  */
 function groupBook(CalendarEvent $event, User $member, array $names = [], bool $includeSelf = true, ?string $requestId = null)
 {
-    $attendees = [];
-    foreach ($names as $name) {
-        $email = 's9-'.hash('sha256', $member->id.'|'.$name).'@example.test';
-        $attendee = User::query()->where('email', $email)->first();
-        if ($attendee === null) {
-            $attendee = User::factory()->create(['name' => $name, 'email' => $email]);
-        }
-
-        $delegationExists = DB::table('family_memberships')
-            ->where('member_user_id', $attendee->id)
-            ->where('manager_user_id', $member->id)
-            ->where('status', 'active')
-            ->whereNull('ended_at')
-            ->exists();
-        if (! $delegationExists) {
-            DB::table('family_memberships')->insert([
-                'member_user_id' => $attendee->id,
-                'manager_user_id' => $member->id,
-                'relationship' => 'test_fixture',
-                'status' => 'active',
-                'started_at' => now(),
-                'created_by' => $member->id,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
-
-        $attendees[] = ['member_user_id' => $attendee->id];
+    $payload = ['client_request_id' => $requestId ?? (string) Str::uuid()];
+    if ($names !== [] || ! $includeSelf) {
+        $payload['include_self'] = $includeSelf;
+        $payload['attendees'] = array_map(fn ($name) => ['name' => $name], $names);
     }
 
-    return test()->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
-        'include_self' => $includeSelf,
-        'attendees' => $attendees,
-        'client_request_id' => $requestId ?? (string) Str::uuid(),
-    ]);
+    return test()->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", $payload);
 }
 
 function seats(CalendarEvent $event): int

@@ -184,7 +184,7 @@ it('checks out by a linked location QR without GPS while keeping event binding a
 // G11 / G16 / D29 — staff scan the attendee pass; only staff see the list.
 it('lets authorised staff scan attendee passes and read the attendance list', function () {
     [$event, $member, $attendees] = checkinEvent();
-    $pass = $this->actingAs($member, 'sanctum')->getJson("/api/v1/events/{$event->id}/checkin/pass")->assertOk()->json('data.passes.1.token');
+    $pass = $this->actingAs($member, 'sanctum')->getJson("/api/v1/events/{$event->id}/checkin/pass")->assertOk()->json('data.passes.0.token');
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_token' => $pass])->assertStatus(403);
     $this->actingAs($member, 'sanctum')->getJson("/api/v1/events/{$event->id}/attendance")->assertStatus(403);
@@ -211,7 +211,7 @@ it('checks out with the same QR and does not let members check in again', functi
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", $body)->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
 
     $event->update(['checkout_enabled' => false]);
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $token])
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", ['attendee_ids' => [$attendees[0]->id], 'event_token' => $token])
         ->assertStatus(409)->assertJsonPath('error.code', 'CHECKOUT_DISABLED');
 });
 

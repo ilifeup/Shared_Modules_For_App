@@ -5,14 +5,22 @@ use Illuminate\Support\Facades\DB;
 
 it('creates a verified non-login family member with an independent user id', function () {
     $manager = User::factory()->create(['phone_e164' => '+886912345678']);
+    $applicationId = DB::table('family_member_applications')->insertGetId([
+        'manager_user_id' => $manager->id,
+        'member_name' => 'Family Child',
+        'relationship' => 'child',
+        'birth_date' => '2015-06-01',
+        'address' => 'Home address',
+        'contact_phone' => '+886912345678',
+        'contact_email' => $manager->email,
+        'evidence_path' => 'family-evidence/approved.pdf',
+        'status' => 'approved',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
     $response = $this->actingAs($manager, 'sanctum')
         ->postJson('/api/v1/me/family-memberships', [
-            'name' => 'Family Child',
-            'relationship' => 'child',
-            'birth_date' => '2015-06-01',
-            'address' => 'Home address',
-            'contact_phone' => '+886912345678',
-            'contact_email' => $manager->email,
+            'application_id' => $applicationId,
         ])->assertCreated()->assertJsonPath('data.FamilyUser', true)
         ->assertJsonPath('data.verified_status', 2);
 

@@ -363,10 +363,11 @@ it('rolls back all check-in writes when the second audit insert throws', functio
     $seen = 0;
     $armed = true;
     AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
-        if (! $armed || $audit->event !== 'checkin.checked_in') {
+        if ($armed === false || $audit->event !== 'checkin.checked_in') {
             return;
         }
-        if (++$seen === 2) {
+        $seen += 1;
+        if ($seen === 2) {
             throw new RuntimeException('M11 injected second audit failure');
         }
     });
@@ -403,10 +404,11 @@ it('rolls back all checkout writes when the second audit insert throws', functio
     $seen = 0;
     $armed = true;
     AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
-        if (! $armed || $audit->event !== 'checkin.checked_out') {
+        if ($armed === false || $audit->event !== 'checkin.checked_out') {
             return;
         }
-        if (++$seen === 2) {
+        $seen += 1;
+        if ($seen === 2) {
             throw new RuntimeException('M11 injected second checkout audit failure');
         }
     });

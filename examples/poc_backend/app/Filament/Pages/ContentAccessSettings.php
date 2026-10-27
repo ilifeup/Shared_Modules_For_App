@@ -30,7 +30,7 @@ class ContentAccessSettings extends Page
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->is_active && auth()->user()?->hasRole(\App\Models\User::ADMIN_ROLE);
+        return auth()->user()?->canAccessPanel(\Filament\Facades\Filament::getPanel('admin')) && (auth()->user()?->can('settings.manage') ?? false);
     }
 
     public function rules(): array

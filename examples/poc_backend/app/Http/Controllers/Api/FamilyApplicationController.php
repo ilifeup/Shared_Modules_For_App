@@ -65,4 +65,58 @@ final class FamilyApplicationController extends Controller
 
         return new JsonResponse(['data' => $rows]);
     }
+    public function review(Request $request, int $id): JsonResponse
+    {
+        if (! $request->user()->is_active || ! $request->user()->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator approval required.');
+        }
+        $data = $request->validate([
+            'decision' => ['required', 'in:approved,rejected'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $result = DB::transaction(function () use ($request, $id, $data) {
+            $application = DB::table('family_member_applications')->where('id', $id)->lockForUpdate()->first();
+            if ($application === null) {
+                throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
+            }
+            if ($application->status !== 'pending') {
+                throw new ApiException(409, 'APPLICATION_ALREADY_REVIEWED', 'Application already reviewed.');
+            }
+            DB::table('family_member_applications')->where('id', $id)->update([
+                'status' => $data['decision'],
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+                'review_note' => $data['note'] ?? null,
+                'updated_at' => now(),
+            ]);
+            return ['id' => $id, 'status' => $data['decision']];
+        });
+        return new JsonResponse(['data' => $result]);
+    }
+
+    public function evidence(Request $request, int $id)
+    {
+        if (! $request->user()->is_active || ! $request->user()->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator approval required.');
+        }
+        $application = DB::table('family_member_applications')->where('id', $id)->first();
+        if ($application === null) {
+            throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
+        }
+        if (! Storage::disk('local')->exists($application->evidence_path)) {
+            throw new ApiException(404, 'EVIDENCE_NOT_FOUND', 'Evidence not found.');
+        }
+        return Storage::disk('local')->download($application->evidence_path, 'relationship-evidence');
+    }
+
+    public function pending(Request $request): JsonResponse
+    {
+        if (! $request->user()->is_active || ! $request->user()->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator approval required.');
+        }
+        $rows = DB::table('family_member_applications')->where('status', 'pending')
+            ->orderBy('id')->paginate(20, ['id', 'manager_user_id', 'member_name', 'relationship', 'created_at']);
+        return new JsonResponse(['data' => $rows->items(), 'meta' => ['total' => $rows->total()]]);
+    }
+
 }

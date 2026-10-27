@@ -1,6 +1,11 @@
 <?php
 
+use App\Models\Article;
+use App\Models\ArticleComment;
+use App\Models\ArticleCommentAttachment;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 it('denies attachment upload by default regardless of membership tier', function () {
     $member = User::factory()->create();
@@ -90,58 +95,58 @@ it('does not stream missing private attachment content', function () {
 });
 
 it('rejects upload attempts against nonexistent comments', function () {
-    \Illuminate\Support\Facades\Storage::fake('local');
+    Storage::fake('local');
     $member = User::factory()->create(['verified_status' => 2]);
     $member->forceFill(['attachment_upload_enabled' => true])->save();
-    $file = \Illuminate\Http\UploadedFile::fake()->create('document.pdf', 20, 'application/pdf');
+    $file = UploadedFile::fake()->create('document.pdf', 20, 'application/pdf');
     $this->actingAs($member, 'sanctum')
         ->post('/api/v1/article-comments/999999999/attachments', ['file' => $file])
         ->assertNotFound();
 });
 
 it('uploads one private attachment per Taiwan week and rejects a second file', function () {
-    \Illuminate\Support\Facades\Storage::fake('local');
+    Storage::fake('local');
     $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
     $member->forceFill(['attachment_upload_enabled' => true])->save();
-    $article = \App\Models\Article::query()->create([
+    $article = Article::query()->create([
         'title' => 'Private upload test',
-        'body_html' => '<p>test</p>',
-        'status' => \App\Models\Article::STATUS_PUBLISHED,
-        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+        'body_html' => '<p>test</p>', 'author_name' => 'Test Author',
+        'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
     ]);
-    $comment = \App\Models\ArticleComment::query()->create([
+    $comment = ArticleComment::query()->create([
         'article_id' => $article->id,
         'user_id' => $member->id,
         'body' => 'Attachment test',
-        'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+        'status' => ArticleComment::STATUS_VISIBLE,
     ]);
     $this->actingAs($member, 'sanctum');
     $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
-        'file' => \Illuminate\Http\UploadedFile::fake()->create('first.pdf', 20, 'application/pdf'),
+        'file' => UploadedFile::fake()->create('first.pdf', 20, 'application/pdf'),
     ])->assertCreated()->assertJsonStructure(['data' => ['id', 'view_expires_at']])
         ->assertDontSee('storage_path');
     $this->assertDatabaseCount('article_comment_attachments', 1);
     $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
-        'file' => \Illuminate\Http\UploadedFile::fake()->create('second.pdf', 20, 'application/pdf'),
+        'file' => UploadedFile::fake()->create('second.pdf', 20, 'application/pdf'),
     ])->assertStatus(429);
     $this->assertDatabaseCount('article_comment_attachments', 1);
 });
 
 it('blocks an expired or removed attachment before private file streaming', function () {
-    \Illuminate\Support\Facades\Storage::fake('local');
+    Storage::fake('local');
     $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
-    $article = \App\Models\Article::query()->create([
-        'title' => 'Expiry test', 'body_html' => '<p>test</p>',
-        'status' => \App\Models\Article::STATUS_PUBLISHED,
-        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+    $article = Article::query()->create([
+        'title' => 'Expiry test', 'body_html' => '<p>test</p>', 'author_name' => 'Test Author',
+        'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
     ]);
-    $comment = \App\Models\ArticleComment::query()->create([
+    $comment = ArticleComment::query()->create([
         'article_id' => $article->id, 'user_id' => $member->id,
-        'body' => 'Expiry comment', 'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+        'body' => 'Expiry comment', 'status' => ArticleComment::STATUS_VISIBLE,
     ]);
     $path = 'private/article-comment-attachments/expiry.pdf';
-    \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'private-pdf');
-    $attachment = \App\Models\ArticleCommentAttachment::query()->create([
+    Storage::disk('local')->put($path, 'private-pdf');
+    $attachment = ArticleCommentAttachment::query()->create([
         'article_comment_id' => $comment->id, 'user_id' => $member->id,
         'storage_path' => $path, 'original_name' => 'expiry.pdf',
         'mime_type' => 'application/pdf', 'size_bytes' => 11,
@@ -157,20 +162,20 @@ it('blocks an expired or removed attachment before private file streaming', func
 });
 
 it('denies private attachment access when its comment is hidden or article withdrawn', function () {
-    \Illuminate\Support\Facades\Storage::fake('local');
+    Storage::fake('local');
     $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
-    $article = \App\Models\Article::query()->create([
-        'title' => 'Revocation test', 'body_html' => '<p>test</p>',
-        'status' => \App\Models\Article::STATUS_PUBLISHED,
-        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+    $article = Article::query()->create([
+        'title' => 'Revocation test', 'body_html' => '<p>test</p>', 'author_name' => 'Test Author',
+        'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
     ]);
-    $comment = \App\Models\ArticleComment::query()->create([
+    $comment = ArticleComment::query()->create([
         'article_id' => $article->id, 'user_id' => $member->id,
-        'body' => 'Revocation comment', 'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+        'body' => 'Revocation comment', 'status' => ArticleComment::STATUS_VISIBLE,
     ]);
     $path = 'private/article-comment-attachments/revocation.pdf';
-    \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'private-pdf');
-    $attachment = \App\Models\ArticleCommentAttachment::query()->create([
+    Storage::disk('local')->put($path, 'private-pdf');
+    $attachment = ArticleCommentAttachment::query()->create([
         'article_comment_id' => $comment->id, 'user_id' => $member->id,
         'storage_path' => $path, 'original_name' => 'revocation.pdf',
         'mime_type' => 'application/pdf', 'size_bytes' => 11,
@@ -178,10 +183,10 @@ it('denies private attachment access when its comment is hidden or article withd
     ]);
     $this->actingAs($member, 'sanctum');
     $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertOk();
-    $comment->update(['status' => \App\Models\ArticleComment::STATUS_HIDDEN]);
+    $comment->update(['status' => ArticleComment::STATUS_HIDDEN]);
     $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
-    $comment->update(['status' => \App\Models\ArticleComment::STATUS_VISIBLE]);
-    $article->update(['status' => \App\Models\Article::STATUS_WITHDRAWN]);
+    $comment->update(['status' => ArticleComment::STATUS_VISIBLE]);
+    $article->update(['status' => Article::STATUS_WITHDRAWN]);
     $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
     $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
 });

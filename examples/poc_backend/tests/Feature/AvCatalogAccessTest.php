@@ -20,7 +20,7 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_unverified_member_cannot_access_music_or_video_catalog(): void
     {
-        app(Settings::class)->set('verification_policy', Settings::POLICY_EMAIL);
+        app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);
         $member = User::factory()->unverified()->create([
             'phone_e164' => null,
             'phone_verified_at' => null,

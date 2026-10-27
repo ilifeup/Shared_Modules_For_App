@@ -141,3 +141,12 @@ it('rejects deprecated all, member and verified audience codes', function (): vo
             ->toThrow(InvalidArgumentException::class);
     }
 });
+
+it('denies inactive authenticated members even when no content rules are configured', function (): void {
+    $inactive = User::factory()->create(['is_active' => false]);
+    $policy = app(ContentAccessPolicy::class);
+
+    expect($policy->allowsWhenConfigured($inactive, 'av'))->toBeFalse()
+        ->and($policy->allowsWhenConfigured($inactive, 'av', 'music'))->toBeFalse()
+        ->and($policy->allowsWhenConfigured(null, 'av'))->toBeTrue();
+});

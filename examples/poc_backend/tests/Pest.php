@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Sms\FakeSmsGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;

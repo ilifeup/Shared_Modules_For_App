@@ -88,3 +88,13 @@ it('does not stream missing private attachment content', function () {
         ->get('/api/v1/attachments/999999999/content')
         ->assertNotFound();
 });
+
+it('rejects upload attempts against nonexistent comments', function () {
+    \Illuminate\Support\Facades\Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2]);
+    $member->forceFill(['attachment_upload_enabled' => true])->save();
+    $file = \Illuminate\Http\UploadedFile::fake()->create('document.pdf', 20, 'application/pdf');
+    $this->actingAs($member, 'sanctum')
+        ->post('/api/v1/article-comments/999999999/attachments', ['file' => $file])
+        ->assertNotFound();
+});

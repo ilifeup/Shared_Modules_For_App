@@ -153,3 +153,19 @@ it('cancels a delegated booking once and refuses a stale second cancellation', f
     expect(seats($event))->toBe(1);
     expect(DB::table('event_booking_groups')->where('id', $waiting->json('data.id'))->value('status'))->toBe('confirmed');
 });
+
+it('never permits a managed family member to book directly even with a forged Sanctum session', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $family = User::factory()->create([
+        'FamilyUser' => true, 'verified_status' => 2, 'is_active' => true,
+        'email' => null, 'phone_e164' => null,
+    ]);
+
+    $this->actingAs($family, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+        'member_user_id' => $family->id,
+    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+
+    expect(seats($event))->toBe(0);
+    expect(DB::table('event_booking_groups')->count())->toBe(0);
+});

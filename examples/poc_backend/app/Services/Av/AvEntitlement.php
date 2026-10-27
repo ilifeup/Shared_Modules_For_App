@@ -14,7 +14,7 @@ final class AvEntitlement
 {
     public function track(User $member, int $trackId): bool
     {
-        if (! $member->is_active) {
+        if (! $member->is_active || ! DB::table('av_music_tracks')->where('id', $trackId)->where('is_published', true)->exists()) {
             return false;
         }
 
@@ -33,6 +33,7 @@ final class AvEntitlement
     public function video(User $member, int $videoId): bool
     {
         return $member->is_active
+            && DB::table('av_videos')->where('id', $videoId)->where('is_published', true)->exists()
             && $this->hasLevelGrant($member, 'av_video_level_access', 'video_id', $videoId);
     }
 

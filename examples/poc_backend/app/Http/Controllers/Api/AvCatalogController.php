@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\ContentAccess\ContentAccessPolicy;
-use App\Support\VerificationPolicy;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,11 +11,11 @@ use Illuminate\Support\Facades\DB;
 
 class AvCatalogController extends Controller
 {
-    public function tracks(Request $request, VerificationPolicy $verification, ContentAccessPolicy $access): JsonResponse
+    public function tracks(Request $request, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
-        abort_unless($member->is_active && (int) $member->verified_status === 2, 403);
+        abort_unless($member->is_active && $member->isVerifiedMember(), 403);
         $items = DB::table('av_music_tracks as tracks')
             ->where('tracks.is_published', true)
             ->where(function (Builder $query) use ($member): void {
@@ -44,11 +43,11 @@ class AvCatalogController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function videos(Request $request, VerificationPolicy $verification, ContentAccessPolicy $access): JsonResponse
+    public function videos(Request $request, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);
-        abort_unless($member->is_active && (int) $member->verified_status === 2, 403);
+        abort_unless($member->is_active && $member->isVerifiedMember(), 403);
         $items = DB::table('av_videos as videos')
             ->where('videos.is_published', true)
             ->whereExists(function (Builder $grant) use ($member): void {

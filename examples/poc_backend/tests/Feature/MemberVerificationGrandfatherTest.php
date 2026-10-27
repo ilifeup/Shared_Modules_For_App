@@ -54,6 +54,25 @@ it('does not grant membership from a verification timestamp alone', function ():
         ->and(app(VerificationPolicy::class)->missing($pending->fresh()))->toBe('phone');
 });
 
+it('keeps contact timestamps from overriding the User model membership authority', function (): void {
+    $pending = User::factory()->create([
+        'membership_verified_at' => null,
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $verified = User::factory()->create([
+        'membership_verified_at' => now(),
+        'email_verified_at' => null,
+        'phone_verified_at' => null,
+    ]);
+
+    expect($pending->fresh()->isVerifiedMember())->toBeFalse()
+        ->and($verified->fresh()->isVerifiedMember())->toBeTrue();
+
+    $verified->forceFill(['membership_verified_at' => null])->save();
+    expect($verified->fresh()->isVerifiedMember())->toBeFalse();
+});
+
 it('keeps guest access separate from persisted registered membership', function (): void {
     $member = User::factory()->create(['membership_verified_at' => now()]);
     $this->getJson('/api/v1/me/notifications')->assertUnauthorized();
@@ -74,7 +93,6 @@ it('requires verification when membership is explicitly revoked in the DB', func
     $member->forceFill(['membership_verified_at' => null])->save();
     expect(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeFalse();
 });
-
 
 it('atomically grants stored membership on valid email verification', function (): void {
     app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);

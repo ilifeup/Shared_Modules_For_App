@@ -28,7 +28,7 @@ final class PasswordResetService
     {
         $user = $this->uniqueEmailAccount($email);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             return;
         }
 
@@ -38,6 +38,11 @@ final class PasswordResetService
 
     public function resetByEmail(string $email, string $token, string $password): void
     {
+        $user = $this->uniqueEmailAccount($email);
+        if ($user === null || $user->FamilyUser) {
+            throw new ApiException(422, 'RESET_TOKEN_INVALID', '重設連結無效或已過期，請重新申請。');
+        }
+
         $status = Password::broker()->reset(
             ['email' => mb_strtolower(trim($email)), 'token' => $token, 'password' => $password],
             fn (User $user) => $this->apply($user, $password, 'email'),
@@ -52,7 +57,7 @@ final class PasswordResetService
     {
         $user = $this->uniquePhoneAccount($phoneE164);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             $this->otp->throttleWithoutSending($phoneE164, PhoneOtp::PURPOSE_PASSWORD_RESET);
 
             return;
@@ -78,7 +83,7 @@ final class PasswordResetService
     {
         $user = $this->uniquePhoneAccount($phoneE164);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             throw PhoneOtpService::invalidCode();
         }
 

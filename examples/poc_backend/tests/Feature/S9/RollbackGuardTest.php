@@ -25,14 +25,14 @@ it('allows a rollback when only rebuildable S9 data exists', function () {
 
 it('refuses a rollback that would delete S9 data unless the loss is accepted', function () {
     Tag::query()->create(['name' => '共修']);
-    groupBook(s9Event(), User::factory()->create(), ['家人'])->assertCreated();
+    groupBook(s9Event(), User::factory()->create())->assertCreated();
 
     $report = S9DataGuard::report();
     expect($report)->toMatchArray([
         'tags' => 1,
         'event_categories' => 1,
         'event_booking_groups (S9 bookings)' => 1,
-        'event_booking_attendees (S9 bookings)' => 2,
+        'event_booking_attendees (S9 bookings)' => 1,
     ]);
     expect(fn () => S9DataGuard::assertRollbackAllowed())->toThrow(RuntimeException::class, 'S9 rollback refused');
 

@@ -76,7 +76,7 @@ class AvEntitlementTest extends TestCase
             'updated_at' => now(),
         ]);
         DB::table('av_video_level_access')->insert(['video_id' => $videoId, 'member_level_id' => $levelId]);
-        $service = new AvEntitlement;
+        $service = app(AvEntitlement::class);
 
         $this->assertTrue($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => false]);

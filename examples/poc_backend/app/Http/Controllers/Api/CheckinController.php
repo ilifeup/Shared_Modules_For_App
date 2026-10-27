@@ -59,7 +59,7 @@ class CheckinController extends Controller
      */
     public function checkOut(Request $request, int $id): JsonResponse
     {
-        $data = $this->validateScan($request);
+        $data = $this->validateScan($request, false);
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $this->assertScanToken($event, $data);
 
@@ -197,17 +197,23 @@ class CheckinController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validateScan(Request $request): array
+    private function validateScan(Request $request, bool $validateGps = true): array
     {
-        return $request->validate([
+        $rules = [
             'attendee_ids' => ['required', 'array', 'min:1', 'max:50'],
             'attendee_ids.*' => ['integer', 'min:1'],
             'event_token' => ['required_without:location_token', 'nullable', 'string', 'max:100'],
             'location_token' => ['required_without:event_token', 'nullable', 'string', 'max:64'],
-            'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
-            'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
-            'accuracy' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000'],
-        ]);
+        ];
+        if ($validateGps) {
+            $rules += [
+                'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+                'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+                'accuracy' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000'],
+            ];
+        }
+
+        return $request->validate($rules);
     }
 
     /**

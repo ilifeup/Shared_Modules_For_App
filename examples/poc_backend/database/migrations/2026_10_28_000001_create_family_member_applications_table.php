@@ -20,6 +20,9 @@ return new class extends Migration
             $table->string('evidence_disk', 40)->default('local');
             $table->string('evidence_path', 500);
             $table->string('status', 20)->default('pending');
+            $table->boolean('payment_verified')->default(false);
+            $table->foreignId('payment_verified_by')->nullable()->constrained('users');
+            $table->timestamp('payment_verified_at')->nullable();
             $table->foreignId('reviewed_by')->nullable()->constrained('users');
             $table->timestamp('reviewed_at')->nullable();
             $table->text('review_note')->nullable();
@@ -27,10 +30,19 @@ return new class extends Migration
             $table->timestamps();
             $table->index(['manager_user_id', 'status']);
         });
+        Schema::create('family_member_settings', function (Blueprint $table): void {
+            $table->unsignedTinyInteger('id')->primary();
+            $table->unsignedInteger('max_members')->default(2);
+            $table->timestamps();
+        });
+        \Illuminate\Support\Facades\DB::table('family_member_settings')->insert([
+            'id' => 1, 'max_members' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function down(): void
     {
         Schema::dropIfExists('family_member_applications');
+        Schema::dropIfExists('family_member_settings');
     }
 };

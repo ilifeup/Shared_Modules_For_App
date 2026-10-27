@@ -98,11 +98,17 @@ function s9Event(array $attributes = [], ?EventCategory $category = null): Calen
  */
 function groupBook(CalendarEvent $event, User $member, array $names = [], bool $includeSelf = true, ?string $requestId = null)
 {
-    return test()->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
-        'include_self' => $includeSelf,
-        'attendees' => array_map(fn (string $n) => ['name' => $n], $names),
-        'client_request_id' => $requestId ?? (string) Str::uuid(),
-    ]);
+    // MVP contract: one registered member per booking. Legacy group payloads
+    // remain intentionally invalid so rejection tests can exercise HTTP 422.
+    $payload = ['client_request_id' => $requestId ?? (string) Str::uuid()];
+
+    if ($names !== [] || ! $includeSelf) {
+        $payload['include_self'] = $includeSelf;
+        $payload['attendees'] = array_map(fn (string $name): array => ['name' => $name], $names);
+    }
+
+    return test()->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", $payload);
 }
 
 function seats(CalendarEvent $event): int

@@ -80,6 +80,35 @@ it('keeps historical bookings but blocks cancellation after delegation revocatio
     expect(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed');
 });
 
+it('replays by member ID after a delegated attendee changes their display name', function () {
+    $manager = User::factory()->create();
+    $member = User::factory()->create(['name' => '原姓名']);
+    $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
+    $now = now();
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id,
+        'member_user_id' => $member->id,
+        'status' => 'active',
+        'started_at' => $now,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    $payload = [
+        'include_self' => false,
+        'attendees' => [['member_user_id' => $member->id]],
+        'client_request_id' => (string) Str::uuid(),
+    ];
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+    $first = $this->actingAs($manager, 'sanctum')->postJson($url, $payload)->assertCreated();
+    $member->update(['name' => '更新後姓名']);
+
+    $this->actingAs($manager, 'sanctum')->postJson($url, $payload)
+        ->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
+
+    expect(DB::table('event_booking_groups')->where('client_request_id', $payload['client_request_id'])->count())->toBe(1)
+        ->and(DB::table('event_booking_attendees')->where('event_booking_group_id', $first->json('data.id'))->value('name'))->toBe('原姓名');
+});
+
 it('rejects idempotent booking replay after family delegation is revoked', function () {
     $manager = User::factory()->create();
     $member = User::factory()->create();

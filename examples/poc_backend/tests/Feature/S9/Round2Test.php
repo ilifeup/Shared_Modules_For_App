@@ -49,7 +49,9 @@ function r2Occurrence(): array
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC, 'booking_capacity' => 10, 'starts_at' => now()->addMinutes(30),
         'ends_at' => now()->addHours(2), 'checkin_enabled' => true, 'checkout_enabled' => true], $category);
     $member = User::factory()->create(['name' => '會員甲乙丙', 'email' => 'member-r2@example.com']);
-    groupBook($event, $member, ['家人丁戊'])->assertCreated();
+    groupBook($event, $member)->assertCreated();
+    $family = User::factory()->create(['name' => '家人丁戊']);
+    groupBook($event, $family)->assertCreated();
     $other = User::factory()->create(['name' => '會員己庚', 'email' => 'other-r2@example.com', 'phone_e164' => '+886912000111']);
     groupBook($event, $other)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();

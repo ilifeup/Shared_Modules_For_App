@@ -270,6 +270,7 @@ class ArticleController extends Controller
                 abort_if($uploads->count() >= 1, 429, 'Weekly attachment quota exceeded.');
                 $path = $file->store('private/article-comment-attachments', 'local');
                 abort_unless($path !== false, 500);
+
                 return ArticleCommentAttachment::query()->create([
                     'article_comment_id' => $comment->id,
                     'user_id' => $locked->id,

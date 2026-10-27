@@ -108,3 +108,29 @@ it('grants only currently active membership levels and rejects expired or revoke
     $assignment->forceFill(['revoked_at' => now()])->save();
     expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeFalse();
 });
+
+it('treats unauthenticated requests as Guest even when a registered account exists', function (): void {
+    $registered = User::factory()->create(['email_verified_at' => now()]);
+    DB::table('app_content_access_rules')->insert([
+        ['scope' => 'page', 'resource_code' => 'articles', 'audience' => 'register_member', 'allowed' => true],
+        ['scope' => 'page', 'resource_code' => 'articles', 'audience' => 'verified_member', 'allowed' => true],
+    ]);
+
+    $policy = app(ContentAccessPolicy::class);
+    expect($policy->allows(null, 'articles'))->toBeFalse()
+        ->and($policy->allows($registered, 'articles'))->toBeTrue();
+
+    DB::table('app_content_access_rules')->insert([
+        'scope' => 'page', 'resource_code' => 'articles', 'audience' => 'guest', 'allowed' => true,
+    ]);
+    expect($policy->allows(null, 'articles'))->toBeTrue();
+});
+
+it('rejects deprecated all, member and verified audience codes', function (): void {
+    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $admin = makeAdmin();
+    foreach (['all', 'member', 'verified'] as $old) {
+        expect(fn () => $manager->save($admin, 'page', 'articles', $old, true))
+            ->toThrow(\InvalidArgumentException::class);
+    }
+});

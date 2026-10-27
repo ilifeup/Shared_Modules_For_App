@@ -355,3 +355,78 @@ it('keeps full-batch check-in and checkout retries idempotent', function () {
     expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
 });
+
+
+it('rolls back all check-in writes when the second audit insert throws', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $seen = 0;
+    $armed = true;
+    AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
+        if (! $armed || $audit->event !== 'checkin.checked_in') {
+            return;
+        }
+        if (++$seen === 2) {
+            throw new RuntimeException('M11 injected second audit failure');
+        }
+    });
+
+    try {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+            'attendee_ids' => [$attendees[0]->id, $attendees[1]->id],
+            'event_token' => $token,
+        ])->assertStatus(500);
+    } finally {
+        $armed = false; // Listener remains inert for other tests.
+    }
+
+    expect($seen)->toBe(2)
+        ->and(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id],
+        'event_token' => $token,
+    ])->assertOk();
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
+});
+
+it('rolls back all checkout writes when the second audit insert throws', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $ids = [$attendees[0]->id, $attendees[1]->id];
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk();
+
+    $seen = 0;
+    $armed = true;
+    AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
+        if (! $armed || $audit->event !== 'checkin.checked_out') {
+            return;
+        }
+        if (++$seen === 2) {
+            throw new RuntimeException('M11 injected second checkout audit failure');
+        }
+    });
+
+    try {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+            'attendee_ids' => $ids, 'event_token' => $token,
+        ])->assertStatus(500);
+    } finally {
+        $armed = false;
+    }
+
+    expect($seen)->toBe(2)
+        ->and(EventAttendance::query()->where('calendar_event_id', $event->id)
+            ->where('status', EventAttendance::CHECKED_IN)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk();
+    expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
+});

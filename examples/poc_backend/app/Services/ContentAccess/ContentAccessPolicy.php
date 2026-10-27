@@ -48,6 +48,20 @@ final class ContentAccessPolicy
             $audiences[] = 'verified';
         }
 
+        // Active membership levels are entitlements, never administrator roles.
+        if ($user !== null) {
+            $levelIds = DB::table('member_level_assignments')
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->where('starts_at', '<=', now())
+                ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+                ->pluck('membership_level_id');
+
+            foreach ($levelIds as $levelId) {
+                $audiences[] = 'level:'.$levelId;
+            }
+        }
+
         // A public rule never overrides an explicit guest/member denial.
         $rules = DB::table('app_content_access_rules')
             ->where('scope', $scope)

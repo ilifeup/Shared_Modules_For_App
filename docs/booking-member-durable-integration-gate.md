@@ -23,7 +23,7 @@ Status: **IN PROGRESS / NOT ACCEPTED / DO NOT MERGE** (2026-10-27).
 Current main comparison (2026-10-27): PR #47 is 26 commits ahead and 23 behind main; GitHub reports mergeable, but the branch must still be checked against the latest main. This gate remains NOT ACCEPTED.
 
 - [x] PR #47 Backend, Mobile and documentation CI passed at head `53cd991a7eb4078eb393a7c9d020a23f0c1faeb5` (2026-10-27). This is branch-level evidence, not latest-main integration acceptance.
-- [ ] Diff PR #43's latest head against the #47 base and integrate all applicable fixes; run guest-inbox and guest-booking tests on the final combined tree.
+- [x] PR #43 latest head `fa04cc0d5f09e3b2ec74a355b8b1292a7ac36e06` is merged into main; `M08GuestBookingTest.php` has identical blob SHA `31b1cedf640a7f9df0565248ece93edda1cbe3bf` in #43, main and #47. `BookingEngine.php` in main equals #43 (`8a70af7c...`), while #47 intentionally differs for durable handoff and family delegation. Final combined-tree guest inbox/booking and MySQL tests remain required.
 - [ ] Review PR #42's latest head against #47's durable job implementation and tests; resolve conflicts explicitly. The three #42-only design/risk/gate documents were copied into #47 (commit `ff000c3118bd091f1381bf0bccaf4fbd2531c126`); this does not prove all differing code paths are reconciled.
 - [ ] Run MySQL tests for notification replay, missing booking/member, cancellation, waitlist promotion and Google worker retry.
 - [ ] Confirm deployment queue connection, worker supervision and rollback/restore readiness before any migration.

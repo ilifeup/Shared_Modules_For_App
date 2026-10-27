@@ -347,3 +347,38 @@ it('requires an authenticated database-verified member to discover comment attac
     $this->actingAs($member, 'sanctum')
         ->getJson('/api/v1/article-comments/123/attachments')->assertForbidden();
 });
+
+it('counts only unexpired and unremoved attachments in public comment metadata', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $article = Article::query()->create([
+        'title' => 'Visible attachment count', 'body_html' => '<p>test</p>',
+        'author_name' => 'Test Author', 'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Count test', 'status' => ArticleComment::STATUS_VISIBLE,
+    ]);
+    $base = [
+        'article_comment_id' => $comment->id, 'user_id' => $member->id,
+        'original_name' => 'test.pdf', 'mime_type' => 'application/pdf',
+        'size_bytes' => 10,
+    ];
+    ArticleCommentAttachment::query()->create($base + [
+        'storage_path' => 'private/article-comment-attachments/live.pdf',
+        'view_expires_at' => now()->addDay(),
+    ]);
+    ArticleCommentAttachment::query()->create($base + [
+        'storage_path' => 'private/article-comment-attachments/expired.pdf',
+        'view_expires_at' => now()->subDay(),
+    ]);
+    ArticleCommentAttachment::query()->create($base + [
+        'storage_path' => 'private/article-comment-attachments/removed.pdf',
+        'view_expires_at' => now()->addDay(), 'removed_at' => now(),
+    ]);
+
+    $this->actingAs($member, 'sanctum');
+    $this->getJson('/api/v1/articles/'.$article->id.'/comments')
+        ->assertOk()
+        ->assertJsonPath('data.0.attachment_count', 1);
+});

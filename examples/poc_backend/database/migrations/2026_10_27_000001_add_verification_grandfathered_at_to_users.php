@@ -10,13 +10,14 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table): void {
             $table->timestamp('verification_grandfathered_at')->nullable();
+            $table->timestamp('verification_grandfather_revoked_at')->nullable();
         });
     }
 
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table): void {
-            $table->dropColumn('verification_grandfathered_at');
+            $table->dropColumn(['verification_grandfathered_at', 'verification_grandfather_revoked_at']);
         });
     }
 };

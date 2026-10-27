@@ -196,11 +196,15 @@ final class Settings
         DB::transaction(function () use ($values, $merged): void {
             // Serialize policy changes on the existing settings row; do not
             // rely on a request-scoped cached value for the transition check.
+            // Ensure the row exists before locking: SELECT FOR UPDATE cannot
+            // serialize writers when the policy still uses its default value.
+            AppSetting::query()->insertOrIgnore([
+                'key' => 'verification_policy',
+                'value' => json_encode(self::POLICY_EMAIL),
+            ]);
             $storedPolicy = AppSetting::query()->where('key', 'verification_policy')
-                ->lockForUpdate()->first();
-            $currentPolicy = $storedPolicy === null
-                ? self::POLICY_EMAIL
-                : (string) json_decode((string) $storedPolicy->value, true);
+                ->lockForUpdate()->firstOrFail();
+            $currentPolicy = (string) json_decode((string) $storedPolicy->value, true);
 
             if (array_key_exists('verification_policy', $values)
                 && $currentPolicy === self::POLICY_EMAIL

@@ -83,6 +83,8 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
+        // On this branch the phone policy applies immediately; PR #49 changes
+        // this expectation for existing email-verified members via grandfathering.
         $this->assertFalse($service->video($member, $videoId));
         $member->forceFill(['phone_verified_at' => now()]);
         $this->assertTrue($service->video($member, $videoId));

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\AvCatalogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BookingGroupController;
@@ -20,6 +21,12 @@ use App\Http\Controllers\Api\VerificationController;
 use Illuminate\Support\Facades\Route;
 
 // Prefix /api/v1 is set in bootstrap/app.php (apiPrefix).
+
+// S10: never expose AV catalogs to guests or unverified members.
+Route::middleware(['auth:sanctum', 'member.verified', 'throttle:auth-60'])->prefix('av')->group(function () {
+    Route::get('/tracks', [AvCatalogController::class, 'tracks']);
+    Route::get('/videos', [AvCatalogController::class, 'videos']);
+});
 
 Route::get('/health', HealthController::class)->name('api.health');
 Route::get('/membership-levels', [MembershipController::class, 'index']);

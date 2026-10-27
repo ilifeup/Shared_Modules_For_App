@@ -226,3 +226,37 @@ it('never reuses the same verified payment reference or paid credit', function (
     $this->postJson($endpoint, $payload)->assertUnprocessable();
     expect(DB::table('family_member_paid_credits')->where('payment_reference', 'one-payment-one-credit')->count())->toBe(1);
 });
+
+it('returns a verified paid credit after administrator rejects the application', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $admin = User::factory()->create(['verified_status' => 2]);
+    $admin->assignRole('admin');
+    $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+        'status' => 'active', 'started_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $credit = DB::table('family_member_paid_credits')->insertGetId([
+        'manager_user_id' => $manager->id, 'verified_by' => $admin->id,
+        'payment_reference' => 'rejected-credit-test', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    Storage::fake('local');
+    $payload = [
+        'name' => 'Second', 'relationship' => 'child', 'birth_date' => '2011-01-01',
+        'address' => 'Home',
+        'relationship_evidence' => UploadedFile::fake()->create('proof.pdf', 20, 'application/pdf'),
+    ];
+    $application = $this->actingAs($manager, 'sanctum')
+        ->postJson('/api/v1/me/family-applications', $payload)->assertCreated()->json('data.id');
+    expect((int) DB::table('family_member_paid_credits')->where('id', $credit)
+        ->value('used_application_id'))->toBe((int) $application);
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/family-applications/{$application}/review", ['decision' => 'rejected'])
+        ->assertOk()->assertJsonPath('data.status', 'rejected');
+    expect(DB::table('family_member_paid_credits')->where('id', $credit)->value('used_application_id'))->toBeNull();
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', [
+        ...$payload, 'relationship_evidence' => UploadedFile::fake()->create('retry.pdf', 20, 'application/pdf'),
+    ])->assertCreated();
+    expect(DB::table('family_member_paid_credits')->where('id', $credit)
+        ->whereNotNull('used_application_id')->exists())->toBeTrue();
+});

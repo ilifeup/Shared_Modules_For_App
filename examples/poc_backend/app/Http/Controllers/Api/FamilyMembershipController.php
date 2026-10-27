@@ -48,6 +48,55 @@ final class FamilyMembershipController extends Controller
         return new JsonResponse(['data' => ['id' => $id, 'status' => 'revoked']]);
     }
 
+    /**
+     * Edit profile contact details of an existing, verified delegated family member.
+     * This never changes users credentials or verified_status.
+     */
+    public function saveProfile(Request $request, int $memberId): JsonResponse
+    {
+        $manager = $request->user();
+        if ((int) $manager->verified_status !== 2 || ! $manager->is_active) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證會員使用。');
+        }
+
+        $data = $request->validate([
+            'birth_date' => ['required', 'date', 'before_or_equal:today'],
+            'address' => ['required', 'string', 'max:500'],
+            'contact_phone' => ['nullable', 'string', 'max:40'],
+            'contact_email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $profile = DB::transaction(function () use ($manager, $memberId, $data): object {
+            $delegation = DB::table('family_memberships')
+                ->where('manager_user_id', $manager->id)
+                ->where('member_user_id', $memberId)
+                ->where('status', 'active')
+                ->whereNull('ended_at')
+                ->lockForUpdate()
+                ->first();
+            $eligible = DB::table('users')->where('id', $memberId)
+                ->where('is_active', true)->where('verified_status', 2)->exists();
+            if ($delegation === null || ! $eligible) {
+                throw new ApiException(403, 'FAMILY_MEMBER_NOT_AUTHORIZED', '無有效代管授權或家庭成員尚未驗證。');
+            }
+
+            DB::table('family_member_profiles')->updateOrInsert(
+                ['member_user_id' => $memberId],
+                [
+                    'birth_date' => $data['birth_date'],
+                    'address' => trim($data['address']),
+                    'contact_phone' => $data['contact_phone'] ?? null,
+                    'contact_email' => $data['contact_email'] ?? null,
+                    'updated_at' => now(),
+                ],
+            );
+
+            return DB::table('family_member_profiles')->where('member_user_id', $memberId)->first();
+        });
+
+        return new JsonResponse(['data' => $profile]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $manager = $request->user();

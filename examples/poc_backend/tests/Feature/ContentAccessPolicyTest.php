@@ -199,3 +199,22 @@ it('does not let an inactive account inherit guest access to AV content', functi
         ->and($policy->allows($inactive, 'av', 'videos'))->toBeFalse()
         ->and($policy->allowsWhenConfigured($inactive, 'av', 'videos'))->toBeFalse();
 });
+
+it('keeps verified-member AV access separate from guest visibility and explicit denial', function (): void {
+    $member = User::factory()->create(['email_verified_at' => now(), 'is_active' => true]);
+    $policy = app(ContentAccessPolicy::class);
+    DB::table('app_content_access_rules')->insert([
+        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'verified_member', 'allowed' => true],
+        ['scope' => 'list', 'resource_code' => 'av/lessons', 'audience' => 'verified_member', 'allowed' => true],
+        ['scope' => 'topic', 'resource_code' => 'av/lessons/intro', 'audience' => 'verified_member', 'allowed' => true],
+    ]);
+
+    expect($policy->allows(null, 'av', 'lessons', 'intro'))->toBeFalse()
+        ->and($policy->allows($member, 'av', 'lessons', 'intro'))->toBeTrue();
+
+    DB::table('app_content_access_rules')->insert([
+        'scope' => 'topic', 'resource_code' => 'av/lessons/intro',
+        'audience' => 'user:'.$member->id, 'allowed' => false,
+    ]);
+    expect($policy->allows($member, 'av', 'lessons', 'intro'))->toBeFalse();
+});

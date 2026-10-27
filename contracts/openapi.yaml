@@ -69,6 +69,7 @@ paths:
                         category: { type: string }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /av/videos:
     get:
       tags: [av]
@@ -95,6 +96,7 @@ paths:
                         youtube_id: { type: string }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /health:
     get:
       tags: [system]

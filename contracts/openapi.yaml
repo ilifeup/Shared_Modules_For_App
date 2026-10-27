@@ -1305,6 +1305,26 @@ paths:
       x-dart: BookingGroupApi.book -> BookingGroup
       description: 'S9 M08 members-only booking. Every attendee must have a valid member_user_id; only self-booking is allowed until authorized family delegation exists. Idempotent by client_request_id; 201 created and 200 replayed.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_request_id]
+              properties:
+                client_request_id: { type: string, format: uuid }
+                include_self: { type: boolean, default: true }
+                attendees:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [member_user_id]
+                    properties:
+                      member_user_id: { type: integer, minimum: 1 }
       responses:
         '201': { $ref: '#/components/responses/BookingGroupResponse' }
         '200': { $ref: '#/components/responses/BookingGroupResponse' }

@@ -3,6 +3,8 @@
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
 
 it('lists only active delegations belonging to the logged-in manager', function () {
     $manager = User::factory()->create();
@@ -144,4 +146,51 @@ it('requires administrator approval and consumes a reviewed application only onc
         'application_id' => $id,
     ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_APPROVAL_REQUIRED');
     expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(1);
+});
+
+it('lets only admin configure the maximum while the free allowance stays one', function () {
+    $member = User::factory()->create(['verified_status' => 2]);
+    $admin = User::factory()->create(['verified_status' => 2]);
+    $admin->assignRole('admin');
+    $this->actingAs($member, 'sanctum')->putJson('/api/v1/admin/family-settings', [
+        'max_members' => 3,
+    ])->assertForbidden();
+    $this->actingAs($admin, 'sanctum')->putJson('/api/v1/admin/family-settings', [
+        'max_members' => 3,
+    ])->assertOk()->assertJsonPath('data.free_members', 1);
+    $this->getJson('/api/v1/admin/family-settings')
+        ->assertOk()->assertJsonPath('data.max_members', 3)
+        ->assertJsonPath('data.free_members', 1);
+});
+
+it('requires verified payment before applying for the second family member', function () {
+    Storage::fake('local');
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $admin = User::factory()->create(['verified_status' => 2]);
+    $admin->assignRole('admin');
+    $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+        'status' => 'active', 'started_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $payload = [
+        'name' => 'Second', 'relationship' => 'child', 'birth_date' => '2012-01-01',
+        'address' => 'Home', 'relationship_evidence' => UploadedFile::fake()->create('proof.pdf', 20, 'application/pdf'),
+    ];
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', $payload)
+        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_PAYMENT_REQUIRED');
+    $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/family-payments/verify', [
+        'manager_user_id' => $manager->id, 'payment_reference' => 'test-paid-second-1',
+    ])->assertCreated();
+    $response = $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', $payload)
+        ->assertCreated()->assertJsonPath('data.status', 'pending');
+    $id = $response->json('data.id');
+    expect(DB::table('family_member_applications')->where('id', $id)->value('payment_verified'))->toBeTruthy();
+    $this->actingAs($admin, 'sanctum')->postJson("/api/v1/admin/family-applications/{$id}/review", [
+        'decision' => 'approved',
+    ])->assertOk();
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-memberships', [
+        'application_id' => $id,
+    ])->assertCreated();
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(2);
 });

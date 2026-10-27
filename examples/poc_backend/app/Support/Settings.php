@@ -4,9 +4,9 @@ namespace App\Support;
 
 use App\Models\AppSetting;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use EachCore\SharedCore\AuthSettings;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**

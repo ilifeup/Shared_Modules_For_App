@@ -151,6 +151,9 @@ final class BookingEngine
             if (! $byAdmin && (int) $locked->user_id !== (int) $actor->id) {
                 throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約會員可以取消此預約。');
             }
+            if (! $byAdmin && (int) $locked->user_id !== (int) $actor->id) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只能取消自己的預約。');
+            }
             if (! $locked->isConfirmed()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此預約已取消。');
             }

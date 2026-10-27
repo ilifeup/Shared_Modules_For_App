@@ -21,7 +21,7 @@ it('allows public lists but denies restricted topics', function (): void {
     DB::table('app_content_access_rules')->insert([
         ['scope' => 'page', 'resource_code' => 'articles', 'audience' => 'guest', 'allowed' => true],
         ['scope' => 'list', 'resource_code' => 'articles/news', 'audience' => 'guest', 'allowed' => true],
-        ['scope' => 'topic', 'resource_code' => 'articles/news/private', 'audience' => 'member', 'allowed' => true],
+        ['scope' => 'topic', 'resource_code' => 'articles/news/private', 'audience' => 'register_member', 'allowed' => true],
     ]);
 
     $policy = app(ContentAccessPolicy::class);
@@ -32,7 +32,7 @@ it('allows public lists but denies restricted topics', function (): void {
 it('makes explicit denial override member and verified grants', function (): void {
     $member = User::factory()->create(['email_verified_at' => now()]);
     DB::table('app_content_access_rules')->insert([
-        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'member', 'allowed' => true],
+        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'register_member', 'allowed' => true],
         ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'user:'.$member->id, 'allowed' => false],
     ]);
 

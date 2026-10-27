@@ -13,7 +13,7 @@ use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
-/** An occurrence open for check-in now, with the member's confirmed group (self + one companion (registered/delegated by PR #43 helper)). */
+/** An occurrence open for check-in now, with one confirmed registered-member booking. */
 function checkinEvent(array $attributes = []): array
 {
     $event = s9Event(array_merge([
@@ -21,9 +21,7 @@ function checkinEvent(array $attributes = []): array
         'checkin_enabled' => true, 'checkout_enabled' => true, 'booking_capacity' => 5,
     ], $attributes));
     $member = User::factory()->create();
-    // Reuse the branch-local booking fixture. PR #43 resolves this name to a
-    // registered member with delegation; #40 alone has no family schema.
-    groupBook($event, $member, ['家人'])->assertCreated();
+    groupBook($event, $member)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
     return [$event, $member, $attendees];

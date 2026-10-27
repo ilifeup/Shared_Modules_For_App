@@ -2,6 +2,9 @@
 
 use App\Filament\Pages\ContentAccessSettings;
 use App\Models\User;
+use App\Models\MembershipLevel;
+use App\Services\ContentAccess\ContentAccessRuleManager;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -39,9 +42,9 @@ it('rejects ordinary members from the administration page and mutations', functi
     $this->get('/admin/content-access-settings')->assertForbidden();
 
     expect(ContentAccessSettings::canAccess())->toBeFalse();
-    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+    expect(fn () => app(ContentAccessRuleManager::class)
         ->save(auth()->user(), 'page', 'av', 'guest', true))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ->toThrow(HttpException::class);
 
     expect(DB::table('app_content_access_rules')->count())->toBe(0);
 });
@@ -49,7 +52,7 @@ it('rejects ordinary members from the administration page and mutations', functi
 it('accepts an existing VIP level selector through the same administrator settings page', function (): void {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     $this->actingAs(makeAdmin());
-    $vip = \App\Models\MembershipLevel::query()->where('code', 'vip')->firstOrFail();
+    $vip = MembershipLevel::query()->where('code', 'vip')->firstOrFail();
 
     Livewire::test(ContentAccessSettings::class)
         ->set('scope', 'page')

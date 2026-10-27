@@ -196,7 +196,7 @@ final class Settings
         );
 
         // Contact policy affects only how unverified accounts qualify.
-        // Existing membership_verified_at grants remain unchanged.
+        // Existing verified_status grants remain unchanged.
         DB::transaction(function () use ($values, $merged): void {
             foreach (array_keys($values) as $key) {
                 AppSetting::query()->updateOrCreate(['key' => $key], ['value' => json_encode($merged[$key])]);

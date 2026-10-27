@@ -51,6 +51,17 @@ class AvPlacementIntegrityTest extends TestCase
         ]));
         $this->assertSame(2, DB::table('av_page_placements')->count());
 
+        // A duplicate placement slot must be rejected by the composite unique index.
+        try {
+            DB::table('av_page_placements')->insert(array_merge($base, [
+                'series_id' => null, 'video_id' => $videoId,
+            ]));
+            $this->fail('Duplicate placement slot was accepted by MySQL.');
+        } catch (QueryException $exception) {
+            $this->assertNotEmpty($exception->getMessage());
+        }
+        $this->assertSame(2, DB::table('av_page_placements')->count());
+
         DB::table('av_video_series')->where('id', $seriesId)->delete();
         $this->assertSame(1, DB::table('av_page_placements')->count());
         DB::table('av_videos')->where('id', $videoId)->delete();

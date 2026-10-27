@@ -20,39 +20,37 @@ class BookingGroupController extends Controller
 {
     public function __construct(
         private readonly BookingEngine $engine,
-        private readonly GuestClaimService $claims,
     ) {}
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {include_self, attendees:[{name}], client_request_id}
-     * 201 confirmed or waitlisted (whole group), 200 for an idempotent retry.
+     * Body: {client_request_id, member_user_id?}. One attendee, self by default.
+     * 201 confirmed or waitlisted, 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
-            'include_self' => ['sometimes', 'boolean'],
-            'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.name' => ['required', 'string', 'min:1', 'max:80'],
             'client_request_id' => ['required', 'uuid'],
+            'include_self' => ['prohibited'],
+            'attendees' => ['prohibited'],
+            'member_user_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $member = $request->user();
-        $attendees = [];
-        if ($request->boolean('include_self', true)) {
-            $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
+        $attendeeId = (int) ($data['member_user_id'] ?? $member->id);
+        $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者不是有效的已驗證家庭會員，或沒有代管授權。');
         }
-        foreach ($data['attendees'] ?? [] as $a) {
-            $attendees[] = ['name' => trim($a['name']), 'member_user_id' => null];
-        }
+        $attendees = [['name' => $attendee->name, 'member_user_id' => $attendee->id]];
 
         // The engine determines whether this was created or replayed under its event lock.
         $created = false;
         $group = $this->engine->book($event, new BookingRequest(
             booker: $member,
             contactName: $member->name,
-            contactEmail: GuestClaimService::normalizeEmail($member->email),
+            contactEmail: $member->email !== null ? mb_strtolower(trim($member->email)) : null,
             contactPhone: $member->phone_e164,
             attendees: $attendees,
             clientRequestId: $data['client_request_id'],

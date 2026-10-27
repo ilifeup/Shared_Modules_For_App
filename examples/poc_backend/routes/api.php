@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'member.verified', 'throttle:auth-60'])->prefix('av')->group(function () {
     Route::get('/tracks', [AvCatalogController::class, 'tracks']);
     Route::get('/tracks/{id}/access', [AvCatalogController::class, 'trackAccess'])->whereNumber('id');
+    Route::get('/tracks/{id}/content', [AvCatalogController::class, 'trackContent'])->whereNumber('id');
     Route::get('/videos', [AvCatalogController::class, 'videos']);
     Route::get('/videos/{id}/access', [AvCatalogController::class, 'videoAccess'])->whereNumber('id');
 });

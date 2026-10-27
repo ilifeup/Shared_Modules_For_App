@@ -30,6 +30,8 @@ class VerificationPolicySettings extends Page
 
     protected string $view = 'filament.pages.verification-policy';
 
+    public ?string $revocationMemberId = null;
+
     public static function canAccess(): bool
     {
         return auth()->user()?->can('settings.manage') ?? false;
@@ -82,6 +84,19 @@ class VerificationPolicySettings extends Page
                 ])
                 ->action(fn () => $this->switchTo(Settings::POLICY_PHONE)),
         ];
+    }
+
+    public function revokeMemberById(): void
+    {
+        abort_unless(static::canAccess(), 403);
+
+        $data = $this->validate([
+            'revocationMemberId' => ['required', 'integer', 'min:1', 'exists:users,id'],
+        ]);
+
+        $this->revokeGrandfathering((int) $data['revocationMemberId']);
+        $this->revocationMemberId = null;
+        Notification::make()->title('撤銷操作已處理')->success()->send();
     }
 
     /**

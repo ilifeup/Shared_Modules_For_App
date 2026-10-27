@@ -123,3 +123,34 @@ it('does not reveal whether a phone is registered when sending codes', function 
     // Only the registered number actually received an SMS.
     expect(fakeSms()->sent)->toHaveCount(1);
 });
+
+it('allows only an administrator to revoke grandfathering and records the member audit event', function () {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create(['email_verified_at' => now(), 'phone_verified_at' => null]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+
+    $page = app(VerificationPolicySettings::class);
+    try {
+        $page->revokeGrandfathering($member->id);
+        $this->fail('Non-admin revocation must be rejected.');
+    } catch (HttpException $e) {
+        expect($e->getStatusCode())->toBe(403);
+    }
+
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $page->revokeGrandfathering($member->id);
+    $page->revokeGrandfathering($member->id);
+
+    expect($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull()
+;
+    expect(AuditEvent::query()->where('event', 'member.verification_grandfather_revoked')
+        ->where('subject_id', $member->id)->count())->toBe(1);
+
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+    expect($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull();
+});
+

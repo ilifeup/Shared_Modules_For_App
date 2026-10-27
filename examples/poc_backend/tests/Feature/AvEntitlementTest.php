@@ -32,7 +32,7 @@ class AvEntitlementTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        DB::table('av_track_level_access')->insert(['track_id' => $trackId, 'member_level_id' => $level->id]);
+        DB::table('av_track_level_access')->insert(['track_id' => $trackId, 'member_level_id' => $levelId]);
 
         $service = app(AvEntitlement::class);
         $this->assertTrue($service->track($member, $trackId));
@@ -75,7 +75,7 @@ class AvEntitlementTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        DB::table('av_video_level_access')->insert(['video_id' => $videoId, 'member_level_id' => $level->id]);
+        DB::table('av_video_level_access')->insert(['video_id' => $videoId, 'member_level_id' => $levelId]);
         $service = new AvEntitlement;
 
         $this->assertTrue($service->video($member, $videoId));

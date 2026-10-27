@@ -9,7 +9,7 @@ use App\Models\User;
  * - email_required: a verified email grants full member access (phone OTP optional)
  * - phone_required: a verified phone grants full member access (email can follow later)
  *
- * Enforced on every protected request, so already logged-in members cannot bypass a change.
+ * Contact policy only selects how an unverified member may qualify.\n * Once granted, membership status is persisted in users.membership_verified_at.
  */
 final class VerificationPolicy
 {
@@ -25,9 +25,13 @@ final class VerificationPolicy
      */
     public function missing(User $user): ?string
     {
+        if ($user->isVerifiedMember()) {
+            return null;
+        }
+
         return match ($this->current()) {
-            Settings::POLICY_PHONE => ($user->hasVerifiedPhone() || $user->verification_grandfathered_at !== null) ? null : 'phone',
-            default => $user->hasVerifiedEmail() ? null : 'email',
+            Settings::POLICY_PHONE => 'phone',
+            default => 'email',
         };
     }
 

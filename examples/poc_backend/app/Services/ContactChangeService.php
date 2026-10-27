@@ -28,6 +28,10 @@ final class ContactChangeService
             throw $this->invalid('email', '新 Email 與目前相同。');
         }
 
+        if (User::query()->where('email', $email)->whereKeyNot($user->id)->exists()) {
+            throw $this->invalid('email', '此 Email 無法使用，請改用其他 Email。');
+        }
+
         $user->forceFill(['email' => $email, 'email_verified_at' => null])->save();
         $user->sendEmailVerificationNotification();
 
@@ -42,6 +46,7 @@ final class ContactChangeService
             throw $this->invalid('phone', '新手機號碼與目前相同。');
         }
 
+        $this->ensurePhoneFree($user, $phoneE164);
         $this->otp->send($user, PhoneOtp::PURPOSE_PHONE_CHANGE, $phoneE164);
         AuditEvent::record('member.phone_change_requested', $user->id, $user);
     }
@@ -56,11 +61,19 @@ final class ContactChangeService
             PhoneOtp::PURPOSE_PHONE_CHANGE,
             $phoneE164,
             onVerified: function () use ($user, $phoneE164): void {
+                $this->ensurePhoneFree($user, $phoneE164);
                 $user->forceFill(['phone_e164' => $phoneE164, 'phone_verified_at' => now()])->save();
 
                 AuditEvent::record('member.phone_changed', $user->id, $user);
             },
         );
+    }
+
+    private function ensurePhoneFree(User $user, string $phoneE164): void
+    {
+        if (User::query()->where('phone_e164', $phoneE164)->whereKeyNot($user->id)->exists()) {
+            throw $this->invalid('phone', '此手機號碼無法使用，請改用其他號碼。');
+        }
     }
 
     private function checkPassword(User $user, string $password): void

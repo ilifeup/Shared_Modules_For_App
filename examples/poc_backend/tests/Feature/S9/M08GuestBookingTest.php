@@ -107,3 +107,19 @@ it('does not expose guest claim endpoints after guest bookings are retired', fun
         ->postJson('/api/v1/me/guest-bookings/123/claim')
         ->assertNotFound();
 });
+
+it('never exposes a personal notification inbox or booking-change notifications to guests', function () {
+    $this->getJson('/api/v1/me/notifications')->assertUnauthorized();
+    $this->getJson('/api/v1/me/notifications/unread-count')->assertUnauthorized();
+    $this->getJson('/api/v1/me/notifications/00000000-0000-4000-8000-000000000001')->assertUnauthorized();
+    $this->postJson('/api/v1/me/notifications/read-all')->assertUnauthorized();
+    $this->postJson('/api/v1/me/notifications/00000000-0000-4000-8000-000000000001/read')->assertUnauthorized();
+
+    $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC]);
+    $this->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'include_self' => true,
+        'attendees' => [],
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertUnauthorized();
+    expect(EventBookingGroup::query()->count())->toBe(0);
+});

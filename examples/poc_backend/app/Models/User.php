@@ -31,6 +31,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'password',
         'is_active',
         'verified_status',
+        'FamilyUser',
     ];
 
     /** @var list<string> */
@@ -49,6 +50,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'phone_verified_at' => 'datetime',
             'is_active' => 'boolean',
             'verified_status' => 'integer',
+            'FamilyUser' => 'boolean',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
         ];
@@ -59,7 +61,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->is_active && $this->hasRole(self::ADMIN_ROLE);
+        return $this->is_active && ! $this->FamilyUser && $this->hasRole(self::ADMIN_ROLE);
     }
 
     public function isAdmin(): bool

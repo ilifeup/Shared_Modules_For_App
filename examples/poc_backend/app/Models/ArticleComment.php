@@ -36,6 +36,12 @@ class ArticleComment extends Model
         return $this->belongsTo(Article::class)->withTrashed();
     }
 
+    /** @return HasMany<ArticleCommentAttachment, $this> */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(ArticleCommentAttachment::class, 'article_comment_id');
+    }
+
     /**
      * @return HasMany<CommentModerationCase, $this>
      */

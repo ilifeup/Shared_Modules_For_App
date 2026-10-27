@@ -22,7 +22,7 @@ class AvCatalogAccessTest extends TestCase
 
     public function test_guest_cannot_access_protected_track_content_or_item_authorization(): void
     {
-        $this->get('/api/v1/av/tracks/1/content')->assertUnauthorized();
+        $this->getJson('/api/v1/av/tracks/1/content')->assertUnauthorized();
         $this->getJson('/api/v1/av/tracks/1/access')->assertUnauthorized();
         $this->getJson('/api/v1/av/videos/1/access')->assertUnauthorized();
     }

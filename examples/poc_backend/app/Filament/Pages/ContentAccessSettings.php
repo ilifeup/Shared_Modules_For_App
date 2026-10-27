@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Services\ContentAccess\ContentAccessRuleManager;
+use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class ContentAccessSettings extends Page
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->canAccessPanel(\Filament\Facades\Filament::getPanel('admin')) && (auth()->user()?->can('settings.manage') ?? false);
+        return auth()->user()?->canAccessPanel(Filament::getPanel('admin')) && (auth()->user()?->can('settings.manage') ?? false);
     }
 
     public function rules(): array

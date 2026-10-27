@@ -73,7 +73,7 @@ class AvCatalogController extends Controller
         abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
         abort_unless($entitlement->track($member, $id), 403);
         $path = DB::table('av_music_tracks')->where('id', $id)->value('encrypted_storage_path');
-        abort_unless(is_string($path) && str_starts_with($path, 'av/') && ! str_contains($path, '..'), 404);
+        abort_unless(is_string($path) && str_starts_with($path, 'av/') && strlen($path) > strlen('av/') && ! str_contains($path, '..') && ! str_contains($path, '\\\\'), 404);
         $disk = Storage::disk('local');
         abort_unless($disk->exists($path), 404);
 

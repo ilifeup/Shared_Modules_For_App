@@ -607,6 +607,7 @@ final class BookingEngine
         return match (true) {
             $booker === null => 'booker_deleted',
             ! $booker->is_active => 'booker_disabled',
+            (int) $booker->verified_status !== 2 => 'booker_unverified',
             default => null,
         };
     }

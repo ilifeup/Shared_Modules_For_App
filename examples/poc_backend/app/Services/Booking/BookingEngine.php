@@ -2,18 +2,15 @@
 
 namespace App\Services\Booking;
 
-use App\Models\GoogleCalendarConnection;
-
-use App\Jobs\DispatchBookingNotification;
-
 use App\Jobs\DispatchBookingGoogleSync;
-
+use App\Jobs\DispatchBookingNotification;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
+use App\Models\GoogleCalendarConnection;
 use App\Models\MemberVerification;
 use App\Models\User;
 use App\Services\Family\FamilyDelegation;

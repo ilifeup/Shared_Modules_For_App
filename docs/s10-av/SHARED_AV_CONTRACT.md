@@ -41,3 +41,8 @@ Shared Modules is the source of truth for reusable API contracts, entitlement ru
 
 ## Implementation ownership
 Shared first: API contract + entitlement decision logic + tests. Tiandi second: its Filament administration, encrypted file storage, playback, YouTube import, page composition and device integration. Avoid duplicating business rules.
+
+## Legacy optional YouTube extension reconciliation (Shared PR #44)
+- PR #44 defines a **Tiandi-only, unauthenticated** `GET /api/v1/public/youtube-videos` channel-cache listing in `contracts/extensions/tiandi-youtube.yaml`. It is **not** an implementation of the protected S10 `GET /api/v1/av/videos` endpoint and must not be silently substituted for it.
+- The #44 public listing can reveal video titles, thumbnails and IDs without login, whereas S10 forbids revealing protected media details to guests. Therefore **do not enable the public extension for protected S10 videos**, even if the underlying YouTube URLs are public. If a consuming app needs a separate intentionally public channel feed, it requires an explicit, independently reviewed public-content scope with no overlap with restricted videos.
+- Before accepting #44 or #46, decide whether the old optional extension is retired or maintained for genuinely public content. Do not merge both contracts into one route or treat a passing OpenAPI check as an authorization review.

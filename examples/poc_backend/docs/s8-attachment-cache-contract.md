@@ -5,7 +5,7 @@ Status: design + initial database models only. **Not production ready.**
 ## Entitlement and separation
 
 - Uploading is manually enabled/disabled by an administrator on the member record, including when payment is collected outside the App. Membership level and payment transaction records do not grant it automatically.
-- The existing administrator-configured member verification policy must also be satisfied.
+- The sole membership qualification authority is `users.verified_status = 2` (and `users.is_active = true`). Email/phone verification timestamps and policy are workflow inputs, never independent membership grants. A policy change must not revoke existing verified membership.
 - Upload entitlement and article/attachment read permission are independent. Disabling uploads does not revoke authorized reading.
 - Defaults for an enabled uploader: one file and 5 MiB total per Asia/Taipei calendar week (Monday 00:00); backend atomic enforcement is still TODO.
 

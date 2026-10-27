@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\EventBookingGroup;
-use App\Notifications\MemberNotification;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
 use Illuminate\Bus\Queueable;
@@ -60,7 +59,7 @@ class DispatchBookingNotification implements ShouldQueue
 
             $title = trim(mb_substr($this->title, 0, 120));
             $body = trim(mb_substr($this->body, 0, 2000));
-            // Match MemberNotifier validation for guests as well as members.
+            // Member-only bookings require non-empty notification content.
             if ($title === '' || $body === '') {
                 throw new ApiException(422, 'VALIDATION_FAILED', '通知標題與內容不可為空。');
             }
@@ -68,10 +67,6 @@ class DispatchBookingNotification implements ShouldQueue
 
             if ($booker !== null) {
                 $notifier->send($booker, $title, $body, 'booking', 'event', (string) $group->calendar_event_id, null, $this->deliveryId);
-            } elseif ($group->is_guest) {
-                $notification = new MemberNotification($title, $body, 'booking', 'event', (string) $group->calendar_event_id);
-                $notification->id = $this->deliveryId;
-                $group->notify($notification);
             }
         });
     }

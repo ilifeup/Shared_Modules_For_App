@@ -22,6 +22,8 @@ function checkinEvent(array $attributes = []): array
     ], $attributes));
     $member = User::factory()->create();
     groupBook($event, $member)->assertCreated();
+    $secondMember = User::factory()->create();
+    groupBook($event, $secondMember)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
     return [$event, $member, $attendees];

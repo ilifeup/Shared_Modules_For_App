@@ -6,17 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Presenters\BookingGroupPresenter;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
-use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Family\FamilyDelegation;
-use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S9 M08 members-only group bookings and waitlist.
- * The S6 single-booking API stays unchanged (BookingController).
+ * MVP single-member booking and waitlist backed by the existing seat ledger.
+ * Multi-attendee booking and proxy booking are not supported.
  */
 class BookingGroupController extends Controller
 {
@@ -26,38 +23,20 @@ class BookingGroupController extends Controller
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {include_self, attendees:[{member_user_id}], client_request_id}
-     * 201 confirmed or waitlisted (whole group), 200 for an idempotent retry.
+     * Body: {client_request_id}. The authenticated member books only for self.
+     * 201 confirmed or waitlisted, 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
-            'include_self' => ['sometimes', 'boolean'],
-            'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.member_user_id' => ['required', 'integer'],
             'client_request_id' => ['required', 'uuid'],
+            'include_self' => ['prohibited'],
+            'attendees' => ['prohibited'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $member = $request->user();
-        $attendees = [];
-        if ($request->boolean('include_self', true)) {
-            $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
-        }
-        foreach ($data['attendees'] ?? [] as $a) {
-            $attendeeId = (int) $a['member_user_id'];
-            // Missing and unauthorized member IDs must have the same response.
-            // Never reveal account existence through 422 vs 403 differences.
-            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->first();
-            if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
-                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
-            }
-            $attendees[] = ['name' => $attendee->name, 'member_user_id' => $attendee->id];
-        }
-        $ids = array_column($attendees, 'member_user_id');
-        if (count($ids) !== count(array_unique($ids))) {
-            throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
-        }
+        $attendees = [['name' => $member->name, 'member_user_id' => $member->id]];
 
         // The engine determines whether this was created or replayed under its event lock.
         $created = false;

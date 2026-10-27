@@ -15,6 +15,14 @@
 
 > 適用 Repository：`ilifeup/Shared_Modules_For_App`。本文件是 ChatGPT、Codex、Claude、Copilot 與其他支援 AGENTS.md 的 AI 開發者的共用工作規範。**不保證所有 AI 工具自動讀取**；工具不支援時應明確提供此文件。
 
+## 最高開發原則（所有 AI 開發者必讀）
+
+**Shared Modules 是 P1，Tiandi App 是 P2。** 在問題分析、架構設計、程式修改、PR 審查前，先檢查實際程式與 CI，搜尋 Laravel／Flutter 官方文件、GitHub 已有實作與 Issue、Reddit 實務經驗，比較成熟方案的版本、維護、安全、故障恢復及相容性；優先使用成熟方案，不得只靠 AI 推演或自行重造輪子。背景工作及前後端協調須完整驗證交易、冪等、重試、狀態、Log、恢復與 E2E。詳細規範：[`docs/ENGINEERING_PRINCIPLES.md`](docs/ENGINEERING_PRINCIPLES.md)。
+
+### Tiandi PR → Shared Modules 回補規則
+
+每次檢查 Tiandi App 的新舊 PR（含已合併 PR），都要執行 Shared Modules 回補評估：列出 PR／Commit、涉及的共用 API 契約、Log／錯誤處理、背景工作基礎設施、Flutter UI／Client，對照 Shared Modules 現有實作與測試。可重用的修正優先在 Shared Modules 建立對應 Issue／PR、測試與版本，再驗證 Tiandi App 整合；業務專屬邏輯不直接複製到共用套件。每個 Tiandi PR 審查須記錄「已回補／待回補（附追蹤連結）／不適用（原因）」，不可默默略過。不得以此為理由無審查自動合併或擅自擴大範圍。
+
 ## 1. 專案主軸（不可偏離）
 
 開發供三個獨立 App 使用的 Flutter／Laravel API／Filament Web 共用功能。三個 App：天帝教親和網（第一個整合，`ilifeup/tiandi-app`）、無相氣學、EachCore。**共用模組優先開發，天帝教只是第一個導入測試 App**。不要把此 Repo 改造成天帝教 App 或第四個正式營運 App。

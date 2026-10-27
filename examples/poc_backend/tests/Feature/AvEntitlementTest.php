@@ -45,6 +45,10 @@ class AvEntitlementTest extends TestCase
         DB::table('av_track_member_access')->where('track_id', $trackId)->update(['allowed' => true]);
         $this->assertTrue($service->track($member, $trackId));
 
+        DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => false]);
+        $this->assertFalse($service->track($member, $trackId));
+        DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => true]);
+
         $member->forceFill(['is_active' => false]);
         $this->assertFalse($service->track($member, $trackId));
     }
@@ -71,6 +75,9 @@ class AvEntitlementTest extends TestCase
         $service = new AvEntitlement;
 
         $this->assertTrue($service->video($member, $videoId));
+        DB::table('av_videos')->where('id', $videoId)->update(['is_published' => false]);
+        $this->assertFalse($service->video($member, $videoId));
+        DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
         $assignment->update(['ends_at' => now()->subMinute()]);
         $this->assertFalse($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->addDay(), 'revoked_at' => now()]);

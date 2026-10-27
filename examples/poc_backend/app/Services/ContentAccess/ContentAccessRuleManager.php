@@ -2,6 +2,7 @@
 
 namespace App\Services\ContentAccess;
 
+use App\Models\AuditEvent;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -17,10 +18,30 @@ final class ContentAccessRuleManager
         $this->authorize($actor);
         $this->validateRule($scope, $code, $audience);
 
-        DB::table('app_content_access_rules')->updateOrInsert(
-            ['scope' => $scope, 'resource_code' => $code, 'audience' => $audience],
-            ['allowed' => $allowed, 'updated_at' => now(), 'created_at' => now()]
-        );
+        DB::transaction(function () use ($actor, $scope, $code, $audience, $allowed): void {
+            $key = ['scope' => $scope, 'resource_code' => $code, 'audience' => $audience];
+            $previous = DB::table('app_content_access_rules')->where($key)->first(['allowed']);
+
+            if ($previous !== null && (bool) $previous->allowed === $allowed) {
+                return;
+            }
+
+            if ($previous === null) {
+                DB::table('app_content_access_rules')->insert($key + [
+                    'allowed' => $allowed, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            } else {
+                DB::table('app_content_access_rules')->where($key)->update([
+                    'allowed' => $allowed, 'updated_at' => now(),
+                ]);
+            }
+
+            AuditEvent::record('content.access_rule_saved', $actor->id, null, [
+                'scope' => $scope, 'resource' => $code, 'audience' => $audience,
+                'old' => $previous === null ? null : (bool) $previous->allowed,
+                'new' => $allowed,
+            ]);
+        });
     }
 
     public function remove(User $actor, string $scope, string $code, string $audience): void
@@ -28,11 +49,20 @@ final class ContentAccessRuleManager
         $this->authorize($actor);
         $this->validateRule($scope, $code, $audience);
 
-        DB::table('app_content_access_rules')
-            ->where('scope', $scope)
-            ->where('resource_code', $code)
-            ->where('audience', $audience)
-            ->delete();
+        DB::transaction(function () use ($actor, $scope, $code, $audience): void {
+            $key = ['scope' => $scope, 'resource_code' => $code, 'audience' => $audience];
+            $previous = DB::table('app_content_access_rules')->where($key)->first(['allowed']);
+
+            if ($previous === null) {
+                return;
+            }
+
+            DB::table('app_content_access_rules')->where($key)->delete();
+            AuditEvent::record('content.access_rule_removed', $actor->id, null, [
+                'scope' => $scope, 'resource' => $code, 'audience' => $audience,
+                'old' => (bool) $previous->allowed,
+            ]);
+        });
     }
 
     private function authorize(User $actor): void

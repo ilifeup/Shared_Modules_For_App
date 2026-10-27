@@ -198,6 +198,7 @@ final class Settings
                 && $merged['verification_policy'] === self::POLICY_PHONE) {
                 User::query()->whereNotNull('email_verified_at')
                     ->whereNull('verification_grandfathered_at')
+                    ->whereNull('verification_grandfather_revoked_at')
                     ->update(['verification_grandfathered_at' => now()]);
             }
 

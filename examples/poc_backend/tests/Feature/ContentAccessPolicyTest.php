@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\AuditEvent;
-use App\Models\MemberVerification;
 use App\Models\MemberLevelAssignment;
 use App\Models\MembershipLevel;
+use App\Models\MemberVerification;
 use App\Models\User;
 use App\Models\VerificationType;
 use App\Services\ContentAccess\ContentAccessPolicy;

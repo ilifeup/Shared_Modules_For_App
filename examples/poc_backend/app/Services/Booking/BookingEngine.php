@@ -705,14 +705,15 @@ final class BookingEngine
         }
 
         // An idempotent replay is still a read of protected booking details.
-        // Recheck current identity/delegation; revocation must take effect immediately.
-        if (! $request->byAdmin) {
-            foreach ($existing->attendees()->get() as $attendee) {
-                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->where('verified_status', 2)->first();
-                if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
-                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
-                }
-            }
+        // Admin callers must not bypass attendee validity; family delegation is
+        // rechecked for members to prevent access after authorization revocation.
+        $attendee = User::query()->whereKey($storedMemberIds[0])
+            ->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null) {
+            throw new ApiException(403, 'INVALID_ATTENDEE', '參加者會員資格已失效。');
+        }
+        if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, $attendee, true)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
         }
 
         return $existing->load('attendees', 'waitlistEntry');

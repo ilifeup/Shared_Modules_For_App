@@ -1,8 +1,8 @@
 <?php
 
 use App\Filament\Pages\ContentAccessSettings;
-use App\Models\User;
 use App\Models\MembershipLevel;
+use App\Models\User;
 use App\Services\ContentAccess\ContentAccessRuleManager;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Filament\Facades\Filament;

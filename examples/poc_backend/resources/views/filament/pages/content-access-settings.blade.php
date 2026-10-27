@@ -12,12 +12,21 @@
             <input wire:model="resourceCode" type="text" required maxlength="120" />
         </label>
         <label>資格
-            <select wire:model="audience">
+            <select wire:model.live="audienceType">
                 <option value="guest">訪客</option>
                 <option value="all">所有使用者</option>
                 <option value="member">已登入會員</option>
                 <option value="verified">已驗證會員（含 V01-A）</option>
+                <option value="level">指定會員等級（含 VIP）</option>
+                <option value="user">指定會員</option>
             </select>
+        </label>
+        @if (in_array($audienceType, ['level', 'user'], true))
+            <label>{{ $audienceType === 'level' ? '會員等級 ID' : '會員 ID' }}
+                <input wire:model="audienceId" type="number" min="1" required />
+            </label>
+        @endif
+        <label style="display:none">
         </label>
         <label>決策
             <select wire:model="decision">

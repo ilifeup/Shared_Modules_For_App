@@ -38,6 +38,11 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'admin_identity_note',
+        'attachment_upload_enabled',
+        'attachment_upload_expires_at',
+        'attachment_weekly_upload_count',
+        'attachment_weekly_upload_bytes',
     ];
 
     /**
@@ -50,6 +55,8 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'phone_verified_at' => 'datetime',
             'is_active' => 'boolean',
             'verified_status' => 'integer',
+            'attachment_upload_enabled' => 'boolean',
+            'attachment_upload_expires_at' => 'datetime',
             'FamilyUser' => 'boolean',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
@@ -67,6 +74,16 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->hasRole(self::ADMIN_ROLE);
+    }
+
+    /** Attachment uploads require explicit admin grant and verified active membership. */
+    public function canUploadArticleAttachments(): bool
+    {
+        return (bool) $this->is_active
+            && (int) $this->verified_status === 2
+            && $this->attachment_upload_enabled === true
+            && ($this->attachment_upload_expires_at === null
+                || $this->attachment_upload_expires_at->isFuture());
     }
 
     public function hasVerifiedPhone(): bool

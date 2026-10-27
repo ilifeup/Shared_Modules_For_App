@@ -10,6 +10,7 @@ use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -692,6 +693,13 @@ final class BookingEngine
                 || ! User::query()->whereKey($attendee['member_user_id'])
                     ->where('is_active', true)->where('verified_status', 2)->exists()) {
                 throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者已不具備有效會員資格。');
+            }
+        }
+
+        if (! $request->byAdmin) {
+            $member = User::query()->find($stored[0]['member_user_id'] ?? null);
+            if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
             }
         }
 

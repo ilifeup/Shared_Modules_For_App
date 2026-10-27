@@ -92,23 +92,24 @@ class AvEntitlementTest extends TestCase
             $this->assertNotNull($member->verification_grandfathered_at);
             $this->assertTrue($service->video($member, $videoId));
 
-            // Email-only accounts created after the switch are not grandfathered.
-            $newMember = User::factory()->create([
-                'is_active' => true,
-                'email_verified_at' => now(),
-                'phone_verified_at' => null,
-            ]);
-            MemberLevelAssignment::query()->create([
-                'user_id' => $newMember->id,
-                'membership_level_id' => $levelId,
-                'starts_at' => now()->subDay(),
-                'reason' => 'test',
-            ]);
-            $this->assertNull($newMember->refresh()->verification_grandfathered_at);
-            $this->assertFalse($service->video($newMember, $videoId));
         } else {
             $this->assertFalse($service->video($member, $videoId));
         }
+        // Email-only accounts created after the switch are not grandfathered.
+        $newMember = User::factory()->create([
+            'is_active' => true,
+            'email_verified_at' => now(),
+            'phone_verified_at' => null,
+        ]);
+        MemberLevelAssignment::query()->create([
+            'user_id' => $newMember->id,
+            'membership_level_id' => $levelId,
+            'starts_at' => now()->subDay(),
+            'reason' => 'test',
+        ]);
+        $this->assertNull($newMember->refresh()->verification_grandfathered_at);
+        $this->assertFalse($service->video($newMember, $videoId));
+
         $member->forceFill(['phone_verified_at' => now()]);
         $this->assertTrue($service->video($member, $videoId));
         $assignment->update(['ends_at' => now()->subMinute()]);

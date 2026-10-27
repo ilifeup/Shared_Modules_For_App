@@ -517,6 +517,8 @@ final class BookingEngine
      */
     public function notifyChange(CalendarEvent $event, string $title, string $body): int
     {
+        $this->assertDurableQueueConfiguration();
+
         $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
             ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
         foreach ($groups as $group) {
@@ -754,10 +756,8 @@ final class BookingEngine
      * @param  callable(): T  $callback
      * @return T
      */
-    private function transaction(callable $callback): mixed
+    private function assertDurableQueueConfiguration(): void
     {
-        // Production bookings must never silently fall back to in-memory
-        // post-commit handoffs, which can be lost on process termination.
         if (app()->environment('production') && (
             config('queue.default') !== 'database'
             || (config('queue.connections.database.connection') !== null
@@ -766,6 +766,11 @@ final class BookingEngine
         )) {
             throw new \LogicException('Booking durable handoff requires the database queue on the booking DB with after_commit=false.');
         }
+    }
+
+    private function transaction(callable $callback): mixed
+    {
+        $this->assertDurableQueueConfiguration();
 
         try {
             return DB::transaction($callback);

@@ -680,25 +680,15 @@ final class BookingEngine
             && ($request->booker !== null || ($existing->contact_name === $request->contactName
                 && $existing->contact_email === $request->contactEmail
                 && $existing->contact_phone === $request->contactPhone));
-        // A retry must represent the original booking, not a different attendee list.
-        // Compare the persisted attendee snapshot rather than the current member profile.
-        $stored = $existing->attendees()->orderBy('id')->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
-            'name' => $attendee->name,
-            'member_user_id' => $attendee->member_user_id === null ? null : (int) $attendee->member_user_id,
-        ])->all();
-        $incoming = array_map(fn (array $attendee): array => [
-            'name' => mb_substr(trim($attendee['name']), 0, 80),
-            'member_user_id' => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
-        ], $request->attendees);
-        // The booker's own display name may change between retries. Their stable
-        // member ID identifies that seat; proxy/guest attendee names remain immutable.
-        foreach ($stored as $index => $attendee) {
-            if ($request->booker !== null && $attendee['member_user_id'] === $request->booker->id
-                && isset($incoming[$index]) && $incoming[$index]['member_user_id'] === $request->booker->id) {
-                $incoming[$index]['name'] = $attendee['name'];
-            }
-        }
-        if (! $same || $existing->seat_count !== count($incoming) || $stored !== $incoming) {
+        // Member IDs (and order), not mutable display names, identify the original
+        // attendees. A profile rename must not turn a legitimate retry into 409.
+        $storedMemberIds = $existing->attendees()->orderBy('id')->pluck('member_user_id')
+            ->map(static fn ($id): ?int => $id === null ? null : (int) $id)->all();
+        $incomingMemberIds = array_map(
+            static fn (array $attendee): ?int => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
+            $request->attendees,
+        );
+        if (! $same || $existing->seat_count !== count($incomingMemberIds) || $storedMemberIds !== $incomingMemberIds) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 

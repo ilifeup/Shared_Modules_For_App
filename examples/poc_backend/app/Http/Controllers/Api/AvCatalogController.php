@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Av\AvEntitlement;
 use App\Services\ContentAccess\ContentAccessPolicy;
+use App\Support\VerificationPolicy;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\Query\Builder;
-use App\Support\VerificationPolicy;
 use Illuminate\Support\Facades\DB;
 
 class AvCatalogController extends Controller
@@ -45,7 +44,7 @@ class AvCatalogController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function videos(Request $request, AvEntitlement $entitlement, ContentAccessPolicy $access): JsonResponse
+    public function videos(Request $request, VerificationPolicy $verification, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);

@@ -5,11 +5,13 @@ namespace App\Support;
 use App\Models\User;
 
 /**
- * Member verification policy chosen by the admin (會員驗證設定):
- * - email_required: a verified email grants full member access (phone OTP optional)
- * - phone_required: a verified phone grants full member access (email can follow later)
+ * Contact verification policy chosen by the administrator:
+ * - email_required: email verification may grant membership.
+ * - phone_required: phone OTP verification may grant membership.
  *
- * Contact policy only selects how an unverified member may qualify.\n * Once granted, membership status is persisted in users.membership_verified_at.
+ * The selected contact workflow is not a membership status. Only the
+ * persisted users.membership_verified_at determines verified membership.
+ * Changing the workflow never revokes an existing verified member.
  */
 final class VerificationPolicy
 {

@@ -68,3 +68,15 @@ it('does not convert grandfathered verification into phone verification or a gue
     $this->getJson('/api/v1/me/notifications')->assertUnauthorized();
     expect($member->fresh()->verification_grandfathered_at)->not->toBeNull();
 });
+
+it('does not grandfather members when an invalid verification policy update is rejected', function (): void {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create(['email_verified_at' => now(), 'phone_verified_at' => null]);
+
+    expect(fn () => $settings->put(['verification_policy' => 'invalid_policy']))
+        ->toThrow(InvalidArgumentException::class);
+
+    expect($member->fresh()->verification_grandfathered_at)->toBeNull()
+        ->and($settings->string('verification_policy'))->toBe(Settings::POLICY_EMAIL);
+});

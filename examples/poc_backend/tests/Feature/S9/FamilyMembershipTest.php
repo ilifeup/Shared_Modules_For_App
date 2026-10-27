@@ -74,7 +74,7 @@ it('rejects the forbidden client family unlink endpoint', function () {
         ->assertNotFound();
 });
 
-it('creates only three free verified family members and rejects a fourth', function () {
+it('creates only two free verified family members and rejects a third', function () {
     $manager = User::factory()->create(['verified_status' => 2]);
     $url = '/api/v1/me/family-memberships';
     $payload = [
@@ -82,7 +82,7 @@ it('creates only three free verified family members and rejects a fourth', funct
         'birth_date' => '2010-01-01', 'address' => '台中市',
     ];
     $this->actingAs($manager, 'sanctum');
-    for ($i = 1; $i <= 3; $i++) {
+    for ($i = 1; $i <= 2; $i++) {
         $response = $this->postJson($url, $payload)->assertCreated()
             ->assertJsonPath('data.verified_status', 2);
         expect(DB::table('users')->where('id', $response->json('data.member_user_id'))
@@ -90,6 +90,6 @@ it('creates only three free verified family members and rejects a fourth', funct
     }
     $this->postJson($url, $payload)
         ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_MEMBER_LIMIT_REACHED');
-    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(3);
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(2);
 });
 

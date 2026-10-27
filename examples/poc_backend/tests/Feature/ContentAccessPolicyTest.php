@@ -38,3 +38,26 @@ it('makes explicit denial override member and verified grants', function (): voi
 
     expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeFalse();
 });
+
+it('allows an administrator to configure a page and list but not a restricted topic', function (): void {
+    $admin = makeAdmin();
+    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $manager->save($admin, 'page', 'articles', 'guest', true);
+    $manager->save($admin, 'list', 'articles/news', 'guest', true);
+    $manager->save($admin, 'topic', 'articles/news/locked', 'guest', false);
+
+    expect(app(ContentAccessPolicy::class)->allows(null, 'articles', 'news'))->toBeTrue()
+        ->and(app(ContentAccessPolicy::class)->allows(null, 'articles', 'news', 'locked'))->toBeFalse();
+});
+
+it('prevents ordinary members from changing App page rules', function (): void {
+    $member = User::factory()->create();
+    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+        ->save($member, 'page', 'av', 'guest', true))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+});
+
+it('rejects malformed rule identifiers and mismatched hierarchy', function (): void {
+    $admin = makeAdmin();
+    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+        ->save($admin, 'topic', 'av/track', 'guest', true))->toThrow(\InvalidArgumentException::class);
+});

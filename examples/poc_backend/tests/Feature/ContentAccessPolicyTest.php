@@ -185,3 +185,17 @@ it('grants badge-scoped access only while the M03 approval is valid and honors e
     $manager->save($admin, 'page', 'av', 'user:'.$member->id, false);
     expect($policy->allows($member, 'av'))->toBeFalse();
 });
+
+it('does not let an inactive account inherit guest access to AV content', function (): void {
+    $inactive = User::factory()->create(['is_active' => false, 'email_verified_at' => now()]);
+    DB::table('app_content_access_rules')->insert([
+        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'guest', 'allowed' => true],
+        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'verified_member', 'allowed' => true],
+        ['scope' => 'list', 'resource_code' => 'av/videos', 'audience' => 'guest', 'allowed' => true],
+    ]);
+
+    $policy = app(ContentAccessPolicy::class);
+    expect($policy->allows(null, 'av', 'videos'))->toBeTrue()
+        ->and($policy->allows($inactive, 'av', 'videos'))->toBeFalse()
+        ->and($policy->allowsWhenConfigured($inactive, 'av', 'videos'))->toBeFalse();
+});

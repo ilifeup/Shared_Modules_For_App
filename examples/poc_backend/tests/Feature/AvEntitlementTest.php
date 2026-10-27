@@ -91,7 +91,7 @@ class AvEntitlementTest extends TestCase
 
         // Removing the preserved qualification must immediately deny AV access
         // unless the member has separately completed phone verification.
-        $member->forceFill(['verification_grandfathered_at' => null])->save();
+        $member->forceFill(['verification_grandfather_revoked_at' => now()])->save();
         $this->assertFalse($service->video($member, $videoId));
 
         $member->forceFill(['phone_verified_at' => now()]);

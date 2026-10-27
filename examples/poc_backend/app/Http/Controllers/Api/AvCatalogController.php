@@ -53,6 +53,16 @@ class AvCatalogController extends Controller
         return response()->json(['data' => ['id' => $id, 'allowed' => true]]);
     }
 
+    /** Recheck video entitlement when a member opens the item. */
+    public function videoAccess(Request $request, ContentAccessPolicy $access, \App\Services\Av\AvEntitlement $entitlement, int $id): JsonResponse
+    {
+        $member = $request->user();
+        abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);
+        abort_unless($entitlement->video($member, $id), 403);
+
+        return response()->json(['data' => ['id' => $id, 'allowed' => true]]);
+    }
+
     public function videos(Request $request, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();

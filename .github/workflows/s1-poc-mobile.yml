@@ -114,7 +114,7 @@ jobs:
           for attempt in 1 2 3; do
             echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)"
             rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"; then
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"; then
               if [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then
                 echo "Android NDK installation verified"
                 exit 0

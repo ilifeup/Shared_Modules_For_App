@@ -27,6 +27,32 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/videos/1/access')->assertUnauthorized();
     }
 
+    public function test_guest_raw_api_request_returns_json_401_without_login_redirect(): void
+    {
+        $this->get('/api/v1/av/tracks/1/content')
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'UNAUTHENTICATED');
+    }
+
+    public function test_private_track_rejects_invalid_persisted_storage_paths(): void
+    {
+        Storage::fake('local');
+        $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+        Sanctum::actingAs($member);
+        $trackId = DB::table('av_music_tracks')->insertGetId([
+            'title' => 'Invalid path', 'category' => 'test',
+            'encrypted_storage_path' => 'av/../unrelated.enc',
+            'is_published' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('av_track_member_access')->insert([
+            'track_id' => $trackId, 'user_id' => $member->id, 'allowed' => true,
+        ]);
+        Storage::disk('local')->put('unrelated.enc', 'secret');
+        $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertNotFound();
+        DB::table('av_music_tracks')->where('id', $trackId)->update(['encrypted_storage_path' => 'av/']);
+        $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertNotFound();
+    }
+
     public function test_verified_member_without_track_grant_cannot_read_private_bytes(): void
     {
         $member = User::factory()->create(['verified_status' => 2]);

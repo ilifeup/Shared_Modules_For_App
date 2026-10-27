@@ -87,7 +87,7 @@ class AvEntitlementTest extends TestCase
         // Contact-policy changes do not revoke persisted verified membership.
         $this->assertTrue($service->video($member, $videoId));
         // Email-only accounts created after the switch are not grandfathered.
-        $newMember = User::factory()->create(['verified_status' => 2, 
+        $newMember = User::factory()->create(['verified_status' => 2,
             'is_active' => true,
             'email_verified_at' => now(),
             'phone_verified_at' => null,
@@ -113,7 +113,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_video_entitlement_rejects_inactive_member_and_future_level(): void
     {
-        $member = User::factory()->create(['verified_status' => 2, 
+        $member = User::factory()->create(['verified_status' => 2,
             'is_active' => true,
             'email_verified_at' => now(),
         ]);

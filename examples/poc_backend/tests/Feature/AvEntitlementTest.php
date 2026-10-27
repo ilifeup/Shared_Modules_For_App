@@ -17,7 +17,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_track_level_grant_and_explicit_member_override(): void
     {
-        $member = User::factory()->create(['is_active' => true]);
+        $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
         $levelId = DB::table('membership_levels')->insertGetId(['code' => 'av_test', 'name' => 'AV Test', 'rank' => 90, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
         MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
@@ -50,9 +50,9 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->track($member, $trackId));
         DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => true]);
 
-        $member->forceFill(['email_verified_at' => null]);
+        $member->forceFill(['verified_status' => 1]);
         $this->assertFalse($service->track($member, $trackId));
-        $member->forceFill(['email_verified_at' => now()]);
+        $member->forceFill(['verified_status' => 2]);
 
         $member->forceFill(['is_active' => false]);
         $this->assertFalse($service->track($member, $trackId));
@@ -60,7 +60,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_video_access_rejects_expired_and_revoked_levels(): void
     {
-        $member = User::factory()->create(['is_active' => true]);
+        $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
         $levelId = DB::table('membership_levels')->insertGetId(['code' => 'av_video_test', 'name' => 'AV Video Test', 'rank' => 91, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
         $assignment = MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
@@ -96,7 +96,7 @@ class AvEntitlementTest extends TestCase
             $this->assertFalse($service->video($member, $videoId));
         }
         // Email-only accounts created after the switch are not grandfathered.
-        $newMember = User::factory()->create([
+        $newMember = User::factory()->create(['verified_status' => 2, 
             'is_active' => true,
             'email_verified_at' => now(),
             'phone_verified_at' => null,
@@ -122,7 +122,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_video_entitlement_rejects_inactive_member_and_future_level(): void
     {
-        $member = User::factory()->create([
+        $member = User::factory()->create(['verified_status' => 2, 
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
@@ -159,7 +159,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_track_override_cannot_bypass_member_eligibility_or_publication(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        $member = User::factory()->create(['verified_status' => 2, 'is_active' => true, 'email_verified_at' => now()]);
         $trackId = DB::table('av_music_tracks')->insertGetId([
             'title' => 'Override only track',
             'category' => 'test',
@@ -188,7 +188,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        $member = User::factory()->create(['verified_status' => 2, 'is_active' => true, 'email_verified_at' => now()]);
         $videoId = DB::table('av_videos')->insertGetId([
             'youtube_id' => 'no_level_01', 'title' => 'Restricted video', 'is_published' => true,
             'created_at' => now(), 'updated_at' => now(),

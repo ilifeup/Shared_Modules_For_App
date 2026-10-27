@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Support\Settings;
 use App\Support\VerificationPolicy;
+use Illuminate\Support\Facades\URL;
 
 it('uses only persisted membership status to authorize a registered user', function (): void {
     $settings = app(Settings::class);
@@ -72,4 +73,32 @@ it('requires verification when membership is explicitly revoked in the DB', func
     expect(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeTrue();
     $member->forceFill(['membership_verified_at' => null])->save();
     expect(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeFalse();
+});
+
+
+it('atomically grants stored membership on valid email verification', function (): void {
+    app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->unverified()->create(['email' => 'verify-member@example.test']);
+    $url = URL::temporarySignedRoute('verification.verify', now()->addMinutes(30), [
+        'id' => $member->id,
+        'hash' => sha1($member->getEmailForVerification()),
+    ]);
+
+    $this->get($url)->assertOk();
+    expect($member->fresh()->email_verified_at)->not->toBeNull()
+        ->and($member->fresh()->membership_verified_at)->not->toBeNull();
+});
+
+it('rejects an old signed email link after the email changes without granting membership', function (): void {
+    app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->unverified()->create(['email' => 'old-member@example.test']);
+    $url = URL::temporarySignedRoute('verification.verify', now()->addMinutes(30), [
+        'id' => $member->id,
+        'hash' => sha1($member->getEmailForVerification()),
+    ]);
+    $member->forceFill(['email' => 'new-member@example.test'])->save();
+
+    $this->get($url)->assertForbidden();
+    expect($member->fresh()->email_verified_at)->toBeNull()
+        ->and($member->fresh()->membership_verified_at)->toBeNull();
 });

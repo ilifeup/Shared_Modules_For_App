@@ -28,10 +28,11 @@ it('counts S6 single bookings and S9 group attendees in one ledger', function ()
     $this->actingAs($legacy, 'sanctum')->postJson("/api/v1/events/{$event->id}/bookings")
         ->assertCreated()->assertJsonPath('data.booked_count', 1)->assertJsonPath('data.remaining', 2);
 
-    groupBook($event, $booker, ['同行者'])->assertCreated()
+    groupBook($event, $booker)->assertCreated()
         ->assertJsonPath('data.status', 'confirmed')
-        ->assertJsonPath('data.seat_count', 2)
-        ->assertJsonCount(2, 'data.attendees');
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
+    groupBook($event, User::factory()->create())->assertCreated();
 
     expect(seats($event))->toBe(3);
     $this->actingAs($legacy, 'sanctum')->getJson("/api/v1/events/{$event->id}/booking")
@@ -59,32 +60,30 @@ it('prevents the same member from holding two places through old and new entry p
         ->and(seats($event))->toBe(2);
 });
 
-// G07 / G08 — strict FIFO, whole groups, the head group blocks smaller later ones.
-it('waitlists whole groups and never lets a later group jump the head group', function () {
-    $event = s9Event(['booking_capacity' => 3]);
+// G07 / G08 — strict FIFO with one verified member per booking.
+it('promotes waiting members in strict FIFO order after a cancellation', function () {
+    $event = s9Event(['booking_capacity' => 1]);
     $a = User::factory()->create();
-    groupBook($event, $a, ['A2'])->assertJsonPath('data.status', 'confirmed'); // 2 seats, 1 left
-
     $b = User::factory()->create();
     $c = User::factory()->create();
-    groupBook($event, $b, ['B2', 'B3'])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 1);
-    // Only 1 seat is free but the head group (3) is waiting: C (1) must not jump the queue.
-    groupBook($event, $c)->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 2);
-    expect(seats($event))->toBe(2);
 
-    // A cancels: 3 free → B (3) is promoted as a whole; C stays waiting (no seat left).
+    groupBook($event, $a)->assertCreated()->assertJsonPath('data.status', 'confirmed');
+    groupBook($event, $b)->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 1);
+    groupBook($event, $c)->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 2);
+    expect(seats($event))->toBe(1);
+
     $groupA = EventBookingGroup::query()->where('booker_user_id', $a->id)->firstOrFail();
-    $this->actingAs($a, 'sanctum')->postJson("/api/v1/me/booking-groups/{$groupA->id}/cancel")->assertOk()->assertJsonPath('data.status', 'cancelled');
+    $this->actingAs($a, 'sanctum')->postJson("/api/v1/me/booking-groups/{$groupA->id}/cancel")
+        ->assertOk()->assertJsonPath('data.status', 'cancelled');
 
     $groupB = EventBookingGroup::query()->where('booker_user_id', $b->id)->firstOrFail();
     $groupC = EventBookingGroup::query()->where('booker_user_id', $c->id)->firstOrFail();
-    expect($groupB->status)->toBe('confirmed')
-        ->and($groupB->attendees()->where('status', 'confirmed')->count())->toBe(3)
-        ->and($groupC->status)->toBe('waitlisted')
-        ->and(seats($event))->toBe(3)
+    expect($groupB->refresh()->status)->toBe('confirmed')
+        ->and($groupB->attendees()->where('status', 'confirmed')->count())->toBe(1)
+        ->and($groupC->refresh()->status)->toBe('waitlisted')
+        ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'booking.promoted')->count())->toBe(1);
 
-    // D13: the promoted member gets an in-app notification.
     expect($b->notifications()->count())->toBe(1)
         ->and($b->notifications()->first()->data['title'])->toContain('候補成功');
 });
@@ -128,22 +127,19 @@ it('skips a waiting group whose member account was disabled and promotes the nex
         ->and(EventBookingGroup::query()->where('booker_user_id', $next->id)->value('status'))->toBe('confirmed');
 });
 
-// G05 — per-booking seat limit, proxy rule, cancel deadline (relative, recomputed).
-it('enforces the seat limit, the proxy setting and the cancel deadline', function () {
-    $noProxy = EventCategory::query()->create(['name' => '只限本人', 'allow_proxy_booking' => false]);
-    $event = s9Event(['booking_capacity' => 10, 'booking_max_seats' => 2], $noProxy);
+// G05 — obsolete group payloads are rejected; cancellation deadlines remain enforced.
+it('rejects multi-attendee requests and enforces the cancellation deadline', function () {
+    $event = s9Event(['booking_capacity' => 10, 'booking_max_seats' => 2]);
     $member = User::factory()->create();
 
-    groupBook($event, $member, ['友人'])->assertStatus(422)->assertJsonPath('error.code', 'PROXY_NOT_ALLOWED');
-    $noProxy->update(['allow_proxy_booking' => true]);
-    groupBook($event, $member, ['友人', '友人2'])->assertStatus(422)->assertJsonPath('error.code', 'BOOKING_LIMIT_EXCEEDED');
+    groupBook($event, $member, ['友人'])->assertStatus(422);
+    expect(seats($event))->toBe(0);
 
-    $created = groupBook($event, $member, ['友人'])->assertCreated();
-    $event->update(['cancel_offset_minutes' => 7 * 24 * 60 + 60]); // deadline already passed
+    $created = groupBook($event, $member)->assertCreated();
+    $event->update(['cancel_offset_minutes' => 7 * 24 * 60 + 60]);
     $this->actingAs($member, 'sanctum')->postJson('/api/v1/me/booking-groups/'.$created->json('data.id').'/cancel')
         ->assertStatus(409)->assertJsonPath('error.code', 'CANCEL_DEADLINE_PASSED');
 
-    // Rescheduling a week later recomputes the relative deadline (S9-L02 A).
     $event->update(['starts_at' => now()->addDays(14), 'ends_at' => now()->addDays(14)->addHour()]);
     $this->actingAs($member, 'sanctum')->postJson('/api/v1/me/booking-groups/'.$created->json('data.id').'/cancel')->assertOk();
 });
@@ -165,22 +161,44 @@ it('requires the category verification when booking but keeps bookings after it 
     expect(EventBookingGroup::query()->where('booker_user_id', $member->id)->value('status'))->toBe('confirmed');
 });
 
-// G11 — retries with the same client_request_id never create a second booking.
-it('is idempotent for retried requests', function () {
+// G11 — retries cannot create a second booking or cross member boundaries.
+it('is idempotent for retried single-member requests', function () {
     $event = s9Event();
     $member = User::factory()->create();
     $id = (string) Str::uuid();
 
-    $first = groupBook($event, $member, ['友人'], true, $id)->assertCreated();
-    groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
-    groupBook($event, $member, ['不同姓名'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
-    groupBook($event, $member, ['友人', '新增'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    $first = groupBook($event, $member, [], true, $id)->assertCreated();
+    groupBook($event, $member, [], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
     $member->update(['name' => '會員新顯示名稱']);
-    groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
+    groupBook($event, $member, [], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
 
-    groupBook($event, User::factory()->create(), [], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    // A different member must not retrieve or replay the first member's booking.
+    groupBook($event, User::factory()->create(), [], true, $id)
+        ->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
 
-    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(2);
+    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
+});
+
+it('refuses idempotency replay after the booking member loses verification', function () {
+    $event = s9Event();
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = (string) Str::uuid();
+    groupBook($event, $member, [], true, $id)->assertCreated();
+
+    $member->update(['verified_status' => 1]);
+    groupBook($event, $member, [], true, $id)->assertForbidden();
+    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
+});
+
+it('refuses idempotency replay after the booking member is disabled', function () {
+    $event = s9Event();
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = (string) Str::uuid();
+    groupBook($event, $member, [], true, $id)->assertCreated();
+
+    $member->update(['is_active' => false]);
+    groupBook($event, $member, [], true, $id)->assertForbidden();
+    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
 });
 
 // An audit write must commit or roll back together with the booking, so a retry
@@ -218,19 +236,19 @@ it('lets admins reduce capacity only by choosing whom to cancel', function () {
     $admin = makeAdmin();
     $a = User::factory()->create();
     $b = User::factory()->create();
-    groupBook($event, $a, ['A2']);
-    groupBook($event, $b, ['B2']);
+    groupBook($event, $a);
+    groupBook($event, $b);
     $engine = app(BookingEngine::class);
 
-    expect(fn () => $engine->changeCapacity($event, 3, [], $admin))->toThrow(ApiException::class);
+    expect(fn () => $engine->changeCapacity($event, 1, [], $admin))->toThrow(ApiException::class);
     expect($event->refresh()->booking_capacity)->toBe(4);
 
     $groupB = EventBookingGroup::query()->where('booker_user_id', $b->id)->firstOrFail();
-    $engine->changeCapacity($event, 3, [$groupB->id], $admin, '場地縮小');
+    $engine->changeCapacity($event, 1, [$groupB->id], $admin, '場地縮小');
 
-    expect($event->refresh()->booking_capacity)->toBe(3)
+    expect($event->refresh()->booking_capacity)->toBe(1)
         ->and($groupB->refresh()->status)->toBe('cancelled')
-        ->and(seats($event))->toBe(2)
+        ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'event.capacity_changed')->sole()->details['cancelled_groups'])->toBe([$groupB->id])
         ->and($b->notifications()->first()->data['body'])->toContain('場地縮小');
 });
@@ -276,7 +294,7 @@ it('lets admins reorder the waitlist with an audited reason', function () {
 it('lists my booking groups and keeps others private', function () {
     $event = s9Event();
     $member = User::factory()->create();
-    groupBook($event, $member, ['友人']);
+    groupBook($event, $member);
     $other = User::factory()->create();
 
     $this->actingAs($member, 'sanctum')->getJson('/api/v1/me/booking-groups')

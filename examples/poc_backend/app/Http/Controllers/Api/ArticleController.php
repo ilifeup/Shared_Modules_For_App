@@ -451,7 +451,7 @@ class ArticleController extends Controller
             'body' => $c->body,
             'created_at' => $c->created_at?->toIso8601ZuluString(),
             'is_mine' => $viewer !== null && $c->user_id === $viewer->id,
-            'attachment_count' => (int) ($c->attachment_count ?? $c->attachments()->whereNull('removed_at')->count()),
+            'attachment_count' => (int) ($c->attachment_count ?? $c->attachments()->whereNull('removed_at')->where('view_expires_at', '>', now())->count()),
         ];
     }
 }

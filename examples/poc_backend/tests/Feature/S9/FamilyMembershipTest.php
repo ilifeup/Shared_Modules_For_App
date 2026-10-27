@@ -77,8 +77,7 @@ it('rejects the forbidden client family unlink endpoint', function () {
 it('requires administrator approval before any family member account can be created', function () {
     $manager = User::factory()->create(['verified_status' => 2]);
     $payload = [
-        'name' => '家庭會員', 'relationship' => 'child',
-        'birth_date' => '2010-01-01', 'address' => '台中市',
+        'application_id' => 999999,
     ];
     $this->actingAs($manager, 'sanctum')
         ->postJson('/api/v1/me/family-memberships', $payload)
@@ -116,4 +115,33 @@ it('rejects a family application without relationship evidence', function () {
         'address' => '台中市',
     ])->assertUnprocessable();
     expect(DB::table('family_member_applications')->count())->toBe(0);
+});
+
+it('requires administrator approval and consumes a reviewed application only once', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $admin = User::factory()->create(['verified_status' => 2]);
+    $admin->assignRole('admin');
+    $now = now();
+    $id = DB::table('family_member_applications')->insertGetId([
+        'manager_user_id' => $manager->id, 'member_name' => '家庭成員',
+        'relationship' => 'child', 'birth_date' => '2010-01-01',
+        'address' => '台中市', 'evidence_path' => 'family-evidence/test.pdf',
+        'status' => 'pending', 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-memberships', [
+        'application_id' => $id,
+    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_APPROVAL_REQUIRED');
+
+    $this->actingAs($admin, 'sanctum')->postJson("/api/v1/admin/family-applications/{$id}/review", [
+        'decision' => 'approved',
+    ])->assertOk()->assertJsonPath('data.status', 'approved');
+
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-memberships', [
+        'application_id' => $id,
+    ])->assertCreated()->assertJsonPath('data.verified_status', 2);
+
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-memberships', [
+        'application_id' => $id,
+    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_APPROVAL_REQUIRED');
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(1);
 });

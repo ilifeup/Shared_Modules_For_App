@@ -187,8 +187,16 @@ final class FamilyApplicationController extends Controller
     {
         $this->requireAdmin($request);
         $data = $request->validate(['max_members' => ['required', 'integer', 'min:1', 'max:100']]);
-        DB::table('family_member_settings')->where('id', 1)
-            ->update(['max_members' => $data['max_members'], 'updated_at' => now()]);
+        DB::transaction(function () use ($data): void {
+            DB::table('family_member_settings')->where('id', 1)->lockForUpdate()->first();
+            $largest = (int) (DB::table('family_memberships')->selectRaw('COUNT(*) as total')
+                ->groupBy('manager_user_id')->orderByDesc('total')->value('total') ?? 0);
+            if ((int) $data['max_members'] < $largest) {
+                throw new ApiException(409, 'FAMILY_LIMIT_BELOW_EXISTING', '上限不可低於既有家庭會員數。');
+            }
+            DB::table('family_member_settings')->where('id', 1)
+                ->update(['max_members' => $data['max_members'], 'updated_at' => now()]);
+        });
         return new JsonResponse(['data' => ['max_members' => (int) $data['max_members'], 'free_members' => 1]]);
     }
 

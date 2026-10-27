@@ -149,7 +149,7 @@ it('checks out with the same QR and does not let members check in again', functi
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", $body)->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
 
     $event->update(['checkout_enabled' => false]);
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", ['attendee_ids' => [$attendees[1]->id], 'event_token' => $token])
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", ['attendee_ids' => [$attendees[0]->id], 'event_token' => $token])
         ->assertStatus(409)->assertJsonPath('error.code', 'CHECKOUT_DISABLED');
 });
 

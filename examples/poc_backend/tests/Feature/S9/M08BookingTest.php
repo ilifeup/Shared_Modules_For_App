@@ -166,21 +166,33 @@ it('requires the category verification when booking but keeps bookings after it 
 });
 
 // G11 — retries with the same client_request_id never create a second booking.
-it('is idempotent for retried requests', function () {
+it('is idempotent for retried single-member requests', function () {
     $event = s9Event();
     $member = User::factory()->create();
     $id = (string) Str::uuid();
 
-    $first = groupBook($event, $member, ['友人'], true, $id)->assertCreated();
-    groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
-    groupBook($event, $member, ['不同姓名'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
-    groupBook($event, $member, ['友人', '新增'], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    $first = groupBook($event, $member, [], true, $id)->assertCreated()
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
+    groupBook($event, $member, [], true, $id)->assertOk()
+        ->assertJsonPath('data.id', $first->json('data.id'));
+
+    // Replays cannot change the booking payload or its member identity.
+    $other = User::factory()->create();
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $id,
+        'member_user_id' => $other->id,
+    ])->assertStatus(403)->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+
     $member->update(['name' => '會員新顯示名稱']);
-    groupBook($event, $member, ['友人'], true, $id)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
+    groupBook($event, $member, [], true, $id)->assertOk()
+        ->assertJsonPath('data.id', $first->json('data.id'));
 
-    groupBook($event, User::factory()->create(), [], true, $id)->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+    groupBook($event, $other, [], true, $id)->assertStatus(409)
+        ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
 
-    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(2);
+    expect(EventBookingGroup::query()->count())->toBe(1)
+        ->and(seats($event))->toBe(1);
 });
 
 // An audit write must commit or roll back together with the booking, so a retry

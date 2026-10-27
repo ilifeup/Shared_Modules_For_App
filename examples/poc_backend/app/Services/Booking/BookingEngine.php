@@ -546,8 +546,8 @@ final class BookingEngine
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         }
         $this->assertActiveVerifiedMember($request->booker);
-        if ($seats !== 1 || (int) ($request->attendees[0]['member_user_id'] ?? 0) !== (int) $request->booker->id) {
-            throw new ApiException(422, 'SELF_BOOKING_ONLY', 'MVP 僅允許會員預約本人一個名額。');
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
         }
 
         // Enforce attendee identities for every caller, including administrators.
@@ -574,7 +574,7 @@ final class BookingEngine
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         } else {
             $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
-            if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
+            if ($proxy && ! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($request->attendees[0]['member_user_id']), true)) {
                 throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');
             }
             if (! $request->byAdmin && $this->activeAttendeeOf($event, $request->booker) !== null
@@ -597,7 +597,7 @@ final class BookingEngine
         }
 
         // Eligibility is checked when booking only (D10, D19).
-        $this->assertEligible($event, $request->booker);
+        $this->assertEligible($event, User::query()->findOrFail($request->attendees[0]['member_user_id']));
     }
 
     private function permanentFailure(EventBookingGroup $group): ?string

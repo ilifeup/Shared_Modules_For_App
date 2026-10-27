@@ -228,6 +228,21 @@ class ArticleController extends Controller
         ]]);
     }
 
+    /** Private bytes; repeat all authorization checks on every request. */
+    public function attachmentContent(Request $request, int $id): StreamedResponse
+    {
+        $this->attachmentAccess($request, $id);
+        $attachment = \App\Models\ArticleCommentAttachment::query()->findOrFail($id);
+        abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
+
+        return Storage::disk('local')->response($attachment->storage_path, null, [
+            'Content-Type' => $attachment->mime_type,
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => 'inline',
+        ]);
+    }
+
     /**
      * POST /api/v1/article-comments/{id}/reports
      */

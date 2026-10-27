@@ -29,6 +29,9 @@ class UserFactory extends Factory
             'display_name' => null,
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            // Fixtures explicitly persist qualification; production never derives it
+            // from a contact verification timestamp at request time.
+            'membership_verified_at' => now(),
             'phone_e164' => null,
             'phone_verified_at' => null,
             'is_active' => true,
@@ -47,6 +50,7 @@ class UserFactory extends Factory
             'email_verified_at' => null,
             'phone_e164' => $phoneE164,
             'phone_verified_at' => $verified ? now() : null,
+            'membership_verified_at' => $verified ? now() : null,
         ]);
     }
 
@@ -57,6 +61,7 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+            'membership_verified_at' => null,
         ]);
     }
 }

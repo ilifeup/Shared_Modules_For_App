@@ -87,6 +87,29 @@ paths:
                         type: array
                         items: { type: string, enum: [name, email, phone, password] }
 
+  /auth/notices:
+    get:
+      tags: [auth]
+      operationId: appLegalNotices
+      security: []
+      description: Current App notice texts for guest entry, registration and member verification; no individual consent records.
+      responses:
+        '200':
+          description: Current administrator-editable notice texts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [guest_disclaimer, registration_privacy, verification_privacy]
+                    properties:
+                      guest_disclaimer: { type: string }
+                      registration_privacy: { type: string }
+                      verification_privacy: { type: string }
+
   /auth/register:
     post:
       tags: [auth]

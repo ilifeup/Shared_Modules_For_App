@@ -460,6 +460,13 @@ final class BookingEngine
                 $member = $memberId === null ? null : User::query()->find($memberId);
                 if ($member === null || ! $member->is_active || (int) $member->verified_status !== 2) {
                     $permanent = 'attendee_unverified';
+                } elseif ($member->id !== $group->booker_user_id) {
+                    // A family proxy may lose delegation while waiting.
+                    // Recheck current authorization before granting a seat.
+                    $booker = User::query()->find($group->booker_user_id);
+                    if ($booker === null || ! app(FamilyDelegation::class)->canManage($booker, $member, true)) {
+                        $permanent = 'delegation_revoked';
+                    }
                 }
             }
             if ($permanent !== null) {

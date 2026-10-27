@@ -8,7 +8,6 @@ use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
-use App\Http\Controllers\Api\FamilyApplicationController;
 use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\LinkAnalyticsController;
@@ -132,8 +131,6 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 
     // Family manager may create/list/edit profiles; client-side unlink is forbidden.
-    Route::get('/me/family-applications', [FamilyApplicationController::class, 'index']);
-    Route::post('/me/family-applications', [FamilyApplicationController::class, 'store'])->middleware('throttle:auth-10');
     Route::get('/me/family-memberships', [FamilyMembershipController::class, 'index']);
     Route::post('/me/family-memberships', [FamilyMembershipController::class, 'store'])->middleware('throttle:auth-10');
     Route::put('/me/family-members/{memberId}/profile', [FamilyMembershipController::class, 'saveProfile'])->whereNumber('memberId')->middleware('throttle:auth-10');

@@ -51,6 +51,7 @@ class AuthController extends Controller
             'phone_e164' => $request->input('phone_e164'),
             'password' => $request->string('password')->toString(),
             'is_active' => true,
+            'verified_status' => 1,
         ]));
 
         AuditEvent::record('member.registered', $user->id, $user);

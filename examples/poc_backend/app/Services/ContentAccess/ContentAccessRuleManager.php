@@ -4,6 +4,7 @@ namespace App\Services\ContentAccess;
 
 use App\Models\AuditEvent;
 use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -67,7 +68,7 @@ final class ContentAccessRuleManager
 
     private function authorize(User $actor): void
     {
-        abort_unless($actor->canAccessPanel(\Filament\Facades\Filament::getPanel('admin')) && $actor->can('settings.manage'), 403);
+        abort_unless($actor->canAccessPanel(Filament::getPanel('admin')) && $actor->can('settings.manage'), 403);
     }
 
     private function validateRule(string $scope, string $code, string $audience): void

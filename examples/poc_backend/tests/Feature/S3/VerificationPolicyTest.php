@@ -53,9 +53,9 @@ it('applies a policy switch to members who are already logged in', function () {
     app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
     $this->app['auth']->forgetGuards();
 
-    $this->withToken($token)->getJson('/api/v1/notices')
-        ->assertForbidden()
-        ->assertJsonPath('error.fields.verification.0', 'phone');
+    // V01-A: the existing email-verified member keeps access after the switch.
+    $this->withToken($token)->getJson('/api/v1/notices')->assertOk();
+    expect($user->refresh()->verification_grandfathered_at)->not->toBeNull();
 
     // Verifying the phone (the policy never marks contacts as verified by itself).
     expect($user->refresh()->phone_verified_at)->toBeNull();

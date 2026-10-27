@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\Checkbox;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\DB;
 use UnitEnum;
 
 /**
@@ -93,8 +94,10 @@ class VerificationPolicySettings extends Page
             return;
         }
 
-        $settings->put(['verification_policy' => $policy]);
-        AuditEvent::record('member.verification_policy_changed', auth()->id(), null, ['old' => $old, 'new' => $policy]);
+        DB::transaction(function () use ($settings, $policy, $old): void {
+            $settings->put(['verification_policy' => $policy]);
+            AuditEvent::record('member.verification_policy_changed', auth()->id(), null, ['old' => $old, 'new' => $policy]);
+        });
 
         Notification::make()->title('會員驗證政策已切換，立即生效')->success()->send();
     }

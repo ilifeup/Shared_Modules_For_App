@@ -189,7 +189,7 @@ class ArticleController extends Controller
         $this->authorizeRead($article, $viewer);
 
         $page = $article->comments()->where('status', ArticleComment::STATUS_VISIBLE)
-            ->with('user:id,nickname')->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
+            ->with('user:id,nickname')->withCount(['attachments as attachment_count' => fn (Builder $q) => $q->whereNull('removed_at')])->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
 
         return new JsonResponse([
             'data' => collect($page->items())->map(fn (ArticleComment $c) => $this->comment($c, $viewer))->all(),
@@ -322,6 +322,7 @@ class ArticleController extends Controller
             'body' => $c->body,
             'created_at' => $c->created_at?->toIso8601ZuluString(),
             'is_mine' => $viewer !== null && $c->user_id === $viewer->id,
+            'attachment_count' => (int) ($c->attachment_count ?? $c->attachments()->whereNull('removed_at')->count()),
         ];
     }
 }

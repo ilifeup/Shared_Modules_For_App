@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\MemberNotifier;
 use App\Support\Api\ApiException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -82,7 +83,7 @@ it('rejects booking groups without a member at the database boundary', function 
         'status' => EventBookingGroup::STATUS_CONFIRMED,
         'seat_count' => 1,
         'booked_at' => now(),
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 
     expect(EventBookingGroup::query()->count())->toBe($before);
 });

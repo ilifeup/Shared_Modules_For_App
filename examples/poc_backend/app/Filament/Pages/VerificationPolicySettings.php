@@ -71,8 +71,8 @@ class VerificationPolicySettings extends Page
                 ->requiresConfirmation()
                 ->modalHeading('切換為手機驗證必要？')
                 ->modalDescription(fn (): string => $this->smsAvailable()
-                    ? '已登入但尚未完成手機驗證的會員，下一次操作起將被要求先完成手機 OTP 驗證。'
-                    : '【警告】目前沒有可用的真實簡訊（測試模式或業者未設定）。切換後會員將無法收到驗證碼，可能無法使用 App。')
+                    ? '依 V01-A，已通過 Email 驗證的既有會員保留資格；新會員須完成手機 OTP 驗證。'
+                    : '【警告】目前沒有可用的真實簡訊（測試模式或業者未設定）。既有 Email 已驗證會員依 V01-A 保留資格，但新會員可能無法完成手機驗證。')
                 ->schema(fn (): array => $this->smsAvailable() ? [] : [
                     Checkbox::make('acknowledge')
                         ->label('我了解目前沒有真實簡訊，仍要切換')

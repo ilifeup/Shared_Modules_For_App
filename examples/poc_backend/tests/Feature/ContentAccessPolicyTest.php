@@ -1,15 +1,15 @@
 <?php
 
-use App\Models\User;
-use App\Models\MembershipLevel;
-use App\Models\MemberLevelAssignment;
 use App\Models\AuditEvent;
+use App\Models\MemberLevelAssignment;
+use App\Models\MembershipLevel;
+use App\Models\User;
+use App\Services\ContentAccess\ContentAccessPolicy;
 use App\Services\ContentAccess\ContentAccessRuleManager;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use App\Services\ContentAccess\ContentAccessPolicy;
-use Illuminate\Support\Facades\DB;
 
 it('denies missing rules and does not let a permitted topic bypass its list', function (): void {
     $policy = app(ContentAccessPolicy::class);

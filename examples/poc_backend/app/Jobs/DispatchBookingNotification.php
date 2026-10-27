@@ -59,7 +59,7 @@ class DispatchBookingNotification implements ShouldQueue
 
             $title = trim(mb_substr($this->title, 0, 120));
             $body = trim(mb_substr($this->body, 0, 2000));
-            // Match MemberNotifier validation for guests as well as members.
+            // Apply MemberNotifier payload validation; recipients must be registered members.
             if ($title === '' || $body === '') {
                 throw new ApiException(422, 'VALIDATION_FAILED', '通知標題與內容不可為空。');
             }

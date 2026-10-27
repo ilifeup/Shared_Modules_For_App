@@ -9,13 +9,18 @@ Shared Modules is the source of truth for reusable API contracts, entitlement ru
 - Offline grants last 365 days; expiration requires authenticated online renewal. Ciphertext can remain stored but is unusable without a valid grant. Revocation while offline is not immediately enforceable; refresh on reconnect.
 - YouTube videos are protected within the app by server-side per-video member-level checks. Public YouTube URLs cannot be restricted outside the app. Do not download YouTube videos.
 
+## Implementation status
+- Implemented reference routes: `GET /api/v1/av/tracks` and `GET /api/v1/av/videos`, protected by `auth:sanctum` + `member.verified`. Responses contain only entitled catalog items.
+- All play, direct detail, series and placement routes below are **proposed, not implemented**. Do not expose encrypted paths or cryptographic material from the catalog.
+- Authentication verification follows the app-configured `VerificationPolicy` (email or phone); do not hardcode email-only checks.
+
 ## Reusable contract
-- GET /av/music/tracks: member-authorized list only; never expose storage paths or cryptographic secrets.
-- POST /av/music/tracks/{id}/play: authenticated/verified, per-track entitlement; return a short-lived encrypted-asset authorization and offline grant metadata only when allowed. No user_id supplied by client.
-- GET /av/videos: only videos permitted for this member; filter before pagination.
+- GET /api/v1/av/tracks: member-authorized list only; never expose storage paths or cryptographic secrets.
+- POST /api/v1/av/tracks/{id}/play: authenticated/verified, per-track entitlement; return a short-lived encrypted-asset authorization and offline grant metadata only when allowed. No user_id supplied by client.
+- GET /api/v1/av/videos: only videos permitted for this member; filter before pagination.
 - GET /av/videos/{id}: direct access rechecks entitlement.
-- GET /av/video-series: series filtered to permitted videos; do not leak denied titles/IDs through counts.
-- GET /av/placements/{page_code}: placement results filtered by member verification and per-video entitlement; embeds use the same check.
+- GET /api/v1/av/video-series: series filtered to permitted videos; do not leak denied titles/IDs through counts.
+- GET /api/v1/av/placements/{page_code}: placement results filtered by member verification and per-video entitlement; embeds use the same check.
 
 ## Backend test requirements
 1. Anonymous 401; authenticated but unverified 403 for all AV endpoints.

@@ -82,7 +82,7 @@ it('rejects booking groups without a member at the database boundary', function 
         'status' => EventBookingGroup::STATUS_CONFIRMED,
         'seat_count' => 1,
         'booked_at' => now(),
-    ]))->toThrow(\\Illuminate\\Database\\QueryException::class);
+    ]))->toThrow(\Illuminate\Database\QueryException::class);
 
     expect(EventBookingGroup::query()->count())->toBe($before);
 });

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -47,19 +48,19 @@ class AvCatalogAccessTest extends TestCase
 
         $this->getJson('/api/v1/av/tracks')->assertOk();
 
-        \Illuminate\Support\Facades\DB::table('app_content_access_rules')->insert([
+        DB::table('app_content_access_rules')->insert([
             'scope' => 'page', 'resource_code' => 'av',
             'audience' => 'register_member', 'allowed' => false,
         ]);
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertForbidden();
 
-        \Illuminate\Support\Facades\DB::table('app_content_access_rules')->where('resource_code', 'av')->update(['allowed' => true]);
+        DB::table('app_content_access_rules')->where('resource_code', 'av')->update(['allowed' => true]);
         $this->getJson('/api/v1/av/tracks')->assertOk();
 
-        \Illuminate\Support\Facades\DB::table('app_content_access_rules')->insert([
+        DB::table('app_content_access_rules')->insert([
             'scope' => 'list', 'resource_code' => 'av/music',
-            'audience' => 'member', 'allowed' => false,
+            'audience' => 'register_member', 'allowed' => false,
         ]);
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertOk();

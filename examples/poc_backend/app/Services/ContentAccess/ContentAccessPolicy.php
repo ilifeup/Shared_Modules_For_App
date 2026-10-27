@@ -40,6 +40,10 @@ final class ContentAccessPolicy
      */
     public function allowsWhenConfigured(?User $user, string $page, ?string $list = null, ?string $topic = null): bool
     {
+        if ($user !== null && ! $user->is_active) {
+            return false;
+        }
+
         if ($topic !== null && $list === null) {
             throw new InvalidArgumentException('Topic requires a parent list.');
         }

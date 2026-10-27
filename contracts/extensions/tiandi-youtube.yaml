@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: Tiandi App optional YouTube video endpoint (App extension)
+  version: 0.1.0
+  description: |
+    Tiandi-only extension to the shared API contract. This endpoint is NOT
+    implemented by the Shared Modules PoC backend and MUST NOT be added to
+    contracts/openapi.yaml unless Shared Modules implements the same route.
+    Source of truth for runtime behavior is Tiandi backend and its tests.
+servers:
+  - url: /api/v1
+paths:
+  /public/youtube-videos:
+    get:
+      tags: [content]
+      operationId: listPublicYoutubeVideos
+      security: []
+      description: |
+        Read-only per-App YouTube channel cache. When disabled or unconfigured,
+        returns enabled=false and an empty videos list. API keys are server-only.
+        Only visible, embeddable videos from the configured channel are returned.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '429':
+          description: Request rate limit exceeded
+        '200':
+          description: YouTube module visibility and cached video list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [enabled, videos]
+                    properties:
+                      enabled: { type: boolean }
+                      videos:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            video_id: { type: string }
+                            title: { type: string }
+                            thumbnail_url: { type: string, nullable: true }
+                            published_at: { type: string, format: date-time, nullable: true }
+                            duration_seconds: { type: integer, nullable: true }
+                  meta:
+                    type: object
+                    additionalProperties: true
+
+

@@ -13,3 +13,7 @@ All Shared Modules must reuse these audience values and the existing member/veri
 ## Required regression coverage
 
 Anonymous versus authenticated registered versus verified; inactive account; verification-policy changes; expired/revoked level; specific-user deny; page/list/topic inheritance; direct API access; logout with retained membership; and guest booking denial.
+
+## Cross-PR review gate
+
+This contract applies to every open Shared Modules PR, not only the AV implementation. Review PR #39/#40/#45 for check-in attendee ownership, PR #41 for article attachment reads, PR #42/#43/#47 for member-only bookings and notification recipients, PR #49 for grandfathered verification, and PR #46 for navigation and AV. A passing CI result is necessary but not sufficient; verify request authentication, database ownership, active membership, verification policy and direct API access before acceptance. Do not merge a conflicting PR until it is fixed and regression-tested.

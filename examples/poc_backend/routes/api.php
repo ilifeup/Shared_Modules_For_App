@@ -57,6 +57,7 @@ Route::get('/public/events/{id}', [CalendarEventController::class, 'publicShow']
 // auth-N limiters count per route and client IP (see AppServiceProvider).
 Route::prefix('auth')->group(function () {
     Route::get('/policy', [AuthController::class, 'policy']);
+    Route::get('/notices', [AuthController::class, 'notices'])->middleware('throttle:auth-60');
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth-10');
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-10');
     Route::post('/email/resend', [AuthController::class, 'resendEmail'])->middleware('throttle:auth-3');

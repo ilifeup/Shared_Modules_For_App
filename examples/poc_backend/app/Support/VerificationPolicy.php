@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Member verification policy chosen by the admin (會員驗證設定):
@@ -40,7 +41,7 @@ final class VerificationPolicy
     {
         // Keep the membership qualification decision and update atomic even
         // when callers do not already have an open database transaction.
-        \Illuminate\Support\Facades\DB::transaction(function () use ($user): void {
+        DB::transaction(function () use ($user): void {
             $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             if ((int) $fresh->verified_status === 1 && $this->missing($fresh) === null) {
                 $fresh->forceFill(['verified_status' => 2])->save();

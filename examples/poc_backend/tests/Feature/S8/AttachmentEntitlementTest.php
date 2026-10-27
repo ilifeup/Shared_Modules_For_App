@@ -81,3 +81,10 @@ it('does not expose attachment access to a missing attachment', function () {
         ->getJson('/api/v1/attachments/999999999/access')
         ->assertNotFound();
 });
+
+it('does not stream missing private attachment content', function () {
+    $member = User::factory()->create(['verified_status' => 2]);
+    $this->actingAs($member, 'sanctum')
+        ->get('/api/v1/attachments/999999999/content')
+        ->assertNotFound();
+});

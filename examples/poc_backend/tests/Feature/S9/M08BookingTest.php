@@ -118,6 +118,24 @@ it('skips a waiting group whose member account was disabled and promotes the nex
         ->and(EventBookingGroup::query()->where('booker_user_id', $next->id)->value('status'))->toBe('confirmed');
 });
 
+it('skips a waitlisted member whose database qualification was revoked', function () {
+    $event = s9Event(['booking_capacity' => 1]);
+    $holder = User::factory()->create();
+    groupBook($event, $holder)->assertJsonPath('data.status', 'confirmed');
+    $revoked = User::factory()->create();
+    $next = User::factory()->create();
+    groupBook($event, $revoked)->assertJsonPath('data.status', 'waitlisted');
+    groupBook($event, $next)->assertJsonPath('data.status', 'waitlisted');
+
+    $revoked->forceFill(['verified_status' => 1])->save();
+
+    $group = EventBookingGroup::query()->where('booker_user_id', $holder->id)->firstOrFail();
+    $this->actingAs($holder, 'sanctum')->postJson("/api/v1/me/booking-groups/{$group->id}/cancel")->assertOk();
+
+    expect(EventWaitlistEntry::query()->whereHas('group', fn ($q) => $q->where('booker_user_id', $revoked->id))->value('skip_reason'))->toBe('booker_unverified')
+        ->and(EventBookingGroup::query()->where('booker_user_id', $next->id)->value('status'))->toBe('confirmed');
+});
+
 // G05 — per-booking seat limit, proxy rule, cancel deadline (relative, recomputed).
 it('rejects legacy multi-attendee requests and enforces cancellation deadlines', function () {
     $event = s9Event(['booking_capacity' => 10]);

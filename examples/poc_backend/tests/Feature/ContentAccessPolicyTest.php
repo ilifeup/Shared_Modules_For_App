@@ -1,6 +1,13 @@
 <?php
 
 use App\Models\User;
+use App\Models\MembershipLevel;
+use App\Models\MemberLevelAssignment;
+use App\Models\AuditEvent;
+use App\Services\ContentAccess\ContentAccessRuleManager;
+use InvalidArgumentException;
+use Spatie\Permission\Models\Role;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use App\Services\ContentAccess\ContentAccessPolicy;
 use Illuminate\Support\Facades\DB;
 
@@ -41,7 +48,7 @@ it('makes explicit denial override member and verified grants', function (): voi
 
 it('allows an administrator to configure a page and list but not a restricted topic', function (): void {
     $admin = makeAdmin();
-    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $manager = app(ContentAccessRuleManager::class);
     $manager->save($admin, 'page', 'articles', 'guest', true);
     $manager->save($admin, 'list', 'articles/news', 'guest', true);
     $manager->save($admin, 'topic', 'articles/news/locked', 'guest', false);
@@ -52,49 +59,49 @@ it('allows an administrator to configure a page and list but not a restricted to
 
 it('prevents ordinary members from changing App page rules', function (): void {
     $member = User::factory()->create();
-    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
-        ->save($member, 'page', 'av', 'guest', true))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+    expect(fn () => app(ContentAccessRuleManager::class)
+        ->save($member, 'page', 'av', 'guest', true))->toThrow(HttpException::class);
 });
 
 it('rejects malformed rule identifiers and mismatched hierarchy', function (): void {
     $admin = makeAdmin();
-    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
-        ->save($admin, 'topic', 'av/track', 'guest', true))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => app(ContentAccessRuleManager::class)
+        ->save($admin, 'topic', 'av/track', 'guest', true))->toThrow(InvalidArgumentException::class);
 });
 
 it('audits administrator rule creation, changes and deletion without duplicate events', function (): void {
     $admin = makeAdmin();
-    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $manager = app(ContentAccessRuleManager::class);
 
     $manager->save($admin, 'page', 'av', 'guest', true);
     $manager->save($admin, 'page', 'av', 'guest', true);
     $manager->save($admin, 'page', 'av', 'guest', false);
     $manager->remove($admin, 'page', 'av', 'guest');
 
-    expect(\App\Models\AuditEvent::query()->where('event', 'content.access_rule_saved')->count())->toBe(2)
-        ->and(\App\Models\AuditEvent::query()->where('event', 'content.access_rule_removed')->count())->toBe(1)
+    expect(AuditEvent::query()->where('event', 'content.access_rule_saved')->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'content.access_rule_removed')->count())->toBe(1)
         ->and(DB::table('app_content_access_rules')->where('resource_code', 'av')->exists())->toBeFalse();
 });
 
 it('respects existing settings.manage permission without creating another administrator role', function (): void {
     $admin = makeAdmin();
-    \Spatie\Permission\Models\Role::findByName(User::ADMIN_ROLE, 'web')->revokePermissionTo('settings.manage');
+    Role::findByName(User::ADMIN_ROLE, 'web')->revokePermissionTo('settings.manage');
 
-    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+    expect(fn () => app(ContentAccessRuleManager::class)
         ->save($admin->refresh(), 'page', 'av', 'guest', true))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ->toThrow(HttpException::class);
 });
 
 it('grants only currently active membership levels and rejects expired or revoked levels', function (): void {
     $member = User::factory()->create();
-    $level = \App\Models\MembershipLevel::query()->where('code', \App\Models\MembershipLevel::VIP)->firstOrFail();
-    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $level = MembershipLevel::query()->where('code', MembershipLevel::VIP)->firstOrFail();
+    $manager = app(ContentAccessRuleManager::class);
     $admin = makeAdmin();
     $manager->save($admin, 'page', 'av', 'level:'.$level->id, true);
 
     expect(app(ContentAccessPolicy::class)->allows($member, 'av'))->toBeFalse();
 
-    $assignment = \App\Models\MemberLevelAssignment::query()->create([
+    $assignment = MemberLevelAssignment::query()->create([
         'user_id' => $member->id,
         'membership_level_id' => $level->id,
         'starts_at' => now()->subDay(),
@@ -127,10 +134,10 @@ it('treats unauthenticated requests as Guest even when a registered account exis
 });
 
 it('rejects deprecated all, member and verified audience codes', function (): void {
-    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+    $manager = app(ContentAccessRuleManager::class);
     $admin = makeAdmin();
     foreach (['all', 'member', 'verified'] as $old) {
         expect(fn () => $manager->save($admin, 'page', 'articles', $old, true))
-            ->toThrow(\InvalidArgumentException::class);
+            ->toThrow(InvalidArgumentException::class);
     }
 });

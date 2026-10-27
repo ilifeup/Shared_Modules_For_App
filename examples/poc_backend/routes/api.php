@@ -1,8 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\ArticleController;
-use App\Http\Controllers\Api\AvCatalogController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AvCatalogController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;

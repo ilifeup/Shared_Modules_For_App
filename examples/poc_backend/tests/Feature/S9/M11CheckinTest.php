@@ -21,7 +21,7 @@ function checkinEvent(array $attributes = []): array
         'checkin_enabled' => true, 'checkout_enabled' => true, 'booking_capacity' => 5,
     ], $attributes));
     $member = User::factory()->create();
-    groupBook($event, $member, ['家人'])->assertCreated();
+    groupBook($event, $member)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
     return [$event, $member, $attendees];

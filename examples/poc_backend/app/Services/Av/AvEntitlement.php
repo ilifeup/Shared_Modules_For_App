@@ -17,7 +17,7 @@ final class AvEntitlement
 
     private function eligible(User $member): bool
     {
-        return (bool) $member->is_active && $this->verification->isSatisfiedBy($member);
+        return (bool) $member->is_active && (int) $member->verified_status === 2;
     }
 
     public function track(User $member, int $trackId): bool

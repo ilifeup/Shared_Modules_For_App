@@ -76,6 +76,12 @@ class BookingGroupController extends Controller
             ->when($status === 'active', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED]))
             ->when($status === 'cancelled', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CANCELLED, EventBookingGroup::STATUS_EVENT_CANCELLED]))
             ->when(in_array($status, ['confirmed', 'waitlisted'], true), fn ($q) => $q->where('status', $status))
+            ->whereHas('attendees', fn ($q) => $q->where('member_user_id', $request->user()->id)
+                ->orWhereIn('member_user_id', function ($subquery) use ($request) {
+                    $subquery->select('member_user_id')->from('family_memberships')
+                        ->where('manager_user_id', $request->user()->id)
+                        ->where('status', 'active')->whereNull('ended_at');
+                }))
             ->with('event', 'attendees.attendance', 'waitlistEntry')
             ->orderByDesc('booked_at')->orderByDesc('id')->paginate(20);
 

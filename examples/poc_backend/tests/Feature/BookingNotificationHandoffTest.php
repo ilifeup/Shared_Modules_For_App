@@ -245,3 +245,19 @@ it('rolls back a queued notification handoff with its enclosing transaction', fu
 
     expect(DB::table('jobs')->count())->toBe($before);
 });
+
+it('does not deliver a booking notification when the referenced booking group no longer exists', function (): void {
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $group = EventBookingGroup::query()->where('legacy_booking_id', $booking->id)->firstOrFail();
+    $job = new DispatchBookingNotification($group->id, 'Removed booking', 'Must not notify');
+
+    $group->delete();
+    $job->handle(app(MemberNotifier::class));
+
+    expect($member->fresh()->notifications()->where('data->title', 'Removed booking')->count())->toBe(0);
+});

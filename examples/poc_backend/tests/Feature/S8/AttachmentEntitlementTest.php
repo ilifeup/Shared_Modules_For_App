@@ -98,3 +98,31 @@ it('rejects upload attempts against nonexistent comments', function () {
         ->post('/api/v1/article-comments/999999999/attachments', ['file' => $file])
         ->assertNotFound();
 });
+
+it('uploads one private attachment per Taiwan week and rejects a second file', function () {
+    \Illuminate\Support\Facades\Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member->forceFill(['attachment_upload_enabled' => true])->save();
+    $article = \App\Models\Article::query()->create([
+        'title' => 'Private upload test',
+        'body_html' => '<p>test</p>',
+        'status' => \App\Models\Article::STATUS_PUBLISHED,
+        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = \App\Models\ArticleComment::query()->create([
+        'article_id' => $article->id,
+        'user_id' => $member->id,
+        'body' => 'Attachment test',
+        'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+    ]);
+    $this->actingAs($member, 'sanctum');
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => \Illuminate\Http\UploadedFile::fake()->create('first.pdf', 20, 'application/pdf'),
+    ])->assertCreated()->assertJsonStructure(['data' => ['id', 'view_expires_at']])
+        ->assertDontSee('storage_path');
+    $this->assertDatabaseCount('article_comment_attachments', 1);
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => \Illuminate\Http\UploadedFile::fake()->create('second.pdf', 20, 'application/pdf'),
+    ])->assertStatus(429);
+    $this->assertDatabaseCount('article_comment_attachments', 1);
+});

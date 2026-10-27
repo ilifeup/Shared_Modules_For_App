@@ -17,7 +17,7 @@ final class MemberNotifier
      * @param  iterable<User>|User  $members
      * @return int number of members notified
      */
-    public function send(iterable|User $members, string $title, string $body, string $type = 'system', ?string $actionType = null, ?string $actionId = null, ?User $actor = null): int
+    public function send(iterable|User $members, string $title, string $body, string $type = 'system', ?string $actionType = null, ?string $actionId = null, ?User $actor = null, ?string $deliveryId = null): int
     {
         $title = trim($title);
         $body = trim($body);
@@ -38,6 +38,10 @@ final class MemberNotifier
             ->filter(fn (User $user): bool => ! $user->isAdmin());
 
         $notification = new MemberNotification($title, $body, $type, $actionType, $actionId === '' ? null : $actionId);
+        if ($deliveryId !== null) {
+            // Reuse the queued job's stable ID so worker retries are idempotent.
+            $notification->id = $deliveryId;
+        }
         foreach ($recipients as $user) {
             $user->notify($notification);
         }

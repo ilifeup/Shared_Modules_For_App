@@ -143,4 +143,72 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertOk();
     }
+
+    public function test_phone_policy_transition_preserves_only_grandfathered_member_av_catalog_access(): void
+    {
+        $settings = app(Settings::class);
+        $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+        $existing = User::factory()->create([
+            'is_active' => true,
+            'email_verified_at' => now(),
+            'phone_verified_at' => null,
+        ]);
+        $levelId = DB::table('membership_levels')->insertGetId([
+            'code' => 'av_policy_http', 'name' => 'AV Policy HTTP', 'rank' => 96,
+            'is_default' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('member_level_assignments')->insert([
+            'user_id' => $existing->id, 'membership_level_id' => $levelId,
+            'starts_at' => now()->subDay(), 'ends_at' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $trackId = DB::table('av_music_tracks')->insertGetId([
+            'title' => 'Grandfathered track', 'category' => 'test',
+            'encrypted_storage_path' => 'av/grandfathered.enc',
+            'is_published' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $videoId = DB::table('av_videos')->insertGetId([
+            'youtube_id' => 'grandfather_http_01', 'title' => 'Grandfathered video',
+            'is_published' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('av_track_level_access')->insert(['track_id' => $trackId, 'member_level_id' => $levelId]);
+        DB::table('av_video_level_access')->insert(['video_id' => $videoId, 'member_level_id' => $levelId]);
+
+        Sanctum::actingAs($existing);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonPath('data.0.id', $trackId);
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonPath('data.0.id', $videoId);
+
+        // The same authenticated member keeps access after the administrator
+        // switches the policy; no phone verification is fabricated.
+        $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+        $existing->refresh();
+        $this->assertNotNull($existing->verification_grandfathered_at);
+        $this->assertNull($existing->phone_verified_at);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonPath('data.0.id', $trackId);
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonPath('data.0.id', $videoId);
+
+        // A newly registered email-only account with the same level is denied
+        // at the HTTP verification boundary, not merely in the service.
+        $newMember = User::factory()->create([
+            'is_active' => true, 'email_verified_at' => now(),
+            'phone_verified_at' => null,
+        ]);
+        DB::table('member_level_assignments')->insert([
+            'user_id' => $newMember->id, 'membership_level_id' => $levelId,
+            'starts_at' => now()->subDay(), 'ends_at' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertNull($newMember->refresh()->verification_grandfathered_at);
+        Sanctum::actingAs($newMember);
+        $this->getJson('/api/v1/av/tracks')->assertForbidden();
+        $this->getJson('/api/v1/av/videos')->assertForbidden();
+
+        // Existing qualification does not override a revoked AV level.
+        Sanctum::actingAs($existing);
+        DB::table('member_level_assignments')->where('user_id', $existing->id)
+            ->update(['revoked_at' => now()]);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonCount(0, 'data');
+    }
+
 }

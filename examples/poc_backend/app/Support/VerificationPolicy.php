@@ -25,6 +25,10 @@ final class VerificationPolicy
      */
     public function missing(User $user): ?string
     {
+        if ((int) $user->verified_status === 2) {
+            return null;
+        }
+
         return match ($this->current()) {
             Settings::POLICY_PHONE => $user->hasVerifiedPhone() ? null : 'phone',
             default => $user->hasVerifiedEmail() ? null : 'email',

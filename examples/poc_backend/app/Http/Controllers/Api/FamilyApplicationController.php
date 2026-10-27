@@ -28,6 +28,22 @@ final class FamilyApplicationController extends Controller
             'relationship_evidence' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
         ]);
 
+        // A second or later request requires a verified payment entitlement.
+        // Until payment integration is available, do not accept a client-side paid flag.
+        $alreadyCreated = DB::table('family_memberships')->where('manager_user_id', $actor->id)->count();
+        $pendingOrApproved = DB::table('family_member_applications')->where('manager_user_id', $actor->id)
+            ->whereIn('status', ['pending', 'approved'])->whereNull('created_member_user_id')->exists();
+        if ($pendingOrApproved) {
+            throw new ApiException(409, 'FAMILY_APPLICATION_PENDING', '請先完成目前申請的審核或建立。');
+        }
+        $max = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
+        if ($alreadyCreated >= $max) {
+            throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的家庭會員上限。');
+        }
+        if ($alreadyCreated >= 1) {
+            throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '第二位起須先完成付費，才能提出申請。');
+        }
+
         $path = $request->file('relationship_evidence')->store('family-evidence', 'local');
         try {
             $id = DB::table('family_member_applications')->insertGetId([
@@ -78,6 +94,12 @@ final class FamilyApplicationController extends Controller
             $application = DB::table('family_member_applications')->where('id', $id)->lockForUpdate()->first();
             if ($application === null) {
                 throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
+            }
+            if ($data['decision'] === 'approved') {
+                $count = DB::table('family_memberships')->where('manager_user_id', $application->manager_user_id)->count();
+                if ($count >= 1 && ! $application->payment_verified) {
+                    throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '第二位起須先確認付款才能核准。');
+                }
             }
             if ($application->status !== 'pending') {
                 throw new ApiException(409, 'APPLICATION_ALREADY_REVIEWED', 'Application already reviewed.');

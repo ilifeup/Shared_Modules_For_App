@@ -47,7 +47,16 @@ final class FamilyApplicationController extends Controller
 
         $path = $request->file('relationship_evidence')->store('family-evidence', 'local');
         try {
-            $id = DB::table('family_member_applications')->insertGetId([
+            $id = DB::transaction(function () use ($actor, $data, $path) {
+                DB::table('users')->where('id', $actor->id)->lockForUpdate()->first();
+                $count = DB::table('family_memberships')->where('manager_user_id', $actor->id)->count();
+                $credit = $count > 0 ? DB::table('family_member_paid_credits')
+                    ->where('manager_user_id', $actor->id)->whereNull('used_application_id')
+                    ->orderBy('id')->lockForUpdate()->first() : null;
+                if ($count > 0 && $credit === null) {
+                    throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '請先付費。');
+                }
+                $id = DB::table('family_member_applications')->insertGetId([
                 'manager_user_id' => $actor->id,
                 'member_name' => trim($data['name']),
                 'relationship' => $data['relationship'],
@@ -57,9 +66,18 @@ final class FamilyApplicationController extends Controller
                 'contact_email' => $data['contact_email'] ?? null,
                 'evidence_path' => $path,
                 'status' => 'pending',
+                'payment_verified' => $credit !== null,
+                'payment_verified_by' => $credit?->verified_by,
+                'payment_verified_at' => $credit?->created_at,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+                ]);
+                if ($credit !== null) {
+                    DB::table('family_member_paid_credits')->where('id', $credit->id)
+                        ->update(['used_application_id' => $id, 'updated_at' => now()]);
+                }
+                return $id;
+            });
         } catch (\Throwable $e) {
             Storage::disk('local')->delete($path);
             throw $e;

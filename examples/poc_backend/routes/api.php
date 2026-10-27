@@ -115,6 +115,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::delete('/articles/{id}/like', [ArticleController::class, 'unlike'])->whereNumber('id');
     Route::post('/articles/{id}/comments', [ArticleController::class, 'storeComment'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/article-comments/{id}/reports', [ArticleController::class, 'report'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::get('/attachments/{id}/access', [ArticleController::class, 'attachmentAccess'])->whereNumber('id')->middleware('throttle:auth-60');
 
     // S4 M04 in-app notifications (own notifications only).
     Route::get('/me/notifications', [NotificationController::class, 'index']);

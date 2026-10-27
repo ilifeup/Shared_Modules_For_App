@@ -190,6 +190,17 @@ it('refuses idempotency replay after the booking member loses verification', fun
     expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
 });
 
+it('refuses idempotency replay after the booking member is disabled', function () {
+    $event = s9Event();
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = (string) Str::uuid();
+    groupBook($event, $member, [], true, $id)->assertCreated();
+
+    $member->update(['is_active' => false]);
+    groupBook($event, $member, [], true, $id)->assertForbidden();
+    expect(EventBookingGroup::query()->count())->toBe(1)->and(seats($event))->toBe(1);
+});
+
 // An audit write must commit or roll back together with the booking, so a retry
 // after an audit DB failure cannot find a booking with no corresponding audit.
 it('rolls back the booking and frees its idempotency key when the audit insert fails', function () {

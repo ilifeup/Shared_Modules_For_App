@@ -8,13 +8,15 @@ use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Booking\GuestClaimService;
+use App\Models\User;
+use App\Services\Family\FamilyDelegation;
+use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S9 M08 multi-attendee bookings and waitlist for members (verified), plus the
- * guest-booking claim. The S6 single-booking API stays unchanged (BookingController).
+ * S9 M08 verified-member-only single-attendee bookings and waitlist.
+ * The S6 single-booking API stays unchanged (BookingController).
  */
 class BookingGroupController extends Controller
 {

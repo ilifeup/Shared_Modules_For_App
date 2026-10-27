@@ -3,7 +3,6 @@
 namespace App\Services\Av;
 
 use App\Models\User;
-use App\Support\VerificationPolicy;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -13,11 +12,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class AvEntitlement
 {
-    public function __construct(private readonly VerificationPolicy $verification) {}
-
     private function eligible(User $member): bool
     {
-        return (bool) $member->is_active && (int) $member->verified_status === 2;
+        return (bool) $member->is_active && $member->isVerifiedMember();
     }
 
     public function track(User $member, int $trackId): bool

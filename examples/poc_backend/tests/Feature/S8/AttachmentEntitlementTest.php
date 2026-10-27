@@ -126,3 +126,32 @@ it('uploads one private attachment per Taiwan week and rejects a second file', f
     ])->assertStatus(429);
     $this->assertDatabaseCount('article_comment_attachments', 1);
 });
+
+it('blocks an expired or removed attachment before private file streaming', function () {
+    \Illuminate\Support\Facades\Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $article = \App\Models\Article::query()->create([
+        'title' => 'Expiry test', 'body_html' => '<p>test</p>',
+        'status' => \App\Models\Article::STATUS_PUBLISHED,
+        'visibility' => \App\Models\Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = \App\Models\ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Expiry comment', 'status' => \App\Models\ArticleComment::STATUS_VISIBLE,
+    ]);
+    $path = 'private/article-comment-attachments/expiry.pdf';
+    \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'private-pdf');
+    $attachment = \App\Models\ArticleCommentAttachment::query()->create([
+        'article_comment_id' => $comment->id, 'user_id' => $member->id,
+        'storage_path' => $path, 'original_name' => 'expiry.pdf',
+        'mime_type' => 'application/pdf', 'size_bytes' => 11,
+        'view_expires_at' => now()->subSecond(),
+    ]);
+    $this->actingAs($member, 'sanctum');
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
+
+    $attachment->update(['view_expires_at' => now()->addDay(), 'removed_at' => now()]);
+    $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
+    $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
+});

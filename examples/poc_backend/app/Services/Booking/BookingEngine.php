@@ -553,7 +553,7 @@ final class BookingEngine
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         }
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
             throw new ApiException(422, 'INVALID_BOOKER', '預約者必須是有效的正式會員。');
         }
 
@@ -706,12 +706,12 @@ final class BookingEngine
 
         // An idempotent replay is still a read of protected booking details.
         // Recheck current identity/delegation; revocation must take effect immediately.
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '預約者已停用。');
         }
         if (! $request->byAdmin) {
             foreach ($existing->attendees()->get() as $attendee) {
-                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->first();
+                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->where('verified_status', 2)->first();
                 if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
                     throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
                 }

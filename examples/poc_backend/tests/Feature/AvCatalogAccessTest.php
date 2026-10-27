@@ -19,6 +19,22 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/videos')->assertUnauthorized();
     }
 
+    public function test_guest_cannot_access_protected_track_content_or_item_authorization(): void
+    {
+        $this->get('/api/v1/av/tracks/1/content')->assertUnauthorized();
+        $this->getJson('/api/v1/av/tracks/1/access')->assertUnauthorized();
+        $this->getJson('/api/v1/av/videos/1/access')->assertUnauthorized();
+    }
+
+    public function test_verified_member_without_track_grant_cannot_read_private_bytes(): void
+    {
+        $member = User::factory()->create(['verified_status' => 2]);
+        Sanctum::actingAs($member);
+        $this->get('/api/v1/av/tracks/999999/content')->assertForbidden();
+        $this->getJson('/api/v1/av/tracks/999999/access')->assertForbidden();
+        $this->getJson('/api/v1/av/videos/999999/access')->assertForbidden();
+    }
+
     public function test_unverified_member_cannot_access_music_or_video_catalog(): void
     {
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_EMAIL]);

@@ -531,20 +531,18 @@ final class BookingEngine
 
     private function validateRequest(CalendarEvent $event, BookingRequest $request): void
     {
-        $seats = count($request->attendees);
-        $category = $event->category;
-
-        // The MVP contract is exactly one member per booking, regardless of
-        // legacy event booking_max_seats settings or administrator privileges.
-        if ($seats !== 1) {
-            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
-        }
-
-        // Every entry point, including admin/internal calls, requires an active booker.
+        // No guest booking, including admin/internal calls and malformed payloads.
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         }
         $this->assertActiveVerifiedMember($request->booker);
+
+        // Exactly one registered attendee per booking, independent of legacy
+        // event booking_max_seats and administrator privileges.
+        $seats = count($request->attendees);
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
+        }
 
         // Enforce attendee identities for every caller, including administrators.
         if ($request->booker !== null) {

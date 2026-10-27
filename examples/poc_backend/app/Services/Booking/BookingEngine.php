@@ -190,6 +190,9 @@ final class BookingEngine
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動僅接受正式會員預約。');
         }
+        // Verify the current database qualification before any replay lookup.
+        // A revoked or inactive booker must not inspect an existing booking.
+        $this->assertActiveVerifiedMember($request->booker);
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {

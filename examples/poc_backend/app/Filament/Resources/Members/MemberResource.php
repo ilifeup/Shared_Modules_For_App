@@ -74,6 +74,12 @@ class MemberResource extends Resource
                 ->unique(ignoreRecord: true)
                 ->regex('/^\+8869\d{8}$/')
                 ->helperText('格式 +886912345678。修改後此手機會變成「未驗證」。'),
+            Toggle::make('attachment_upload_enabled')->label('允許附件上傳（管理員手動開通）')
+                ->helperText('僅已驗證且啟用會員可使用，與會員等級及付款無關。'),
+            DateTimePicker::make('attachment_upload_expires_at')->label('附件上傳權限到期（留空＝無期限）'),
+            TextInput::make('attachment_weekly_upload_count')->label('每週上傳次數上限（空白＝全站預設）')->numeric()->minValue(0),
+            TextInput::make('attachment_weekly_upload_bytes')->label('每週上傳容量上限（Bytes；空白＝全站預設）')->numeric()->minValue(0),
+            Textarea::make('admin_identity_note')->label('身份備註（僅管理員）')->maxLength(1000)->rows(3),
             Toggle::make('is_active')->label('啟用（關閉後無法登入，現有登入也會失效）'),
         ]);
     }

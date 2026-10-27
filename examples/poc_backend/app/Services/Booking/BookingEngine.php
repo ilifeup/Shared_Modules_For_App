@@ -173,7 +173,7 @@ final class BookingEngine
     }
 
     /**
-     * S9 group booking (member, guest or admin on the member's behalf).
+     * S9 booking: exactly one verified member, self or authorized proxy.
      */
     public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
     {

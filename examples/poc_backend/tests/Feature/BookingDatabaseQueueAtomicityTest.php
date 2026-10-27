@@ -208,3 +208,37 @@ it('rejects database queue after_commit true in production', function (): void {
         app()->detectEnvironment(fn (): string => $previousEnvironment);
     }
 });
+
+/**
+ * RefreshDatabase already starts one transaction. Verify notifyChange opens
+ * its own nested transaction for the job insert; the old implementation only
+ * happened to enqueue durably in tests because of RefreshDatabase.
+ * This is not an independent-process crash-recovery test.
+ */
+it('uses a nested database transaction to persist event-change handoffs atomically', function (): void {
+    expect(DB::getDefaultConnection())->toBe('mysql');
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+    config()->set('queue.connections.database.after_commit', false);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
+
+    $outerLevel = DB::transactionLevel();
+    $jobInsertLevels = [];
+    DB::listen(function ($query) use (&$jobInsertLevels): void {
+        if (str_contains(strtolower($query->sql), 'insert into `jobs`')) {
+            $jobInsertLevels[] = DB::transactionLevel();
+        }
+    });
+    $beforeJobs = DB::table('jobs')->count();
+
+    expect(app(BookingEngine::class)->notifyChange($event, 'Changed', 'New details'))->toBe(1);
+    expect($jobInsertLevels)->not->toBeEmpty()
+        ->and(min($jobInsertLevels))->toBeGreaterThan($outerLevel)
+        ->and(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+});

@@ -517,19 +517,24 @@ final class BookingEngine
      */
     public function notifyChange(CalendarEvent $event, string $title, string $body): int
     {
-        $this->assertDurableQueueConfiguration();
-
-        $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
-            ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
-        foreach ($groups as $group) {
-            $this->notice($group, $title, $body);
-            if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
-                $this->queueSync($group->booker_user_id, $event->id);
+        // Event changes can be called outside a booking transaction. Enqueue
+        // notifications and Google sync in an explicit DB transaction so the
+        // production database queue cannot silently fall back to afterCommit.
+        $count = $this->transaction(function () use ($event, $title, $body): int {
+            $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
+                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
+            foreach ($groups as $group) {
+                $this->notice($group, $title, $body);
+                if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
+                    $this->queueSync($group->booker_user_id, $event->id);
+                }
             }
-        }
+
+            return $groups->count();
+        });
         $this->flush();
 
-        return $groups->count();
+        return $count;
     }
 
     public function assertEligible(CalendarEvent $event, ?User $booker): void

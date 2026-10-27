@@ -13,7 +13,7 @@ use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
-/** An occurrence open for check-in now, with the member's confirmed group (self + one guest name). */
+/** An occurrence open for check-in now, with the member's confirmed group (self + one companion (registered/delegated by PR #43 helper)). */
 function checkinEvent(array $attributes = []): array
 {
     $event = s9Event(array_merge([
@@ -21,6 +21,8 @@ function checkinEvent(array $attributes = []): array
         'checkin_enabled' => true, 'checkout_enabled' => true, 'booking_capacity' => 5,
     ], $attributes));
     $member = User::factory()->create();
+    // Reuse the branch-local booking fixture. PR #43 resolves this name to a
+    // registered member with delegation; #40 alone has no family schema.
     groupBook($event, $member, ['家人'])->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
 
@@ -112,6 +114,70 @@ it('uses a fixed Location QR with optional GPS and the event setting first', fun
     $location->events()->attach($other->id);
     app(Settings::class)->put(['checkin_gps_required' => false]);
     $this->actingAs($otherMember, 'sanctum')->postJson("/api/v1/events/{$other->id}/checkin", ['attendee_ids' => [$otherAttendees[0]->id], 'location_token' => $location->token])->assertOk();
+});
+
+// M11 default: no GPS unless the event explicitly enables it or inherits an enabled App setting.
+it('defaults location QR check-in to no GPS and lets event settings override the App', function () {
+    app(Settings::class)->put(['checkin_gps_required' => false]);
+    [$defaultEvent, $defaultMember, $defaultAttendees] = checkinEvent(['checkin_gps_required' => null]);
+    $defaultLocation = CheckinLocation::query()->create([
+        'name' => '預設免定位', 'latitude' => 25.0330, 'longitude' => 121.5654,
+    ]);
+    $defaultLocation->events()->attach($defaultEvent->id);
+
+    $this->actingAs($defaultMember, 'sanctum')->getJson("/api/v1/checkin/locations/{$defaultLocation->token}")
+        ->assertOk()->assertJsonPath('data.events.0.settings.gps_required', false);
+    $this->actingAs($defaultMember, 'sanctum')->postJson("/api/v1/events/{$defaultEvent->id}/checkin", [
+        'attendee_ids' => [$defaultAttendees[0]->id], 'location_token' => $defaultLocation->token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+
+    app(Settings::class)->put(['checkin_gps_required' => true]);
+    [$overrideEvent, $overrideMember, $overrideAttendees] = checkinEvent(['checkin_gps_required' => false]);
+    $overrideLocation = CheckinLocation::query()->create([
+        'name' => '活動關閉定位', 'latitude' => 25.0330, 'longitude' => 121.5654,
+    ]);
+    $overrideLocation->events()->attach($overrideEvent->id);
+
+    $this->actingAs($overrideMember, 'sanctum')->getJson("/api/v1/checkin/locations/{$overrideLocation->token}")
+        ->assertOk()->assertJsonPath('data.events.0.settings.gps_required', false);
+    $this->actingAs($overrideMember, 'sanctum')->postJson("/api/v1/events/{$overrideEvent->id}/checkin", [
+        'attendee_ids' => [$overrideAttendees[0]->id], 'location_token' => $overrideLocation->token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+});
+
+// M11 #38 decision B: location QR checkout does not require GPS, even if check-in does.
+it('checks out by a linked location QR without GPS while keeping event binding and check-in GPS rules', function () {
+    [$event, $member, $attendees] = checkinEvent(['checkin_gps_required' => true, 'checkin_gps_radius_m' => 100]);
+    $location = CheckinLocation::query()->create(['name' => '簽退地點', 'latitude' => 25.0330, 'longitude' => 121.5654]);
+    $location->events()->attach($event->id);
+    $locationBody = ['attendee_ids' => [$attendees[0]->id], 'location_token' => $location->token];
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", $locationBody)
+        ->assertStatus(422)->assertJsonPath('error.code', 'GPS_REQUIRED');
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody)
+        ->assertStatus(409)->assertJsonPath('error.code', 'NOT_CHECKED_IN');
+
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id], 'event_token' => $token,
+    ])->assertOk();
+
+    $unlinked = CheckinLocation::query()->create(['name' => '不屬於此活動', 'latitude' => 25.0330, 'longitude' => 121.5654]);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id], 'location_token' => $unlinked->token,
+    ])->assertStatus(422)->assertJsonPath('error.code', 'LOCATION_EVENT_MISMATCH');
+
+    // GPS fields are ignored on checkout, including stale or malformed client values.
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody + [
+        'lat' => 'invalid', 'lng' => 'invalid', 'accuracy' => 'invalid',
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out');
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody)
+        ->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_OUT);
 });
 
 // G11 / G16 / D29 — staff scan the attendee pass; only staff see the list.
@@ -231,4 +297,201 @@ it('keeps attendance per occurrence', function () {
 
     expect(EventAttendance::query()->where('calendar_event_id', $second->id)->count())->toBe(0)
         ->and(CalendarEvent::query()->count())->toBe(2);
+});
+
+it('rejects another members real attendee ID in check-in and checkout batches', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $other = User::factory()->create();
+    groupBook($event, $other, [])->assertCreated();
+    $foreign = EventBookingAttendee::query()->where('calendar_event_id', $event->id)
+        ->where('member_user_id', $other->id)->firstOrFail();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id],
+        'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $foreign->id],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $foreign->id)->count())->toBe(0);
+    expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+it('rejects a mixed-ownership check-in batch before any attendee is checked in', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, 999999999],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+});
+
+it('rejects a mixed-ownership checkout batch before changing attendance', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id],
+        'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, 999999999],
+        'event_token' => $token,
+    ])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->first()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
+    expect(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+// #36: checkout must not partially commit when a later owned attendee is not checked in.
+it('rolls back an entire checkout batch and its audits on a later 409', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id], 'event_token' => $token,
+    ])->assertOk();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'NOT_CHECKED_IN');
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_IN)
+        ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+// #36: a later valid-owned attendee can fail eligibility after an earlier write.
+it('rolls back an entire check-in batch and its audits when a later attendee is waitlisted', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $attendees[1]->forceFill(['status' => EventBookingAttendee::STATUS_WAITLISTED])->save();
+    $token = app(CheckinTokens::class)->event($event->id);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'WAITLISTED');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+});
+
+// #36: a successful batch can be retried without duplicate attendance or audit writes.
+it('keeps full-batch check-in and checkout retries idempotent', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $ids = [$attendees[0]->id, $attendees[1]->id];
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in')->assertJsonPath('data.1.result', 'checked_in');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_in')->assertJsonPath('data.1.result', 'already_checked_in');
+
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out')->assertJsonPath('data.1.result', 'checked_out');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_out')->assertJsonPath('data.1.result', 'already_checked_out');
+
+    expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
+});
+
+it('rolls back all check-in writes when the second audit insert throws', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $seen = 0;
+    $armed = true;
+    AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
+        if ($armed === false || $audit->event !== 'checkin.checked_in') {
+            return;
+        }
+        $seen += 1;
+        if ($seen === 2) {
+            throw new RuntimeException('M11 injected second audit failure');
+        }
+    });
+
+    try {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+            'attendee_ids' => [$attendees[0]->id, $attendees[1]->id],
+            'event_token' => $token,
+        ])->assertStatus(500);
+    } finally {
+        $armed = false; // Listener remains inert for other tests.
+    }
+
+    expect($seen)->toBe(2)
+        ->and(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id, $attendees[1]->id],
+        'event_token' => $token,
+    ])->assertOk();
+    expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(2);
+});
+
+it('rolls back all checkout writes when the second audit insert throws', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $ids = [$attendees[0]->id, $attendees[1]->id];
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk();
+
+    $seen = 0;
+    $armed = true;
+    AuditEvent::creating(function (AuditEvent $audit) use (&$seen, &$armed): void {
+        if ($armed === false || $audit->event !== 'checkin.checked_out') {
+            return;
+        }
+        $seen += 1;
+        if ($seen === 2) {
+            throw new RuntimeException('M11 injected second checkout audit failure');
+        }
+    });
+
+    try {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+            'attendee_ids' => $ids, 'event_token' => $token,
+        ])->assertStatus(500);
+    } finally {
+        $armed = false;
+    }
+
+    expect($seen)->toBe(2)
+        ->and(EventAttendance::query()->where('calendar_event_id', $event->id)
+            ->where('status', EventAttendance::CHECKED_IN)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => $ids, 'event_token' => $token,
+    ])->assertOk();
+    expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
 });

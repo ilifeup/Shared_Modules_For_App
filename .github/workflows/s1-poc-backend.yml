@@ -130,6 +130,11 @@ jobs:
         timeout-minutes: 8
         run: bash scripts/s9_booking_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/s9_concurrency.log"
 
+      - name: M11 check-in concurrency (overlapping member-only QR batches)
+        id: m11_concurrency
+        timeout-minutes: 8
+        run: bash scripts/m11_checkin_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/m11_concurrency.log"
+
       - name: Verify irreversible guest-purge migration and member-only schema
         id: rollback
         run: |
@@ -148,7 +153,7 @@ jobs:
         run: |
           set +e
           [ "${{ steps.pint.outcome }}" = failure ] && (cd examples/poc_backend && vendor/bin/pint --test -v > "$RUNNER_TEMP/pint.log" 2>&1; true)
-          for f in pint pest e2e concurrency booking_concurrency s9_concurrency rollback; do
+          for f in pint pest e2e concurrency booking_concurrency s9_concurrency m11_concurrency rollback; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 400
           done
           if [ -f examples/poc_backend/storage/logs/laravel.log ]; then
@@ -179,6 +184,7 @@ jobs:
             echo "| OTP concurrency | ${{ steps.concurrency.outcome }} |"
             echo "| Booking concurrency | ${{ steps.booking_concurrency.outcome }} |"
             echo "| S9 booking concurrency | ${{ steps.s9_concurrency.outcome }} |"
+            echo "| M11 check-in concurrency | ${{ steps.m11_concurrency.outcome }} |"
             echo "| S9 rollback drill | ${{ steps.rollback.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -199,6 +205,7 @@ jobs:
             concurrency=${{ steps.concurrency.outcome }}
             booking_concurrency=${{ steps.booking_concurrency.outcome }}
             s9_concurrency=${{ steps.s9_concurrency.outcome }}
+            m11_concurrency=${{ steps.m11_concurrency.outcome }}
             rollback=${{ steps.rollback.outcome }}
         run: |
           failed=0

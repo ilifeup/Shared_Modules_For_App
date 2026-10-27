@@ -9,7 +9,6 @@ use App\Models\EventAttendance;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
-use App\Services\Booking\GuestClaimService;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Database\QueryException;
@@ -81,16 +80,29 @@ class CheckinService
         }
 
         $mine = $this->attendeesOf($event, $member)->keyBy('id');
-        $results = [];
-        foreach (array_values(array_unique($attendeeIds)) as $id) {
-            $attendee = $mine->get($id);
-            if ($attendee === null) {
+        $ids = array_values(array_unique($attendeeIds));
+        // Validate the entire requested ownership set before changing any attendance.
+        foreach ($ids as $id) {
+            if (! $mine->has($id)) {
                 throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
             }
-            $results[] = $this->checkIn($event, $attendee, $member, $source);
         }
 
-        return $results;
+        // All attendee state changes and their audit entries share one transaction.
+        // Any failure rolls back the entire HTTP batch (M11-D07, #36 decision A).
+        return DB::transaction(function () use ($ids, $mine, $event, $member, $source): array {
+            // Lock existing parent rows in one stable order before inserting missing
+            // attendance rows. Reverse-order concurrent batches otherwise deadlock
+            // on MySQL gap/unique-key locks and return an unexpected HTTP 500.
+            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
+                ->lockForUpdate()->get(['id']);
+            $results = [];
+            foreach ($ids as $id) {
+                $results[] = $this->checkIn($event, $mine->get($id), $member, $source);
+            }
+
+            return $results;
+        });
     }
 
     /**
@@ -118,12 +130,6 @@ class CheckinService
             throw new ApiException(404, 'NOT_FOUND', '此參加者不屬於這個場次。');
         }
 
-        // D11: a guest checked in by hand (no pass to scan) must give the Email or
-        // phone used for the booking; staff never see the full contact (D29).
-        if ($source === self::SOURCE_STAFF_MANUAL && $attendee->group->is_guest && $attendee->group->booker_user_id === null) {
-            self::assertGuestContact($attendee->group, $contact);
-        }
-
         return $this->checkIn($event, $attendee, $staff, $source);
     }
 
@@ -138,6 +144,8 @@ class CheckinService
 
         // State change and its audit entry commit together or not at all.
         [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor): array {
+            // Single staff scans and member batches must lock in the same order.
+            EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
             $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
             if ($row === null || $row->status === EventAttendance::REVOKED) {
                 throw new ApiException(409, 'NOT_CHECKED_IN', '尚未簽到，無法簽退。');
@@ -342,6 +350,8 @@ class CheckinService
 
         try {
             [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor, $source): array {
+                // Serialize concurrent first scans before the attendance row exists.
+                EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
                 $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
                 if ($row !== null && $row->status === EventAttendance::CHECKED_IN) {
                     return [$row, 'already_checked_in'];
@@ -411,24 +421,6 @@ class CheckinService
         $distance = self::distanceMeters((float) $gps['lat'], (float) $gps['lng'], $location->latitude, $location->longitude);
         if ($distance > $radius) {
             throw new ApiException(422, 'GPS_OUT_OF_RANGE', '您不在簽到範圍內（約 '.(int) round($distance).' 公尺）；如有問題請洽現場工作人員。');
-        }
-    }
-
-    /**
-     * The contact a guest states must equal the booking's email or phone (normalised).
-     */
-    public static function assertGuestContact(EventBookingGroup $group, ?string $contact): void
-    {
-        $contact = trim((string) $contact);
-        if ($contact === '') {
-            throw new ApiException(422, 'CONTACT_REQUIRED', '訪客請提供報名時填寫的 Email 或手機。', ['contact' => ['請輸入訪客報名時的 Email 或手機。']]);
-        }
-        $email = GuestClaimService::normalizeEmail($contact);
-        $phone = GuestClaimService::normalizePhone($contact);
-        $matches = ($group->contact_email !== null && hash_equals($group->contact_email, (string) $email))
-            || ($group->contact_phone !== null && $phone !== null && hash_equals($group->contact_phone, $phone));
-        if (! $matches) {
-            throw new ApiException(422, 'CONTACT_MISMATCH', '聯絡資料與報名不符，請再確認。', ['contact' => ['與報名的 Email 或手機不符。']]);
         }
     }
 

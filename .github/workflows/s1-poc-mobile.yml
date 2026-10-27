@@ -102,6 +102,29 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL
           df -h / | tail -n 1
 
+      - name: Ensure Flutter Android NDK is installed (retry corrupt downloads)
+        run: |
+          # Flutter 3.47 currently requests this NDK. Keep the app's
+          # ndkVersion = flutter.ndkVersion as the single source of truth.
+          NDK_VERSION="28.2.13676358"
+          if [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then
+            echo "NDK $NDK_VERSION already installed"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)"
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"; then
+              if [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then
+                echo "Android NDK installation verified"
+                exit 0
+              fi
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
+          done
+          echo "::error::Android NDK $NDK_VERSION installation failed after three attempts"
+          exit 1
+
       - name: Build debug APK
         run: flutter build apk --debug --dart-define-from-file=env/dev.json 2>&1 | tee "$RUNNER_TEMP/build.log"
 

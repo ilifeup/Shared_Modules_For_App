@@ -260,8 +260,11 @@ class ArticleController extends Controller
                 $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 abort_unless($locked->canUploadArticleAttachments(), 403);
                 $weekStart = now('Asia/Taipei')->startOfWeek()->utc();
+                $weekEnd = now('Asia/Taipei')->startOfWeek()->addWeek()->utc();
                 $uploads = \App\Models\ArticleCommentAttachment::query()
-                    ->where('user_id', $locked->id)->where('created_at', '>=', $weekStart);
+                    ->where('user_id', $locked->id)
+                    ->where('created_at', '>=', $weekStart)
+                    ->where('created_at', '<', $weekEnd);
                 abort_if($uploads->count() >= 1, 429, 'Weekly attachment quota exceeded.');
                 $path = $file->store('private/article-comment-attachments', 'local');
                 abort_unless($path !== false, 500);

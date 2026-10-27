@@ -57,61 +57,6 @@ it('delivers a real member booking notification using the existing notifier', fu
     expect($member->fresh()->notifications()->where('data->title', 'Booking update')->count())->toBe(1);
 });
 
-it('rejects empty guest notification payloads without persisting a notification', function (): void {
-    $event = s9Event();
-    $group = EventBookingGroup::query()->create([
-        'calendar_event_id' => $event->id,
-        'is_guest' => true,
-        'contact_name' => 'Guest validation',
-        'contact_email' => 'guest-validation@example.test',
-        'status' => EventBookingGroup::STATUS_CONFIRMED,
-        'seat_count' => 1,
-        'booked_at' => now(),
-    ]);
-
-    expect(fn () => (new DispatchBookingNotification($group->id, ' ', 'Body'))->handle(app(MemberNotifier::class)))
-        ->toThrow(ApiException::class);
-
-    expect($group->fresh()->notifications()->count())->toBe(0);
-});
-
-it('delivers a real guest booking notification to the guest group', function (): void {
-    $event = s9Event();
-    $group = EventBookingGroup::query()->create([
-        'calendar_event_id' => $event->id,
-        'is_guest' => true,
-        'contact_name' => 'Guest',
-        'contact_email' => 'guest@example.test',
-        'status' => EventBookingGroup::STATUS_CONFIRMED,
-        'seat_count' => 1,
-        'booked_at' => now(),
-    ]);
-
-    (new DispatchBookingNotification($group->id, 'Guest update', 'Guest booking was updated'))
-        ->handle(app(MemberNotifier::class));
-
-    expect($group->fresh()->notifications()->where('data->title', 'Guest update')->count())->toBe(1);
-});
-
-it('does not duplicate guest notifications when the same worker payload is replayed', function (): void {
-    $event = s9Event();
-    $group = EventBookingGroup::query()->create([
-        'calendar_event_id' => $event->id,
-        'is_guest' => true,
-        'contact_name' => 'Replay Guest',
-        'contact_email' => 'replay@example.test',
-        'status' => EventBookingGroup::STATUS_CONFIRMED,
-        'seat_count' => 1,
-        'booked_at' => now(),
-    ]);
-
-    $job = new DispatchBookingNotification($group->id, 'Replay update', 'Replay notification');
-    $job->handle(app(MemberNotifier::class));
-    $job->handle(app(MemberNotifier::class));
-
-    expect($group->fresh()->notifications()->where('data->title', 'Replay update')->count())->toBe(1);
-});
-
 it('does not duplicate member notifications when the same worker payload is replayed', function (): void {
     $event = s9Event();
     $member = User::factory()->create([

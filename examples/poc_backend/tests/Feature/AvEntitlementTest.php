@@ -17,7 +17,7 @@ class AvEntitlementTest extends TestCase
     public function test_track_level_grant_and_explicit_member_override(): void
     {
         $member = User::factory()->create(['is_active' => true]);
-        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_test'], ['name' => 'AV Test', 'rank' => 90]);
+        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_test'], ['name' => 'AV Test']);
         MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
             'membership_level_id' => $level->id,
@@ -52,7 +52,7 @@ class AvEntitlementTest extends TestCase
     public function test_video_access_rejects_expired_and_revoked_levels(): void
     {
         $member = User::factory()->create(['is_active' => true]);
-        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_video_test'], ['name' => 'AV Video Test', 'rank' => 91]);
+        $level = MembershipLevel::query()->firstOrCreate(['code' => 'av_video_test'], ['name' => 'AV Video Test']);
         $assignment = MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
             'membership_level_id' => $level->id,

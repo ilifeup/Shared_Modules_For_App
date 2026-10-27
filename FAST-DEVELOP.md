@@ -39,6 +39,29 @@
 - 以實際 job duration、失敗率、queue wait、重跑率、每個功能總耗時持續優化；不得先假定 CI 或本機一定較快。
 - CI PASS 僅代表指定 SHA 與測試範圍通過；不可等同功能驗收、正式發布或問題結案。
 
+## 5A. CI 一次修正、集中提交與過期執行取消（2026-10-27 補充）
+
+> 目標：避免「修改一個測試 → Push → 等完整 CI → 再修改」的往返循環。先完成同一批問題的根因分析與本地驗證，再集中 Push 一次。GitHub Actions 只負責驗證，不會自行修復程式。
+
+1. **先收集完整失敗集合**：鎖定 PR 最新 head SHA，取得該 SHA 的全部失敗 job logs、測試名稱、斷言差異、錯誤碼與相關程式；區分真實業務缺陷、舊測試假設、環境故障與 CI 設定問題。不得只看第一個錯誤就 Push。
+2. **一次追蹤跨層根因**：對每組失敗檢查 Route/Middleware → Controller → Service/Policy → Model → Migration/DB → API Response → Flutter；對照最新核准契約及 Shared #35 的歷史修正。先列出預期修正清單與回歸風險，再動手。
+3. **同一批問題集中修正**：在同一工作樹／單一負責 Agent 中完成所有已確認的相依修改；同步更新測試、資料庫契約與必要文件。不得刪除安全回歸測試、放寬授權或修改業務規則來換取綠燈。
+4. **Push 前先做快速本地 Gate**：至少執行受影響檔案語法檢查、相關單元／Feature tests、必要靜態檢查；涉及會員資格、預約、簽到、交易或 DB migration 時追加對應安全及資料完整性回歸。無可用本地環境時明確標記 NOT TESTED，不能聲稱已驗證。
+5. **集中 Push，減少重複 CI**：修正與本地 Gate 完成後才集中推送既有 PR 分支；不要為同一失敗連續推送多個小 Commit 觸發多輪完整 CI。等待最新 exact-HEAD 的 Backend／Mobile／Documentation 結果；舊 SHA 的綠燈或失敗不得冒充新 SHA 結果。
+6. **過期 run 的 concurrency 設計**：可在各 workflow 的 job/workflow 設定 `concurrency`，group 同時包含 `github.workflow` 與 PR 編號或 `github.ref`，避免不同 workflow 互相取消。例如：
+   ```yaml
+   concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+   ```
+   此範例僅供逐一檢查後採用，不能直接保證所有事件／受保護分支適用；不要取消唯一正在驗收的 exact-SHA run、正式發布、部署或不可中斷工作。Concurrency 只避免過期執行，**不會減少每次 Push 觸發的次數**，也不能替代本地 Gate。
+7. **依風險分層執行**：PR 快速 Gate 跑受影響測試及必要契約／安全檢查；整合 Gate 跑 DB/MySQL、跨模組與 Flutter；發布 Gate 才跑完整建置與 E2E。使用 paths/changed-files 時確保 Required Checks 不會因整個 workflow 跳過而卡 Pending，安全／DB 變更不能被錯誤略過。
+8. **失敗後只啟動下一輪必要修正**：最新完整 CI 失敗時，一次彙整所有失敗與根因，再集中修正；不要因單一 job 尚未結束就頻繁 Push。記錄每輪 SHA、失敗數、執行時間、排隊時間、修正範圍與驗證結果，避免重踩。
+9. **研究外部經驗但不盲套**：遇到 GitHub Actions／Laravel／Flutter CI 特殊問題，可查 GitHub 官方文件、GitHub Issues/Discussions 與 Reddit 經驗；第三方做法須對照本專案版本、權限及測試環境後才採用。
+10. **完成判準**：最新 exact-SHA 所有必要 CI PASS，加上資料庫、權限、業務規則與跨 PR 相容性審查，才可提交人工驗收；不自動 merge、deploy 或結案。
+
+參考：GitHub Docs — [Control the concurrency of workflows and jobs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)、[Using conditions to control job execution](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/using-conditions-to-control-job-execution)。
+
 ## 6. 不可犧牲的功能/安全規則
 - 活動永遠僅限會員預約；管理員也不可開放訪客預約。所有參加者必須有有效、唯一且經授權的會員 ID。訪客僅可閱讀公開公告，沒有個人通知收件匣或預約異動通知。
 - 家庭代管、候補 FIFO、交易原子性、取消授權、稽核、重試冪等、401/403/404/409/422 必須依最新決策驗證。

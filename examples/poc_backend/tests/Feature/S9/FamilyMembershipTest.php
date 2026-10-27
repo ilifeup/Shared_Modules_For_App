@@ -74,22 +74,17 @@ it('rejects the forbidden client family unlink endpoint', function () {
         ->assertNotFound();
 });
 
-it('creates only two free verified family members and rejects a third', function () {
+it('requires administrator approval before any family member account can be created', function () {
     $manager = User::factory()->create(['verified_status' => 2]);
-    $url = '/api/v1/me/family-memberships';
     $payload = [
         'name' => '家庭會員', 'relationship' => 'child',
         'birth_date' => '2010-01-01', 'address' => '台中市',
     ];
-    $this->actingAs($manager, 'sanctum');
-    for ($i = 1; $i <= 2; $i++) {
-        $response = $this->postJson($url, $payload)->assertCreated()
-            ->assertJsonPath('data.verified_status', 2);
-        expect(DB::table('users')->where('id', $response->json('data.member_user_id'))
-            ->value('verified_status'))->toBe(2);
-    }
-    $this->postJson($url, $payload)
-        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_MEMBER_LIMIT_REACHED');
-    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(2);
-});
+    $this->actingAs($manager, 'sanctum')
+        ->postJson('/api/v1/me/family-memberships', $payload)
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'FAMILY_APPROVAL_REQUIRED');
 
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(0);
+    expect(DB::table('users')->where('FamilyUser', true)->count())->toBe(0);
+});

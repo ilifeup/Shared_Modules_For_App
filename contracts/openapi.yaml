@@ -1363,6 +1363,49 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/VerificationRequired' }
 
+  /me/family-members/{memberId}/profile:
+    put:
+      tags: [bookings]
+      operationId: saveFamilyMemberProfile
+      x-verification: required
+      description: Update profile contact details of an existing verified family member with active delegation. Does not alter credentials, users.id, or membership verification status.
+      parameters:
+        - { name: memberId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birth_date, address]
+              properties:
+                birth_date: { type: string, format: date }
+                address: { type: string, maxLength: 500 }
+                contact_phone: { type: [string, 'null'], maxLength: 40 }
+                contact_email: { type: [string, 'null'], format: email, maxLength: 255 }
+      responses:
+        '200':
+          description: Family member profile saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      member_user_id: { type: integer }
+                      birth_date: { type: string, format: date }
+                      address: { type: string }
+                      contact_phone: { type: [string, 'null'] }
+                      contact_email: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /me/family-memberships/{id}/revoke:
     post:
       tags: [bookings]

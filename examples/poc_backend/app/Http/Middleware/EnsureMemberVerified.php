@@ -24,6 +24,12 @@ class EnsureMemberVerified
         if ($user === null) {
             throw new ApiException(401, 'UNAUTHENTICATED', '請先登入。');
         }
+        // A managed family member has a real membership record but cannot
+        // exercise an independent session, including pre-existing tokens.
+        if ($user->FamilyUser) {
+            throw new ApiException(403, 'FAMILY_LOGIN_FORBIDDEN', '家庭代管會員不可獨立登入。');
+        }
+
         if (! $user->is_active) {
             throw new ApiException(403, 'ACCOUNT_DISABLED', '此帳號已停用。');
         }

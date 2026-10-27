@@ -52,3 +52,19 @@ it('allows an existing grandfathered member without marking the phone as verifie
         ->and($existing->fresh()->verification_grandfathered_at)->not->toBeNull()
         ->and(app(VerificationPolicy::class)->isSatisfiedBy($existing->fresh()))->toBeTrue();
 });
+
+it('does not convert grandfathered verification into phone verification or a guest login', function (): void {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $member = User::factory()->create(['email_verified_at' => now(), 'phone_verified_at' => null]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+
+    $member->refresh();
+    expect($member->verification_grandfathered_at)->not->toBeNull()
+        ->and($member->phone_verified_at)->toBeNull()
+        ->and(app(VerificationPolicy::class)->isSatisfiedBy($member))->toBeTrue();
+
+    // Persisted qualification is independent of request authentication.
+    $this->getJson('/api/v1/me/notifications')->assertUnauthorized();
+    expect($member->fresh()->verification_grandfathered_at)->not->toBeNull();
+});

@@ -33,7 +33,7 @@ class AvEntitlementTest extends TestCase
         ]);
         DB::table('av_track_level_access')->insert(['track_id' => $trackId, 'member_level_id' => $level->id]);
 
-        $service = new AvEntitlement;
+        $service = app(AvEntitlement::class);
         $this->assertTrue($service->track($member, $trackId));
 
         DB::table('av_track_member_access')->insert([

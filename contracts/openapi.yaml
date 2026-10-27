@@ -29,6 +29,7 @@ tags:
   - name: password
   - name: profile
   - name: membership
+  - name: av
   - name: notices
   - name: notifications
   - name: calendar
@@ -44,7 +45,7 @@ security:
 paths:
   /av/tracks:
     get:
-      tags: [membership]
+      tags: [av]
       summary: List published music tracks the verified member may access
       operationId: avTracks
       x-verification: required
@@ -70,7 +71,7 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
   /av/videos:
     get:
-      tags: [membership]
+      tags: [av]
       summary: List published YouTube videos the verified member may access
       operationId: avVideos
       x-verification: required

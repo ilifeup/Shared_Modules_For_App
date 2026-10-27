@@ -83,8 +83,8 @@ wait "${pids[@]}"
 for n in 1 2; do
   code="$(cat "$OUT/$n.code")"
   echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
-  if [ "$code" != 404 ]; then
-    echo "::error title=M11 concurrency::cross-member batch $n returned HTTP $code; ownership isolation must reject both requests"
+  if [ "$code" != 200 ]; then
+    echo "::error title=M11 concurrency::authorized family manager batch $n returned HTTP $code; both delegated member scans must succeed"
     exit 1
   fi
 done
@@ -93,10 +93,10 @@ $id = (int) file_get_contents(getenv("OUT")."/event");
 $rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->count();
 $audits = App\Models\AuditEvent::query()->where("event", "checkin.checked_in")->where("details->event_id", $id)->count();
 echo "M11_ATTENDANCE_COUNT=".$rows." AUDITS=".$audits.PHP_EOL;
-if ($audits !== 0 || $rows !== 0) {
-    throw new RuntimeException("M11 cross-member requests must be rejected without partial attendance/audit writes");
+if ($audits !== 2 || $rows !== 2) {
+    throw new RuntimeException("M11 authorized overlapping family scans must create exactly two attendance records and two audits");
 }
 ' 2>&1 | tee "$OUT/check.log"
-# This probe verifies cross-member ownership isolation under concurrent requests.
-# Separate authorized single-member retry and rollback tests remain required.
-echo "M11 cross-member parallel isolation probe completed"
+# This probe verifies authorized family-manager concurrency, idempotent scans and audit counts.
+# Unauthorized cross-family isolation and fault-injected rollback are covered by separate tests.
+echo "M11 authorized family parallel collision probe completed"

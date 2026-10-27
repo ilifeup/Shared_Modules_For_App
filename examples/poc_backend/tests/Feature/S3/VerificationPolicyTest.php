@@ -122,3 +122,20 @@ it('does not reveal whether a phone is registered when sending codes', function 
     // Only the registered number actually received an SMS.
     expect(fakeSms()->sent)->toHaveCount(1);
 });
+
+it('grants verified membership once and does not infer it from a contact timestamp alone', function () {
+    $user = User::factory()->unverified()->create([
+        'email_verified_at' => now(),
+        'verified_status' => 1,
+    ]);
+
+    expect((int) $user->refresh()->verified_status)->toBe(1);
+
+    app(\App\Support\VerificationPolicy::class)->grantIfEligible($user);
+    expect((int) $user->refresh()->verified_status)->toBe(2);
+
+    // Retrying a completed grant must not change the verified qualification.
+    app(\App\Support\VerificationPolicy::class)->grantIfEligible($user);
+    expect((int) $user->refresh()->verified_status)->toBe(2);
+});
+

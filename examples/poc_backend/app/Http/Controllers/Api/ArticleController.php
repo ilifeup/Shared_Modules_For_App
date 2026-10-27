@@ -191,7 +191,7 @@ class ArticleController extends Controller
         $this->authorizeRead($article, $viewer);
 
         $page = $article->comments()->where('status', ArticleComment::STATUS_VISIBLE)
-            ->with('user:id,nickname')->withCount(['attachments as attachment_count' => fn (Builder $q) => $q->whereNull('removed_at')])->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
+            ->with('user:id,nickname')->withCount(['attachments as attachment_count' => fn (Builder $q) => $q->whereNull('removed_at')->where('view_expires_at', '>', now())])->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
 
         return new JsonResponse([
             'data' => collect($page->items())->map(fn (ArticleComment $c) => $this->comment($c, $viewer))->all(),
@@ -265,6 +265,9 @@ class ArticleController extends Controller
         $this->attachmentAccess($request, $id);
         $attachment = ArticleCommentAttachment::query()->findOrFail($id);
         abort_unless($attachment->isViewable(), 404);
+        $comment = $attachment->comment()->with('article.accessRules')->firstOrFail();
+        abort_unless($comment->status === ArticleComment::STATUS_VISIBLE && $comment->article !== null && $comment->article->isLive(), 404);
+        $this->authorizeRead($comment->article, $request->user());
         abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
 
         return Storage::disk('local')->response($attachment->storage_path, 'attachment-'.$attachment->id, [

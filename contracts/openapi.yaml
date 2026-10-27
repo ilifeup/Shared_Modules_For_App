@@ -51,6 +51,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
         '200': { description: Access granted without exposing storage path }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
@@ -63,6 +64,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
         '200': { $ref: '#/components/responses/Binary' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
@@ -76,6 +78,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
         '200': { description: Video access granted }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
@@ -88,6 +91,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
         '200': { description: Private attachment readable }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
@@ -101,6 +105,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
         '200': { $ref: '#/components/responses/Binary' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }

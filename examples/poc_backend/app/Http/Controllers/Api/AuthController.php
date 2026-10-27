@@ -44,7 +44,8 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = DB::transaction(fn (): User => User::query()->create([
+        $user = DB::transaction(function () use ($request): User {
+            $user = User::query()->create([
             'name' => $request->string('name')->toString(),
             'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
             'email' => $request->input('email'),
@@ -53,7 +54,19 @@ class AuthController extends Controller
             'is_active' => true,
             'verified_status' => 1,
             'FamilyUser' => false,
-        ]));
+            ]);
+            if (filled($request->input('family_name'))) {
+                DB::table('registration_family_info')->insert([
+                    'user_id' => $user->id,
+                    'family_name' => trim((string) $request->input('family_name')),
+                    'relationship' => $request->input('family_relationship'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return $user;
+        });
 
         AuditEvent::record('member.registered', $user->id, $user);
 

@@ -1513,12 +1513,17 @@ paths:
     get:
       tags: [bookings]
       operationId: listOwnFamilyApplications
+      x-verification: required
       responses:
         '200': { description: Own family applications and statuses }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
     post:
       tags: [bookings]
       operationId: submitFamilyApplication
+      x-verification: required
       description: First member free; additional members require previously verified paid credit. Each application requires manual approval.
       requestBody:
         required: true
@@ -1537,25 +1542,37 @@ paths:
                 relationship_evidence: { type: string, format: binary }
       responses:
         '201': { description: Pending application created }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
   /admin/family-applications/pending:
     get:
       tags: [bookings]
       operationId: adminPendingFamilyApplications
+      x-verification: required
       responses:
         '200': { description: Pending applications }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /admin/family-applications/{id}/evidence:
     get:
       tags: [bookings]
       operationId: adminFamilyEvidence
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /admin/family-applications/{id}/review:
     post:
       tags: [bookings]
       operationId: adminReviewFamilyApplication
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       requestBody:
@@ -1570,15 +1587,23 @@ paths:
                 note: { type: string }
       responses:
         '200': { description: Reviewed exactly once }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /admin/family-settings:
     get:
       tags: [bookings]
       operationId: adminGetFamilySettings
+      x-verification: required
       responses:
-        '200': { description: Family member cap, free allowance, per-manager counts }
+        '200': { description: Family member cap and counts of members per manager }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     put:
       tags: [bookings]
       operationId: adminSetFamilySettings
+      x-verification: required
       requestBody:
         required: true
         content:
@@ -1590,10 +1615,14 @@ paths:
                 max_members: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Updated maximum family members }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /admin/family-payments/verify:
     post:
       tags: [bookings]
       operationId: adminVerifyFamilyPayment
+      x-verification: required
       requestBody:
         required: true
         content:
@@ -1606,6 +1635,9 @@ paths:
                 payment_reference: { type: string }
       responses:
         '201': { description: One verified paid credit recorded }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/family-memberships:
     post:

@@ -76,11 +76,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         return $this->hasRole(self::ADMIN_ROLE);
     }
 
+    /** Persisted membership status is the sole authority; contact timestamps are not membership. */
+    public function isVerifiedMember(): bool
+    {
+        return (int) $this->verified_status === 2;
+    }
+
     /** Attachment uploads require explicit admin grant and verified active membership. */
     public function canUploadArticleAttachments(): bool
     {
         return (bool) $this->is_active
-            && (int) $this->verified_status === 2
+            && $this->isVerifiedMember()
             && $this->attachment_upload_enabled === true
             && ($this->attachment_upload_expires_at === null
                 || $this->attachment_upload_expires_at->isFuture());

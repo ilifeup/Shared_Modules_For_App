@@ -38,11 +38,10 @@ it('rejects ordinary members from the administration page and mutations', functi
 
     $this->get('/admin/content-access-settings')->assertForbidden();
 
-    Livewire::test(ContentAccessSettings::class)
-        ->set('scope', 'page')
-        ->set('resourceCode', 'av')
-        ->call('saveRule')
-        ->assertForbidden();
+    expect(ContentAccessSettings::canAccess())->toBeFalse();
+    expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
+        ->save(auth()->user(), 'page', 'av', 'guest', true))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
     expect(DB::table('app_content_access_rules')->count())->toBe(0);
 });

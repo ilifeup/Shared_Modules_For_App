@@ -84,17 +84,8 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
-        // PR #49 preserves already verified members during an email-to-phone
-        // policy switch. Until both PRs share a branch, retain the standalone
-        // baseline; on the combined schema, assert the grandfathered behavior.
-        if (Schema::hasColumn('users', 'verification_grandfathered_at')) {
-            $member->refresh();
-            $this->assertNotNull($member->verification_grandfathered_at);
-            $this->assertTrue($service->video($member, $videoId));
-
-        } else {
-            $this->assertFalse($service->video($member, $videoId));
-        }
+        // Contact-policy changes do not revoke persisted verified membership.
+        $this->assertTrue($service->video($member, $videoId));
         // Email-only accounts created after the switch are not grandfathered.
         $newMember = User::factory()->create(['verified_status' => 2, 
             'is_active' => true,
@@ -110,7 +101,7 @@ class AvEntitlementTest extends TestCase
         if (Schema::hasColumn('users', 'verification_grandfathered_at')) {
             $this->assertNull($newMember->refresh()->verification_grandfathered_at);
         }
-        $this->assertFalse($service->video($newMember, $videoId));
+        $this->assertTrue($service->video($newMember, $videoId));
 
         $member->forceFill(['phone_verified_at' => now()]);
         $this->assertTrue($service->video($member, $videoId));
@@ -183,6 +174,8 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->track($member, $trackId));
 
         $member->forceFill(['is_active' => true, 'email_verified_at' => null]);
+        $this->assertTrue($service->track($member, $trackId));
+        $member->forceFill(['verified_status' => 1]);
         $this->assertFalse($service->track($member, $trackId));
     }
 

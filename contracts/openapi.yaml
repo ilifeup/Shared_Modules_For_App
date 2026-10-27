@@ -1509,6 +1509,104 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /me/family-applications:
+    get:
+      tags: [bookings]
+      operationId: listOwnFamilyApplications
+      responses:
+        '200': { description: Own family applications and statuses }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [bookings]
+      operationId: submitFamilyApplication
+      description: First member free; additional members require previously verified paid credit. Each application requires manual approval.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, relationship, birth_date, address, relationship_evidence]
+              properties:
+                name: { type: string }
+                relationship: { type: string }
+                birth_date: { type: string, format: date }
+                address: { type: string }
+                contact_phone: { type: string }
+                contact_email: { type: string }
+                relationship_evidence: { type: string, format: binary }
+      responses:
+        '201': { description: Pending application created }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /admin/family-applications/pending:
+    get:
+      tags: [bookings]
+      operationId: adminPendingFamilyApplications
+      responses:
+        '200': { description: Pending applications }
+  /admin/family-applications/{id}/evidence:
+    get:
+      tags: [bookings]
+      operationId: adminFamilyEvidence
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+  /admin/family-applications/{id}/review:
+    post:
+      tags: [bookings]
+      operationId: adminReviewFamilyApplication
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                note: { type: string }
+      responses:
+        '200': { description: Reviewed exactly once }
+  /admin/family-settings:
+    get:
+      tags: [bookings]
+      operationId: adminGetFamilySettings
+      responses:
+        '200': { description: Family member cap, free allowance, per-manager counts }
+    put:
+      tags: [bookings]
+      operationId: adminSetFamilySettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [max_members]
+              properties:
+                max_members: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200': { description: Updated maximum family members }
+  /admin/family-payments/verify:
+    post:
+      tags: [bookings]
+      operationId: adminVerifyFamilyPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manager_user_id, payment_reference]
+              properties:
+                manager_user_id: { type: integer }
+                payment_reference: { type: string }
+      responses:
+        '201': { description: One verified paid credit recorded }
+
   /me/family-memberships:
     post:
       tags: [bookings]
@@ -1521,14 +1619,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, birth_date, address]
+              required: [application_id]
               properties:
-                name: { type: string, maxLength: 255 }
-                relationship: { type: [string, 'null'], maxLength: 40 }
-                birth_date: { type: string, format: date }
-                address: { type: string, maxLength: 500 }
-                contact_phone: { type: [string, 'null'], maxLength: 40 }
-                contact_email: { type: [string, 'null'], format: email }
+                application_id: { type: integer, minimum: 1 }
       responses:
         '201':
           description: Family member and active delegation created

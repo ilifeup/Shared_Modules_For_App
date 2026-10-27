@@ -13,10 +13,9 @@
         </label>
         <label>資格
             <select wire:model.live="audienceType">
-                <option value="guest">訪客</option>
-                <option value="all">所有使用者</option>
-                <option value="member">已登入會員</option>
-                <option value="verified">已驗證會員（含 V01-A）</option>
+                <option value="guest">Guest</option>
+                <option value="register_member">register member</option>
+                <option value="verified_member">Verified Member</option>
                 <option value="level">指定會員等級（含 VIP）</option>
                 <option value="user">指定會員</option>
             </select>

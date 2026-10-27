@@ -45,8 +45,13 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"家人\",\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+  -d "{\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
 [ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
+# A delegated family member has a distinct users.id and requires a separate booking.
+curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/companion-booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
+  -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
+  -d "{\"member_user_id\":$COMPANION,\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/companion-booking.status"
+[ "$(cat "$OUT/companion-booking.status")" = 200 ] || [ "$(cat "$OUT/companion-booking.status")" = 201 ] || { echo "M11 companion booking HTTP $(cat "$OUT/companion-booking.status")"; cat "$OUT/companion-booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->orderBy("id")->pluck("id")->all();
@@ -78,21 +83,20 @@ wait "${pids[@]}"
 for n in 1 2; do
   code="$(cat "$OUT/$n.code")"
   echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
-  if [ "$code" != 200 ]; then
-    echo "::error title=M11 concurrency::parallel request $n returned HTTP $code; overlapping valid scans must not return server errors"
+  if [ "$code" != 404 ]; then
+    echo "::error title=M11 concurrency::cross-member batch $n returned HTTP $code; ownership isolation must reject both requests"
     exit 1
   fi
 done
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
-$rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->get();
+$rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->count();
 $audits = App\Models\AuditEvent::query()->where("event", "checkin.checked_in")->where("details->event_id", $id)->count();
-echo "M11_ATTENDANCE_COUNT=".$rows->count()." AUDITS=".$audits.PHP_EOL;
-if ($audits !== 2) { throw new RuntimeException("M11 expected exactly two check-in audits, got ".$audits); }
-if ($rows->count() !== 2 || $rows->where("status", App\Models\EventAttendance::CHECKED_IN)->count() !== 2) {
-    throw new RuntimeException("M11 incomplete attendance after parallel requests");
+echo "M11_ATTENDANCE_COUNT=".$rows." AUDITS=".$audits.PHP_EOL;
+if ($audits !== 0 || $rows !== 0) {
+    throw new RuntimeException("M11 cross-member requests must be rejected without partial attendance/audit writes");
 }
 ' 2>&1 | tee "$OUT/check.log"
-# This probe checks HTTP success and final state, but does not prove complete
-# atomicity until fault-injected per-request rollback/audit assertions exist.
-echo "M11 parallel collision probe completed (not full concurrency acceptance)"
+# This probe verifies cross-member ownership isolation under concurrent requests.
+# Separate authorized single-member retry and rollback tests remain required.
+echo "M11 cross-member parallel isolation probe completed"

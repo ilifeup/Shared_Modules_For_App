@@ -153,7 +153,6 @@ it('denies inactive authenticated members even when no content rules are configu
         ->and($policy->allowsWhenConfigured(null, 'av'))->toBeTrue();
 });
 
-
 it('grants badge-scoped access only while the M03 approval is valid and honors explicit denial', function (): void {
     $admin = makeAdmin();
     $member = User::factory()->create();

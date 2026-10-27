@@ -356,7 +356,6 @@ it('keeps full-batch check-in and checkout retries idempotent', function () {
         ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(2);
 });
 
-
 it('rolls back all check-in writes when the second audit insert throws', function () {
     [$event, $member, $attendees] = checkinEvent();
     $token = app(CheckinTokens::class)->event($event->id);

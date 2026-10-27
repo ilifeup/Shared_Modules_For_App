@@ -213,6 +213,6 @@ it('never reuses the same verified payment reference or paid credit', function (
     $endpoint = '/api/v1/admin/family-payments/verify';
     $payload = ['manager_user_id' => $manager->id, 'payment_reference' => 'one-payment-one-credit'];
     $this->actingAs($admin, 'sanctum')->postJson($endpoint, $payload)->assertCreated();
-    $this->postJson($endpoint, $payload)->assertStatus(500);
+    $this->postJson($endpoint, $payload)->assertUnprocessable();
     expect(DB::table('family_member_paid_credits')->where('payment_reference', 'one-payment-one-credit')->count())->toBe(1);
 });

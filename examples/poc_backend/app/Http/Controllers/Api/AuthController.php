@@ -94,6 +94,10 @@ class AuthController extends Controller
             throw new ApiException(401, 'INVALID_CREDENTIALS', '帳號或密碼錯誤。');
         }
 
+        if ($user->FamilyUser) {
+            throw new ApiException(403, 'FAMILY_LOGIN_FORBIDDEN', '家庭代管會員不可獨立登入。');
+        }
+
         if (! $user->is_active) {
             throw new ApiException(403, 'ACCOUNT_DISABLED', '此帳號已停用。');
         }

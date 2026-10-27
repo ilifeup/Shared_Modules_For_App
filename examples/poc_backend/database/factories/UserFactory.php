@@ -50,7 +50,7 @@ class UserFactory extends Factory
             'email_verified_at' => null,
             'phone_e164' => $phoneE164,
             'phone_verified_at' => $verified ? now() : null,
-            'verified_status' => $verified ? 2 : 0,
+            'verified_status' => $verified ? 2 : 1,
         ]);
     }
 
@@ -61,7 +61,7 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
-            'verified_status' => 0,
+            'verified_status' => 1,
         ]);
     }
 }

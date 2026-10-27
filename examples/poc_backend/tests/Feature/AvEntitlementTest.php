@@ -16,7 +16,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_track_level_grant_and_explicit_member_override(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'membership_verified_at' => now()]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $levelId = DB::table('membership_levels')->insertGetId(['code' => 'av_test', 'name' => 'AV Test', 'rank' => 90, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
         MemberLevelAssignment::query()->create([
             'user_id' => $member->id,
@@ -49,9 +49,9 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->track($member, $trackId));
         DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => true]);
 
-        $member->forceFill(['membership_verified_at' => null]);
+        $member->forceFill(['verified_status' => 1]);
         $this->assertFalse($service->track($member, $trackId));
-        $member->forceFill(['membership_verified_at' => now()]);
+        $member->forceFill(['verified_status' => 2]);
 
         $member->forceFill(['is_active' => false]);
         $this->assertFalse($service->track($member, $trackId));
@@ -85,12 +85,12 @@ class AvEntitlementTest extends TestCase
         // Contact-policy changes must not alter persisted member qualification.
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
         $member->refresh();
-        $this->assertNotNull($member->membership_verified_at);
+        $this->assertSame(2, (int) $member->verified_status);
         $this->assertTrue($service->video($member, $videoId));
 
         $newMember = User::factory()->create([
             'is_active' => true,
-            'membership_verified_at' => null,
+            'verified_status' => 1,
             'email_verified_at' => now(),
             'phone_verified_at' => null,
         ]);
@@ -112,7 +112,7 @@ class AvEntitlementTest extends TestCase
     {
         $member = User::factory()->create([
             'is_active' => true,
-            'membership_verified_at' => now(),
+            'verified_status' => 2,
         ]);
         $levelId = DB::table('membership_levels')->insertGetId([
             'code' => 'av_future_video', 'name' => 'Future Video',
@@ -147,7 +147,7 @@ class AvEntitlementTest extends TestCase
 
     public function test_track_override_cannot_bypass_member_eligibility_or_publication(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'membership_verified_at' => now()]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $trackId = DB::table('av_music_tracks')->insertGetId([
             'title' => 'Override only track',
             'category' => 'test',
@@ -174,19 +174,19 @@ class AvEntitlementTest extends TestCase
         // even if both contact verification workflows were completed.
         $member->forceFill([
             'is_active' => true,
-            'membership_verified_at' => null,
+            'verified_status' => 1,
             'email_verified_at' => now(),
             'phone_verified_at' => now(),
         ])->save();
         $this->assertFalse($service->track($member->fresh(), $trackId));
 
-        $member->forceFill(['membership_verified_at' => now()])->save();
+        $member->forceFill(['verified_status' => 2])->save();
         $this->assertTrue($service->track($member->fresh(), $trackId));
     }
 
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
     {
-        $member = User::factory()->create(['is_active' => true, 'membership_verified_at' => now()]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $videoId = DB::table('av_videos')->insertGetId([
             'youtube_id' => 'no_level_01', 'title' => 'Restricted video', 'is_published' => true,
             'created_at' => now(), 'updated_at' => now(),

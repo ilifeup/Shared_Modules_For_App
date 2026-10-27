@@ -1,22 +1,22 @@
-# 會員資格資料庫權威：現況稽核與最小修正方案
+# 會員資格：資料庫唯一權威（2026-10-27 最新決策）
 
-## 已查證現況
+## 已核准的唯一契約
 
-- `examples/poc_backend/database/migrations/0001_01_01_000000_create_users_table.php` 建立 `users`，含 `email_verified_at`、`phone_verified_at`、`is_active`，**沒有獨立的已驗證會員資格欄位**。
-- #49 `2026_10_27_000001_add_verification_grandfathered_at_to_users.php` 另加 `verification_grandfathered_at`；此欄位目前是 Email→手機政策切換的補救標記，不是正式會員資格。
-- `VerificationPolicy::missing()` 依當前 `verification_policy` 與驗證途徑 timestamp 推算完整會員權限；`EnsureMemberVerified` 再據此阻擋 API。
-- #46 `AvEntitlement` 直接依賴此政策，會將「驗證方式」誤用為「會員資格」。
+- `guest`：未登入／沒有可供授權的 `users.id`，不新增 Guest 帳號。
+- `users.verified_status = 1`：已註冊、未驗證會員（預設）。
+- `users.verified_status = 2`：已註冊、已驗證會員。
+- `users.id` 是唯一會員識別鍵。會員資格以 `verified_status` 判斷，**不得再使用 `membership_verified_at` 作為資格權威**。
+- `email_verified_at`、`phone_verified_at` 是聯絡方式驗證成功的歷史時間，僅供完成驗證流程；不得從時間戳推算會員資格。
+- 政策由 Email 改成手機或反向切換，不得自動撤銷已授予的 `verified_status = 2`。停用帳號、角色、VIP、影音個別授權仍須分別檢查。
 
-## 已核准的不可變業務規則
+## 現有 PR 分支依賴與安全阻礙
 
-會員資格只有三種：guest／註冊未驗證會員／註冊且已驗證會員。Guest 沒有會員 `users` 紀錄；註冊後的會員資格以 DB 明確狀態為唯一權威。Email 與手機只是取得已驗證資格的操作途徑。政策變更不得自動剝奪既有已驗證會員資格。停用、會員等級與各模組授權另外檢查，不混入三種資格。
+- #53 已包含 `2026_11_04_000100_add_verified_status_to_users.php`（`unsignedTinyInteger`，預設 1），不以聯絡時間回填舊會員；此 Migration **目前不在 #49 分支**，不可將 #49 單獨 CI 視為可驗收。
+- #49 的 `User::isVerifiedMember()`、`VerificationPolicy`、Email／OTP 成功流程與影音授權已改讀／寫 `verified_status`。#49 測試資料必須使用 1／2，不得使用舊的 `membership_verified_at` 或 0。
+- #49 仍有舊的 `verification_grandfathered_at` Migration／Model cast；此歷史補救欄位不應作為授權依據，是否移除須先檢查既有資料與 Migration 相依，禁止在正式環境直接刪欄。
+- 正式資料升級時，舊會員資格不得憑 `email_verified_at` 或 `phone_verified_at` 自動推算。需有明確的舊資料盤點、經核准回填規則、隔離 MySQL 8.4 升級／回退與備份還原驗證。
+- #49 與 #53 尚未在同一測試樹整合；不得重複建立兩套資格欄位、直接合併 main 或執行正式 Migration。
 
-## 最小 Schema 修正提案（尚待核准，不得視為已實作）
+## 最小驗收 Gate
 
-1. 在現有 `users` 表新增單一持久化 `membership_verified_at TIMESTAMP NULL`（或經核准的同義狀態欄位）；`NULL` 表示註冊未驗證，非 `NULL` 表示註冊且已驗證。Guest 由不存在登入會員記錄代表，不新增 Guest user。
-2. 驗證成功的交易在後端原子寫入 `email_verified_at` 或 `phone_verified_at` 與 `membership_verified_at`；已驗證資格不得因政策切換清除。
-3. `VerificationPolicy` 僅負責尚未驗證會員的驗證途徑／提示；Middleware、影音及其他模組讀取持久化會員資格，另檢查 `is_active`、權限、有效期、撤銷。
-4. 舊資料轉換需先查驗真實資料與既有 grandfather 記錄；不可僅憑當前政策推算、不可直接執行破壞性清理；建立備份、遷移及 rollback 驗證。
-5. #46 整合進 #49 後，在同一 DB／測試樹驗證：舊已驗證、政策切換、新會員未驗證、驗證成功、停用、等級到期／撤銷、未登入、AV 不可越權。完成才關閉 #46，後續再處理 #41。
-
-**狀態：SCHEMA CHANGE BLOCKED PENDING EXPLICIT APPROVAL；不新增 PR／branch，不合併 main。**
+在包含 `verified_status` Migration 的**同一**隔離 MySQL 8.4 測試樹，依 DB → Model → Service/Policy → API → 影音／預約逐層測試：Guest、狀態 1、狀態 2、停用、Email／手機成功、政策切換、撤銷／重驗、影音等級到期／撤銷、單人／授權家庭預約、併發／冪等／回退。每項保存 exact HEAD 與 CI run；CI PASS 不代表正式驗收。

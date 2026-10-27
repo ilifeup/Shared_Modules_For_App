@@ -4,15 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Av\AvEntitlement;
+use App\Services\ContentAccess\ContentAccessPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AvCatalogController extends Controller
 {
-    public function tracks(Request $request, AvEntitlement $entitlement): JsonResponse
+    public function tracks(Request $request, AvEntitlement $entitlement, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();
+        abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
         $items = DB::table('av_music_tracks')
             ->where('is_published', true)
             ->orderBy('id')
@@ -23,9 +25,10 @@ class AvCatalogController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function videos(Request $request, AvEntitlement $entitlement): JsonResponse
+    public function videos(Request $request, AvEntitlement $entitlement, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();
+        abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);
         $items = DB::table('av_videos')
             ->where('is_published', true)
             ->orderBy('id')

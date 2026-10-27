@@ -80,3 +80,13 @@ it('does not grandfather members when an invalid verification policy update is r
     expect($member->fresh()->verification_grandfathered_at)->toBeNull()
         ->and($settings->string('verification_policy'))->toBe(Settings::POLICY_EMAIL);
 });
+
+it('does not grandfather an unverified account during the email-to-phone switch', function (): void {
+    $settings = app(Settings::class);
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $unverified = User::factory()->create(['email_verified_at' => null, 'phone_verified_at' => null]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+
+    expect($unverified->fresh()->verification_grandfathered_at)->toBeNull()
+        ->and(app(VerificationPolicy::class)->missing($unverified->fresh()))->toBe('phone');
+});

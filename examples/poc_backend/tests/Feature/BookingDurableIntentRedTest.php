@@ -1,0 +1,105 @@
+<?php
+
+use App\Models\EventBooking;
+use App\Models\GoogleCalendarConnection;
+use App\Models\User;
+use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingSideEffects;
+use App\Services\Calendar\EventSeriesService;
+use App\Support\Api\ApiException;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Behavioral regression: a connected member booking must persist its Google
+ * handoff within the booking DB transaction, even if the old post-commit
+ * adapter is unavailable. Do not assert a particular flush() source shape.
+ */
+it('persists booking and durable Google handoff without relying on post-commit adapter', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
+    ]);
+
+    $effects = Mockery::mock(BookingSideEffects::class);
+    $effects->shouldNotReceive('syncBooking');
+    app()->instance(BookingSideEffects::class, $effects);
+
+    $beforeJobs = DB::table('jobs')->count();
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+
+    expect(EventBooking::query()->whereKey($booking->id)
+        ->where('status', EventBooking::STATUS_CONFIRMED)->exists())->toBeTrue();
+    expect(DB::table('jobs')->count())->toBeGreaterThan($beforeJobs);
+});
+
+/**
+ * Behavioral rollback guard: no handoff job survives when a booking fails.
+ * This complements the direct queue/mapping rollback test.
+ */
+it('does not leave a durable Google handoff after a rejected booking', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event();
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    GoogleCalendarConnection::query()->create([
+        'user_id' => $member->id,
+        'status' => GoogleCalendarConnection::ACTIVE,
+        'google_calendar_id' => 'synthetic-calendar',
+    ]);
+
+    app(BookingEngine::class)->bookLegacy($event, $member);
+    $beforeJobs = DB::table('jobs')->count();
+
+    try {
+        app(BookingEngine::class)->bookLegacy($event, $member);
+        $this->fail('Duplicate booking unexpectedly accepted.');
+    } catch (ApiException $e) {
+        expect($e->getMessage())->not->toBe('');
+    }
+
+    expect(DB::table('jobs')->count())->toBe($beforeJobs);
+});
+
+/**
+ * An event update and its durable notification intent must share a commit.
+ * Inject a notification handoff failure to prove the event edit rolls back;
+ * the old post-commit loop left the edit committed despite the failure.
+ */
+it('rolls back event changes if notification intent cannot be persisted', function (): void {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database.connection', null);
+
+    $event = s9Event(['location' => 'Before']);
+    $member = User::factory()->create([
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    app(BookingEngine::class)->bookLegacy($event, $member);
+
+    // BookingEngine is final: inject failure at the real database-queue insert
+    // rather than mocking its methods. Query listeners run inside the transaction.
+    DB::listen(static function ($query): void {
+        if (preg_match('/insert\\s+into\\s+[`"]?jobs/i', $query->sql)) {
+            throw new RuntimeException('synthetic notification handoff failure');
+        }
+    });
+
+    expect(fn () => app(EventSeriesService::class)->update($event, 'single', [
+        'location' => 'After',
+    ], $member))->toThrow(RuntimeException::class, 'synthetic notification handoff failure');
+
+    expect($event->fresh()->location)->toBe('Before');
+});

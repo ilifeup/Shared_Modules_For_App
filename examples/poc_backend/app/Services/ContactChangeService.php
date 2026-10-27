@@ -78,6 +78,10 @@ final class ContactChangeService
 
     private function checkPassword(User $user, string $password): void
     {
+        if ($user->FamilyUser) {
+            throw new ApiException(403, 'FAMILY_LOGIN_FORBIDDEN', '家庭代管會員不可自行變更登入聯絡方式。');
+        }
+
         if (! Hash::check($password, $user->password)) {
             AuditEvent::record('member.contact_change', $user->id, $user, ['reason' => 'wrong_password'], 'failure');
 

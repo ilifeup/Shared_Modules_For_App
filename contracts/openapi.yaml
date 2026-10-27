@@ -1519,7 +1519,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '429': { $ref: '#/components/responses/RateLimited' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
     post:
       tags: [bookings]
       operationId: submitFamilyApplication
@@ -1545,7 +1544,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '429': { $ref: '#/components/responses/RateLimited' }
-        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
   /admin/family-applications/pending:
     get:
       tags: [bookings]

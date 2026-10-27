@@ -178,6 +178,13 @@ final class BookingEngine
     public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
     {
         $created = false;
+        // Database membership must be checked before idempotency replay.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動僅接受正式會員預約。');
+        }
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '僅開放已驗證且啟用的會員預約。');
+        }
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -507,6 +514,16 @@ final class BookingEngine
     private function validateRequest(CalendarEvent $event, BookingRequest $request): void
     {
         $seats = count($request->attendees);
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
+        }
+        if ($request->booker === null || ! User::query()->whereKey($request->booker->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '預約者必須是已驗證且啟用的會員。');
+        }
+        $attendeeId = $request->attendees[0]['member_user_id'] ?? null;
+        if ($attendeeId === null || ! User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(422, 'INVALID_ATTENDEE', '參加者必須是已驗證且啟用的會員。');
+        }
         $category = $event->category;
 
         if ($seats < 1) {

@@ -43,6 +43,16 @@ class AvCatalogController extends Controller
         return response()->json(['data' => $items]);
     }
 
+    /** Authorization-only handoff; no protected file path or permanent URL. */
+    public function trackAccess(Request $request, ContentAccessPolicy $access, \App\Services\Av\AvEntitlement $entitlement, int $id): JsonResponse
+    {
+        $member = $request->user();
+        abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
+        abort_unless($entitlement->track($member, $id), 403);
+
+        return response()->json(['data' => ['id' => $id, 'allowed' => true]]);
+    }
+
     public function videos(Request $request, ContentAccessPolicy $access): JsonResponse
     {
         $member = $request->user();

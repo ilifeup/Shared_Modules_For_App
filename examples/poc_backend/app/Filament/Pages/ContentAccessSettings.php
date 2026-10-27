@@ -51,7 +51,7 @@ class ContentAccessSettings extends Page
         $this->validate([
             'scope' => 'required|in:page,list,topic',
             'resourceCode' => 'required|string|max:120',
-            'audienceType' => 'required|in:guest,all,member,verified,level,user',
+            'audienceType' => 'required|in:guest,register_member,verified_member,level,user',
             'audienceId' => 'required_if:audienceType,level,user|nullable|integer|min:1',
             'decision' => 'required|in:allow,deny',
         ]);

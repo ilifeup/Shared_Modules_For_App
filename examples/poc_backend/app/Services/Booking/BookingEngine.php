@@ -537,8 +537,10 @@ final class BookingEngine
         if ($seats < 1) {
             throw new ApiException(422, 'VALIDATION_FAILED', '請至少填寫一位參加者。', ['attendees' => ['請至少填寫一位參加者。']]);
         }
-        if ($seats > max(1, (int) $event->booking_max_seats)) {
-            throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每筆報名最多 '.max(1, (int) $event->booking_max_seats).' 人。');
+        // The MVP contract is exactly one member per booking, regardless of
+        // legacy event booking_max_seats settings or administrator privileges.
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
         }
 
         // Every entry point, including admin/internal calls, requires an active booker.
@@ -546,9 +548,6 @@ final class BookingEngine
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         }
         $this->assertActiveVerifiedMember($request->booker);
-        if ($seats !== 1) {
-            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
-        }
 
         // Enforce attendee identities for every caller, including administrators.
         if ($request->booker !== null) {

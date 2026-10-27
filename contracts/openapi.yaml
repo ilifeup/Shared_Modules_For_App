@@ -1620,34 +1620,6 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
-  /me/family-memberships/{id}/revoke:
-    post:
-      tags: [bookings]
-      operationId: revokeFamilyMembership
-      x-verification: required
-      description: Revoke an active delegation owned by the authenticated manager; historical bookings remain but cancellation authority is removed.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
-      responses:
-        '200':
-          description: Delegation revoked
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [id, status]
-                    properties:
-                      id: { type: integer }
-                      status: { type: string, enum: [revoked] }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-
   /me/booking-groups:
     get:
       tags: [bookings]

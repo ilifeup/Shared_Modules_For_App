@@ -118,12 +118,18 @@ final class FamilyApplicationController extends Controller
             'note' => ['nullable', 'string', 'max:2000'],
         ]);
         $result = DB::transaction(function () use ($request, $id, $data) {
+            $managerId = DB::table('family_member_applications')->where('id', $id)->value('manager_user_id');
+            if ($managerId === null) {
+                throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
+            }
+            // Match application creation lock order: manager, then application.
+            DB::table('users')->where('id', $managerId)->lockForUpdate()->first();
             $application = DB::table('family_member_applications')->where('id', $id)->lockForUpdate()->first();
             if ($application === null) {
                 throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
             }
             if ($data['decision'] === 'approved') {
-                $manager = DB::table('users')->where('id', $application->manager_user_id)->lockForUpdate()->first();
+                $manager = DB::table('users')->where('id', $application->manager_user_id)->first();
                 if ($manager === null || ! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser) {
                     throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '主要會員目前不符合家庭會員資格。');
                 }
@@ -138,6 +144,11 @@ final class FamilyApplicationController extends Controller
             }
             if ($application->status !== 'pending') {
                 throw new ApiException(409, 'APPLICATION_ALREADY_REVIEWED', 'Application already reviewed.');
+            }
+            if ($data['decision'] === 'rejected') {
+                // A rejected application must not burn a verified payment credit.
+                DB::table('family_member_paid_credits')->where('used_application_id', $id)
+                    ->update(['used_application_id' => null, 'updated_at' => now()]);
             }
             DB::table('family_member_applications')->where('id', $id)->update([
                 'status' => $data['decision'],
@@ -172,7 +183,7 @@ final class FamilyApplicationController extends Controller
             throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator approval required.');
         }
         $rows = DB::table('family_member_applications')->where('status', 'pending')
-            ->orderBy('id')->paginate(20, ['id', 'manager_user_id', 'member_name', 'relationship', 'created_at']);
+            ->orderBy('id')->paginate(20, ['id', 'manager_user_id', 'member_name', 'relationship', 'payment_verified', 'created_at']);
         return new JsonResponse(['data' => $rows->items(), 'meta' => ['total' => $rows->total()]]);
     }
 

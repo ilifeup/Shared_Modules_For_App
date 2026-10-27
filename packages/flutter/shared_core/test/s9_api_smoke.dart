@@ -73,18 +73,16 @@ Future<void> main() async {
   };
   final familyIds = await BookingGroupApi(fake).manageableMemberIds();
   check(familyIds.length == 1 && familyIds.single == 17, 'family IDs');
-  final group = await BookingGroupApi(fake).book(
-    '7',
-    clientRequestId: 'uuid-1',
-    attendeeMemberIds: familyIds,
-  );
+  final group = await BookingGroupApi(fake)
+      .book('7', clientRequestId: 'uuid-1', attendeeMemberIds: familyIds);
   check(group.isWaitlisted && group.waitlistPosition == 1, 'waitlist');
   check(group.venue == '道場 2F A' && group.attendees.length == 2, 'group');
   check(fake.bodies.last!['client_request_id'] == 'uuid-1', 'idempotency');
   final sentAttendees = fake.bodies.last!['attendees'] as List<dynamic>;
   check(
     sentAttendees.length == 1 &&
-        (sentAttendees.single as Map<String, dynamic>)['member_user_id'] == 17 &&
+        (sentAttendees.single as Map<String, dynamic>)['member_user_id'] ==
+            17 &&
         !sentAttendees.single.containsKey('name'),
     'member-only request contract',
   );

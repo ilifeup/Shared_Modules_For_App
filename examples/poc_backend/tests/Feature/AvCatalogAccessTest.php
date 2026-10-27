@@ -66,6 +66,51 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/videos')->assertOk();
     }
 
+    public function test_catalog_sql_preserves_explicit_music_deny_and_active_level_grants(): void
+    {
+        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        Sanctum::actingAs($member);
+        $levelId = DB::table('membership_levels')->insertGetId([
+            'code' => 'av_catalog_sql', 'name' => 'Catalog SQL', 'rank' => 97,
+            'is_default' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('member_level_assignments')->insert([
+            'user_id' => $member->id, 'membership_level_id' => $levelId,
+            'starts_at' => now()->subDay(), 'ends_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $trackId = DB::table('av_music_tracks')->insertGetId([
+            'title' => 'SQL track', 'category' => 'test', 'encrypted_storage_path' => 'av/sql.enc',
+            'is_published' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $videoId = DB::table('av_videos')->insertGetId([
+            'youtube_id' => 'catalog_sql_01', 'title' => 'SQL video',
+            'is_published' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('av_track_level_access')->insert(['track_id' => $trackId, 'member_level_id' => $levelId]);
+        DB::table('av_video_level_access')->insert(['video_id' => $videoId, 'member_level_id' => $levelId]);
+
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonPath('data.0.id', $trackId);
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonPath('data.0.id', $videoId);
+
+        DB::table('av_track_member_access')->insert([
+            'track_id' => $trackId, 'user_id' => $member->id, 'allowed' => false,
+        ]);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonCount(1, 'data');
+
+        DB::table('av_track_member_access')->where('track_id', $trackId)->update(['allowed' => true]);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonCount(1, 'data');
+
+        DB::table('member_level_assignments')->where('user_id', $member->id)->update(['revoked_at' => now()]);
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJsonCount(0, 'data');
+
+        $member->forceFill(['is_active' => false])->save();
+        $this->getJson('/api/v1/av/tracks')->assertForbidden();
+        $this->getJson('/api/v1/av/videos')->assertForbidden();
+    }
+
     public function test_guest_only_navigation_rules_do_not_block_verified_member_catalog(): void
     {
         $member = User::factory()->create(['email_verified_at' => now(), 'is_active' => true]);

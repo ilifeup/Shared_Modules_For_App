@@ -26,7 +26,7 @@ final class PasswordResetService
      */
     public function requestByEmail(string $email): void
     {
-        $user = User::query()->where('email', mb_strtolower(trim($email)))->first();
+        $user = $this->uniqueEmailAccount($email);
 
         if ($user === null) {
             return;
@@ -50,7 +50,7 @@ final class PasswordResetService
 
     public function requestByPhone(string $phoneE164): void
     {
-        $user = User::query()->where('phone_e164', $phoneE164)->first();
+        $user = $this->uniquePhoneAccount($phoneE164);
 
         if ($user === null) {
             $this->otp->throttleWithoutSending($phoneE164, PhoneOtp::PURPOSE_PASSWORD_RESET);
@@ -76,7 +76,7 @@ final class PasswordResetService
 
     public function resetByPhone(string $phoneE164, string $code, string $password): void
     {
-        $user = User::query()->where('phone_e164', $phoneE164)->first();
+        $user = $this->uniquePhoneAccount($phoneE164);
 
         if ($user === null) {
             throw PhoneOtpService::invalidCode();
@@ -94,6 +94,24 @@ final class PasswordResetService
         );
 
         $this->completed($user, 'phone');
+    }
+
+    /**
+     * A shared contact cannot identify which account to recover.
+     * Never send a reset token or OTP to an arbitrarily selected member.
+     */
+    private function uniqueEmailAccount(string $email): ?User
+    {
+        $matches = User::query()->where('email', mb_strtolower(trim($email)))->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    private function uniquePhoneAccount(string $phone): ?User
+    {
+        $matches = User::query()->where('phone_e164', $phone)->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function apply(User $user, string $password, string $channel): void

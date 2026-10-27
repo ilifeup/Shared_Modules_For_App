@@ -116,6 +116,35 @@ it('uses a fixed Location QR with optional GPS and the event setting first', fun
     $this->actingAs($otherMember, 'sanctum')->postJson("/api/v1/events/{$other->id}/checkin", ['attendee_ids' => [$otherAttendees[0]->id], 'location_token' => $location->token])->assertOk();
 });
 
+// M11 default: no GPS unless the event explicitly enables it or inherits an enabled App setting.
+it('defaults location QR check-in to no GPS and lets event settings override the App', function () {
+    app(Settings::class)->put(['checkin_gps_required' => false]);
+    [$defaultEvent, $defaultMember, $defaultAttendees] = checkinEvent(['checkin_gps_required' => null]);
+    $defaultLocation = CheckinLocation::query()->create([
+        'name' => '預設免定位', 'latitude' => 25.0330, 'longitude' => 121.5654,
+    ]);
+    $defaultLocation->events()->attach($defaultEvent->id);
+
+    $this->actingAs($defaultMember, 'sanctum')->getJson("/api/v1/checkin/locations/{$defaultLocation->token}")
+        ->assertOk()->assertJsonPath('data.events.0.settings.gps_required', false);
+    $this->actingAs($defaultMember, 'sanctum')->postJson("/api/v1/events/{$defaultEvent->id}/checkin", [
+        'attendee_ids' => [$defaultAttendees[0]->id], 'location_token' => $defaultLocation->token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+
+    app(Settings::class)->put(['checkin_gps_required' => true]);
+    [$overrideEvent, $overrideMember, $overrideAttendees] = checkinEvent(['checkin_gps_required' => false]);
+    $overrideLocation = CheckinLocation::query()->create([
+        'name' => '活動關閉定位', 'latitude' => 25.0330, 'longitude' => 121.5654,
+    ]);
+    $overrideLocation->events()->attach($overrideEvent->id);
+
+    $this->actingAs($overrideMember, 'sanctum')->getJson("/api/v1/checkin/locations/{$overrideLocation->token}")
+        ->assertOk()->assertJsonPath('data.events.0.settings.gps_required', false);
+    $this->actingAs($overrideMember, 'sanctum')->postJson("/api/v1/events/{$overrideEvent->id}/checkin", [
+        'attendee_ids' => [$overrideAttendees[0]->id], 'location_token' => $overrideLocation->token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+});
+
 // M11 #38 decision B: location QR checkout does not require GPS, even if check-in does.
 it('checks out by a linked location QR without GPS while keeping event binding and check-in GPS rules', function () {
     [$event, $member, $attendees] = checkinEvent(['checkin_gps_required' => true, 'checkin_gps_radius_m' => 100]);

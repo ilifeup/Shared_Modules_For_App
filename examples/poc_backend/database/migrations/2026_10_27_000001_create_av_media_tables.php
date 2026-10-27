@@ -66,8 +66,8 @@ return new class extends Migration
             $table->id();
             $table->string('page_code', 100);
             $table->string('block_code', 100);
-            $table->foreignId('series_id')->nullable()->constrained('av_video_series')->nullOnDelete();
-            $table->foreignId('video_id')->nullable()->constrained('av_videos')->nullOnDelete();
+            $table->foreignId('series_id')->nullable()->constrained('av_video_series')->cascadeOnDelete();
+            $table->foreignId('video_id')->nullable()->constrained('av_videos')->cascadeOnDelete();
             $table->unsignedInteger('sort_order')->default(0);
             $table->boolean('is_enabled')->default(false);
             $table->timestamps();
@@ -75,6 +75,12 @@ return new class extends Migration
             $table->index(['series_id', 'is_enabled']);
             $table->index(['video_id', 'is_enabled']);
         });
+
+        // A placement must reference exactly one valid target. MySQL 8.4
+        // enforces CHECK constraints, including for direct DB writes.
+        if (Schema::getConnection()->getDriverName() === 'mysql') {
+            \Illuminate\Support\Facades\DB::statement('ALTER TABLE av_page_placements ADD CONSTRAINT av_placement_one_target CHECK ((series_id IS NOT NULL AND video_id IS NULL) OR (series_id IS NULL AND video_id IS NOT NULL))');
+        }
     }
 
     public function down(): void

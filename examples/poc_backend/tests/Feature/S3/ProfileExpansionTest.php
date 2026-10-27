@@ -167,9 +167,10 @@ it('marks a changed email unverified and requires verifying it again', function 
 
     Notification::assertSentTo($user->refresh(), VerifyEmail::class);
 
-    // Email policy: full access returns only after the new email is verified.
+    // Contact email needs re-verification, but verified membership persists in the database.
     $this->app['auth']->forgetGuards();
-    $this->withToken($token)->getJson('/api/v1/notices')->assertForbidden()->assertJsonPath('error.code', 'VERIFICATION_REQUIRED');
+    $this->withToken($token)->getJson('/api/v1/notices')->assertOk();
+    expect((int) $user->refresh()->verified_status)->toBe(2);
 });
 
 it('keeps phone-change codes apart from registration and reset codes', function () {

@@ -116,7 +116,17 @@ it('requires phone verification after an administrator revokes grandfathered eli
 
     // Simulate the persisted effect of a future administrator revocation action.
     // The administrator UI and audit trail are not implemented by this test.
-    $member->forceFill(['verification_grandfathered_at' => null])->save();
+    $member->forceFill([
+        'verification_grandfathered_at' => null,
+        'verification_grandfather_revoked_at' => now(),
+    ])->save();
 
     expect(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');
+
+    $settings->put(['verification_policy' => Settings::POLICY_EMAIL]);
+    $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
+
+    expect($member->fresh()->verification_grandfathered_at)->toBeNull()
+        ->and($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull()
+        ->and(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');
 });

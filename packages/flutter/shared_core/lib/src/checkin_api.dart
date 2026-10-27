@@ -289,6 +289,8 @@ class CheckinApi {
   );
 
   /// Same QR entry as check-in; 409 NOT_CHECKED_IN / CHECKOUT_DISABLED.
+  /// Location QR checkout validates QR/event binding without GPS (M11 #38).
+  /// Check-in GPS requirements remain unchanged.
   Future<List<CheckinResult>> checkOut(
     String eventId,
     List<String> attendeeIds, {

@@ -186,6 +186,10 @@ final class BookingEngine
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動僅接受正式會員預約。');
         }
+        // Enforce the database membership contract before idempotent replay.
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '僅開放已驗證且啟用的會員預約。');
+        }
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -533,6 +537,9 @@ final class BookingEngine
     private function validateRequest(CalendarEvent $event, BookingRequest $request): void
     {
         $seats = count($request->attendees);
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
+        }
         $category = $event->category;
 
         if ($seats < 1) {
@@ -560,7 +567,7 @@ final class BookingEngine
                 throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
             }
             foreach ($memberIds as $memberId) {
-                if (! User::query()->whereKey($memberId)->where('is_active', true)->exists()) {
+                if (! User::query()->whereKey($memberId)->where('is_active', true)->where('verified_status', 2)->exists()) {
                     throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
                 }
                 // Do not permit arbitrary proxy booking before verified family delegation exists.

@@ -39,6 +39,8 @@ class RegisterRequest extends FormRequest
             'phone' => ['required', 'string', 'max:30'],
             'phone_e164' => ['nullable', 'unique:users,phone_e164'],
             'password' => ['required', 'string', 'min:8', 'max:255', 'confirmed'],
+            'family_name' => ['nullable', 'string', 'max:255'],
+            'family_relationship' => ['nullable', 'string', 'max:80'],
         ];
     }
 

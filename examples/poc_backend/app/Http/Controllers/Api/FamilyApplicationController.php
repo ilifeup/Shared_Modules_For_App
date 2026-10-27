@@ -50,6 +50,14 @@ final class FamilyApplicationController extends Controller
             $id = DB::transaction(function () use ($actor, $data, $path) {
                 DB::table('users')->where('id', $actor->id)->lockForUpdate()->first();
                 $count = DB::table('family_memberships')->where('manager_user_id', $actor->id)->count();
+                $maxNow = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
+                if ($count >= $maxNow) {
+                    throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的上限。');
+                }
+                if (DB::table('family_member_applications')->where('manager_user_id', $actor->id)
+                    ->whereIn('status', ['pending', 'approved'])->whereNull('created_member_user_id')->exists()) {
+                    throw new ApiException(409, 'FAMILY_APPLICATION_PENDING', '請先完成現有申請。');
+                }
                 $credit = $count > 0 ? DB::table('family_member_paid_credits')
                     ->where('manager_user_id', $actor->id)->whereNull('used_application_id')
                     ->orderBy('id')->lockForUpdate()->first() : null;

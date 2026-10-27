@@ -144,8 +144,7 @@ it('allows only an administrator to revoke grandfathering and records the member
     $page->revokeGrandfathering($member->id);
     $page->revokeGrandfathering($member->id);
 
-    expect($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull()
-;
+    expect($member->fresh()->verification_grandfather_revoked_at)->not->toBeNull();
     expect(AuditEvent::query()->where('event', 'member.verification_grandfather_revoked')
         ->where('subject_id', $member->id)->count())->toBe(1);
 

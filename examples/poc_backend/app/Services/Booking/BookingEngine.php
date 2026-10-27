@@ -228,9 +228,9 @@ final class BookingEngine
                 ]);
 
                 $attendeeStatus = $status === EventBookingGroup::STATUS_CONFIRMED ? EventBookingAttendee::STATUS_CONFIRMED : EventBookingAttendee::STATUS_WAITLISTED;
-                foreach ($request->attendees as $attendee) {
-                    $this->createAttendee($group, $attendee['name'], $attendee['member_user_id'] ?? null, $attendeeStatus);
-                }
+                // validateRequest() guarantees exactly one verified users.id.
+                $attendee = $request->attendees[0];
+                $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
 
                 if ($status === EventBookingGroup::STATUS_WAITLISTED) {
                     $next = (int) EventWaitlistEntry::query()->where('calendar_event_id', $locked->id)->max('sequence') + 1;

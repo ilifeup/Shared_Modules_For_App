@@ -24,9 +24,11 @@ class ContentAccessSettings extends Page
 
     public string $resourceCode = '';
 
-    public string $audience = 'guest';
-
     public string $decision = 'allow';
+
+    public string $audienceType = 'guest';
+
+    public string $audienceId = '';
 
     public static function canAccess(): bool
     {
@@ -49,11 +51,15 @@ class ContentAccessSettings extends Page
         $this->validate([
             'scope' => 'required|in:page,list,topic',
             'resourceCode' => 'required|string|max:120',
-            'audience' => 'required|string|max:32',
+            'audienceType' => 'required|in:guest,all,member,verified,level,user',
+            'audienceId' => 'required_if:audienceType,level,user|nullable|integer|min:1',
             'decision' => 'required|in:allow,deny',
         ]);
 
-        $manager->save(auth()->user(), $this->scope, trim($this->resourceCode), $this->audience, $this->decision === 'allow');
+        $audience = in_array($this->audienceType, ['level', 'user'], true)
+            ? $this->audienceType.':'.$this->audienceId
+            : $this->audienceType;
+        $manager->save(auth()->user(), $this->scope, trim($this->resourceCode), $audience, $this->decision === 'allow');
         Notification::make()->title('瀏覽權限已儲存')->success()->send();
     }
 

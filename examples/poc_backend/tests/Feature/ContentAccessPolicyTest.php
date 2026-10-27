@@ -218,3 +218,25 @@ it('keeps verified-member AV access separate from guest visibility and explicit 
     ]);
     expect($policy->allows($member, 'av', 'lessons', 'intro'))->toBeFalse();
 });
+
+it('isolates guest-only navigation visibility from authenticated member rules', function (): void {
+    $member = User::factory()->create(['email_verified_at' => now(), 'is_active' => true]);
+    $access = app(ContentAccessPolicy::class);
+    DB::table('app_content_access_rules')->insert([
+        ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'guest', 'allowed' => false],
+        ['scope' => 'list', 'resource_code' => 'av/music', 'audience' => 'guest', 'allowed' => false],
+    ]);
+
+    expect($access->allowsWhenConfigured(null, 'av', 'music'))->toBeFalse()
+        ->and($access->allowsWhenConfigured($member, 'av', 'music'))->toBeTrue();
+
+    DB::table('app_content_access_rules')->where('audience', 'guest')->update(['allowed' => true]);
+    expect($access->allowsWhenConfigured(null, 'av', 'music'))->toBeTrue()
+        ->and($access->allowsWhenConfigured($member, 'av', 'music'))->toBeTrue();
+
+    DB::table('app_content_access_rules')->insert([
+        'scope' => 'page', 'resource_code' => 'av',
+        'audience' => 'verified_member', 'allowed' => false,
+    ]);
+    expect($access->allowsWhenConfigured($member, 'av', 'music'))->toBeFalse();
+});

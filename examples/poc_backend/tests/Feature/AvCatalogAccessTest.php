@@ -65,4 +65,37 @@ class AvCatalogAccessTest extends TestCase
         $this->getJson('/api/v1/av/tracks')->assertForbidden();
         $this->getJson('/api/v1/av/videos')->assertOk();
     }
+
+    public function test_guest_only_navigation_rules_do_not_block_verified_member_catalog(): void
+    {
+        $member = User::factory()->create(['email_verified_at' => now(), 'is_active' => true]);
+        Sanctum::actingAs($member);
+
+        DB::table('app_content_access_rules')->insert([
+            ['scope' => 'page', 'resource_code' => 'av', 'audience' => 'guest', 'allowed' => false],
+            ['scope' => 'list', 'resource_code' => 'av/music', 'audience' => 'guest', 'allowed' => false],
+        ]);
+
+        $this->getJson('/api/v1/av/tracks')->assertOk()->assertJson(['data' => []]);
+        $this->getJson('/api/v1/av/videos')->assertOk()->assertJson(['data' => []]);
+
+        DB::table('app_content_access_rules')->where('audience', 'guest')->update(['allowed' => true]);
+        $this->getJson('/api/v1/av/tracks')->assertOk();
+        $this->getJson('/api/v1/av/videos')->assertOk();
+
+        DB::table('app_content_access_rules')->insert([
+            'scope' => 'page', 'resource_code' => 'av',
+            'audience' => 'verified_member', 'allowed' => false,
+        ]);
+        $this->getJson('/api/v1/av/tracks')->assertForbidden();
+        $this->getJson('/api/v1/av/videos')->assertForbidden();
+
+        DB::table('app_content_access_rules')->where('audience', 'verified_member')->delete();
+        DB::table('app_content_access_rules')->insert([
+            'scope' => 'list', 'resource_code' => 'av/music',
+            'audience' => 'user:'.$member->id, 'allowed' => false,
+        ]);
+        $this->getJson('/api/v1/av/tracks')->assertForbidden();
+        $this->getJson('/api/v1/av/videos')->assertOk();
+    }
 }

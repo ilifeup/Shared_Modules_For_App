@@ -57,10 +57,17 @@ final class ContentAccessPolicy
         }
 
         foreach ($resources as [$scope, $code]) {
-            $configured = DB::table('app_content_access_rules')
+            // Guest navigation visibility is independent of signed-in member access.
+            // A guest-only rule must not make this a configured member layer.
+            $rules = DB::table('app_content_access_rules')
                 ->where('scope', $scope)
-                ->where('resource_code', $code)
-                ->exists();
+                ->where('resource_code', $code);
+            if ($user === null) {
+                $rules->where('audience', 'guest');
+            } else {
+                $rules->where('audience', '!=', 'guest');
+            }
+            $configured = $rules->exists();
 
             if ($configured && ! $this->allowsResource($user, $scope, $code)) {
                 return false;

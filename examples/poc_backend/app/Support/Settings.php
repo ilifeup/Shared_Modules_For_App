@@ -26,6 +26,11 @@ final class Settings
         // 會員驗證設定 (S3 A02): which verified contact grants full member access.
         'verification_policy' => self::POLICY_EMAIL,
 
+        // Current App notices; no individual acceptance records.
+        'guest_disclaimer_text' => '',
+        'registration_privacy_text' => '',
+        'verification_privacy_text' => '',
+
         // Tab 3: SMS OTP
         'sms_provider' => 'fake',             // fake | mitake | every8d | smsgo
         'sms_test_mode' => true,              // true = never call a paid provider

@@ -77,7 +77,7 @@ return new class extends Migration
             $table->index(['video_id', 'is_enabled']);
         });
 
-        // A placement must reference exactly one valid target. MySQL 8.4
+        // A placement must reference exactly one valid target. MySQL 8.0.16+
         // enforces CHECK constraints, including for direct DB writes.
         if (Schema::getConnection()->getDriverName() === 'mysql') {
             DB::statement('ALTER TABLE av_page_placements ADD CONSTRAINT av_placement_one_target CHECK ((series_id IS NOT NULL AND video_id IS NULL) OR (series_id IS NULL AND video_id IS NOT NULL))');

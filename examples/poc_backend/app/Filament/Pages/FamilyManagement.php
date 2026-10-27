@@ -102,6 +102,16 @@ class FamilyManagement extends Page
         Notification::make()->title('審核完成')->success()->send();
     }
 
+    public function downloadEvidence(int $id)
+    {
+        $application = DB::table('family_member_applications')->where('id', $id)->first();
+        if ($application === null || ! \Illuminate\Support\Facades\Storage::disk('local')->exists($application->evidence_path)) {
+            throw ValidationException::withMessages(['reviewNote' => '找不到證明文件。']);
+        }
+        return \Illuminate\Support\Facades\Storage::disk('local')
+            ->download($application->evidence_path, 'family-evidence-'.$id);
+    }
+
     public function getPendingProperty()
     {
         return DB::table('family_member_applications')->where('status', 'pending')

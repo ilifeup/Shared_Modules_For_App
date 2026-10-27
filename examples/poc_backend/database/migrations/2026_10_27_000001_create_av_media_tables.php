@@ -72,6 +72,8 @@ return new class extends Migration
             $table->boolean('is_enabled')->default(false);
             $table->timestamps();
             $table->unique(['page_code', 'block_code', 'sort_order']);
+            $table->index(['series_id', 'is_enabled']);
+            $table->index(['video_id', 'is_enabled']);
         });
     }
 

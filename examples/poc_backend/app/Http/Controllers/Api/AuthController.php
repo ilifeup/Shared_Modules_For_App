@@ -201,12 +201,23 @@ class AuthController extends Controller
     private function findByIdentifier(string $identifier): ?User
     {
         if (str_contains($identifier, '@')) {
-            return User::query()->where('email', mb_strtolower($identifier))->first();
+            return $this->uniqueAccountByContact('email', mb_strtolower($identifier));
         }
 
         $phone = Phone::normalize($identifier);
 
-        return $phone !== null ? User::query()->where('phone_e164', $phone)->first() : null;
+        return $phone !== null ? $this->uniqueAccountByContact('phone_e164', $phone) : null;
+    }
+
+    /**
+     * Never pick an arbitrary account when a contact is shared. Contact fields
+     * are mutable and may become non-unique; ambiguous login must fail closed.
+     */
+    private function uniqueAccountByContact(string $column, string $value): ?User
+    {
+        $matches = User::query()->where($column, $value)->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function normalizePhone(string $input): string

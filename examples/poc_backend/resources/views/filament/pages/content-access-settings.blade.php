@@ -26,8 +26,6 @@
                 <input wire:model="audienceId" type="number" min="1" required />
             </label>
         @endif
-        <label style="display:none">
-        </label>
         <label>決策
             <select wire:model="decision">
                 <option value="allow">允許</option>

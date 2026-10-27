@@ -128,7 +128,7 @@ class AuthController extends Controller
     {
         $request->validate(['email' => ['required', 'email', 'max:255']]);
 
-        $user = User::query()->where('email', mb_strtolower(trim((string) $request->input('email'))))->first();
+        $user = $this->uniqueAccountByContact('email', mb_strtolower(trim((string) $request->input('email'))));
 
         if ($user !== null && ! $user->hasVerifiedEmail()) {
             $user->sendEmailVerificationNotification();
@@ -146,7 +146,7 @@ class AuthController extends Controller
         $request->validate(['phone' => ['required', 'string', 'max:30']]);
 
         $phone = $this->normalizePhone((string) $request->input('phone'));
-        $user = User::query()->where('phone_e164', $phone)->first();
+        $user = $this->uniqueAccountByContact('phone_e164', $phone);
 
         if ($user !== null && ! $user->hasVerifiedPhone()) {
             $this->sendQuietly($user, PhoneOtp::PURPOSE_VERIFY);
@@ -167,7 +167,7 @@ class AuthController extends Controller
             'code' => ['required', 'string', 'regex:/^\d{6}$/'],
         ]);
 
-        $user = User::query()->where('phone_e164', $this->normalizePhone((string) $request->input('phone')))->first();
+        $user = $this->uniqueAccountByContact('phone_e164', $this->normalizePhone((string) $request->input('phone')));
 
         if ($user === null || $user->hasVerifiedPhone()) {
             throw PhoneOtpService::invalidCode();

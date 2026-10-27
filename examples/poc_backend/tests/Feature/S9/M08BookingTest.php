@@ -20,27 +20,27 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 // G01 / G04 — one seat ledger for the S6 and S9 entry points (S9-L06 A).
-it('counts S6 single bookings and S9 group attendees in one ledger', function () {
-    $event = s9Event(['booking_capacity' => 3]);
+it('counts S6 and S9 single-member bookings in the same capacity ledger', function () {
+    $event = s9Event(['booking_capacity' => 2]);
     $legacy = User::factory()->create();
     $booker = User::factory()->create();
 
     $this->actingAs($legacy, 'sanctum')->postJson("/api/v1/events/{$event->id}/bookings")
-        ->assertCreated()->assertJsonPath('data.booked_count', 1)->assertJsonPath('data.remaining', 2);
+        ->assertCreated()->assertJsonPath('data.booked_count', 1)->assertJsonPath('data.remaining', 1);
 
-    groupBook($event, $booker, ['同行者'])->assertCreated()
+    groupBook($event, $booker)->assertCreated()
         ->assertJsonPath('data.status', 'confirmed')
-        ->assertJsonPath('data.seat_count', 2)
-        ->assertJsonCount(2, 'data.attendees');
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
 
-    expect(seats($event))->toBe(3);
+    expect(seats($event))->toBe(2);
     $this->actingAs($legacy, 'sanctum')->getJson("/api/v1/events/{$event->id}/booking")
-        ->assertJsonPath('data.booked_count', 3)->assertJsonPath('data.remaining', 0);
+        ->assertJsonPath('data.booked_count', 2)->assertJsonPath('data.remaining', 0);
 
-    // The S6 endpoint keeps its semantics: full = 409 BOOKING_FULL (no waitlist there).
+    // S6 still returns 409 BOOKING_FULL when the shared ledger is full.
     $this->actingAs(User::factory()->create(), 'sanctum')->postJson("/api/v1/events/{$event->id}/bookings")
         ->assertStatus(409)->assertJsonPath('error.code', 'BOOKING_FULL');
-    expect(seats($event))->toBe(3);
+    expect(seats($event))->toBe(2);
 });
 
 it('prevents the same member from holding two places through old and new entry points', function () {

@@ -207,6 +207,10 @@ final class FamilyApplicationController extends Controller
             'manager_user_id' => ['required', 'integer', 'exists:users,id'],
             'payment_reference' => ['required', 'string', 'max:120'],
         ]);
+        $target = DB::table('users')->where('id', $data['manager_user_id'])->first();
+        if ($target === null || ! $target->is_active || (int) $target->verified_status !== 2 || $target->FamilyUser) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '僅能為有效的已驗證主要會員確認付款。');
+        }
         $id = DB::table('family_member_paid_credits')->insertGetId([
             'manager_user_id' => $data['manager_user_id'],
             'payment_reference' => $data['payment_reference'],

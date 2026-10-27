@@ -28,6 +28,7 @@ class EmailVerificationController extends Controller
                 $fresh->markEmailAsVerified();
             }
             app(VerificationPolicy::class)->grantIfEligible($fresh);
+
             return $changed;
         });
         if ($newlyVerified) {

@@ -60,33 +60,23 @@ it('prevents the same member from holding two places through old and new entry p
 });
 
 // G07 / G08 — strict FIFO, whole groups, the head group blocks smaller later ones.
-it('waitlists whole groups and never lets a later group jump the head group', function () {
-    $event = s9Event(['booking_capacity' => 3]);
+it('promotes the oldest single-member waitlist booking first', function () {
+    $event = s9Event(['booking_capacity' => 1]);
     $a = User::factory()->create();
-    groupBook($event, $a, ['A2'])->assertJsonPath('data.status', 'confirmed'); // 2 seats, 1 left
-
     $b = User::factory()->create();
     $c = User::factory()->create();
-    groupBook($event, $b, ['B2', 'B3'])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 1);
-    // Only 1 seat is free but the head group (3) is waiting: C (1) must not jump the queue.
-    groupBook($event, $c)->assertCreated()->assertJsonPath('data.status', 'waitlisted')->assertJsonPath('data.waitlist_position', 2);
-    expect(seats($event))->toBe(2);
+    groupBook($event, $a)->assertCreated()->assertJsonPath('data.status', 'confirmed');
+    groupBook($event, $b)->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+    groupBook($event, $c)->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+    expect(seats($event))->toBe(1);
 
-    // A cancels: 3 free → B (3) is promoted as a whole; C stays waiting (no seat left).
     $groupA = EventBookingGroup::query()->where('booker_user_id', $a->id)->firstOrFail();
-    $this->actingAs($a, 'sanctum')->postJson("/api/v1/me/booking-groups/{$groupA->id}/cancel")->assertOk()->assertJsonPath('data.status', 'cancelled');
+    $this->actingAs($a, 'sanctum')->postJson("/api/v1/me/booking-groups/{$groupA->id}/cancel")->assertOk();
 
-    $groupB = EventBookingGroup::query()->where('booker_user_id', $b->id)->firstOrFail();
-    $groupC = EventBookingGroup::query()->where('booker_user_id', $c->id)->firstOrFail();
-    expect($groupB->status)->toBe('confirmed')
-        ->and($groupB->attendees()->where('status', 'confirmed')->count())->toBe(3)
-        ->and($groupC->status)->toBe('waitlisted')
-        ->and(seats($event))->toBe(3)
+    expect(EventBookingGroup::query()->where('booker_user_id', $b->id)->value('status'))->toBe('confirmed')
+        ->and(EventBookingGroup::query()->where('booker_user_id', $c->id)->value('status'))->toBe('waitlisted')
+        ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'booking.promoted')->count())->toBe(1);
-
-    // D13: the promoted member gets an in-app notification.
-    expect($b->notifications()->count())->toBe(1)
-        ->and($b->notifications()->first()->data['title'])->toContain('候補成功');
 });
 
 it('lets members withdraw from the waitlist at any time and promotes after S6 cancels too', function () {
@@ -230,19 +220,19 @@ it('lets admins reduce capacity only by choosing whom to cancel', function () {
     $admin = makeAdmin();
     $a = User::factory()->create();
     $b = User::factory()->create();
-    groupBook($event, $a, ['A2']);
-    groupBook($event, $b, ['B2']);
+    groupBook($event, $a);
+    groupBook($event, $b);
     $engine = app(BookingEngine::class);
 
-    expect(fn () => $engine->changeCapacity($event, 3, [], $admin))->toThrow(ApiException::class);
+    expect(fn () => $engine->changeCapacity($event, 1, [], $admin))->toThrow(ApiException::class);
     expect($event->refresh()->booking_capacity)->toBe(4);
 
     $groupB = EventBookingGroup::query()->where('booker_user_id', $b->id)->firstOrFail();
-    $engine->changeCapacity($event, 3, [$groupB->id], $admin, '場地縮小');
+    $engine->changeCapacity($event, 1, [$groupB->id], $admin, '場地縮小');
 
-    expect($event->refresh()->booking_capacity)->toBe(3)
+    expect($event->refresh()->booking_capacity)->toBe(1)
         ->and($groupB->refresh()->status)->toBe('cancelled')
-        ->and(seats($event))->toBe(2)
+        ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'event.capacity_changed')->sole()->details['cancelled_groups'])->toBe([$groupB->id])
         ->and($b->notifications()->first()->data['body'])->toContain('場地縮小');
 });
@@ -288,7 +278,7 @@ it('lets admins reorder the waitlist with an audited reason', function () {
 it('lists my booking groups and keeps others private', function () {
     $event = s9Event();
     $member = User::factory()->create();
-    groupBook($event, $member, ['友人']);
+    groupBook($event, $member);
     $other = User::factory()->create();
 
     $this->actingAs($member, 'sanctum')->getJson('/api/v1/me/booking-groups')

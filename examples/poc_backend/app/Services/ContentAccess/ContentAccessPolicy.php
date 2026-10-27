@@ -1,0 +1,134 @@
+<?php
+
+namespace App\Services\ContentAccess;
+
+use App\Models\User;
+use App\Support\VerificationPolicy;
+use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+
+/**
+ * Shared three-level navigation/content gate.
+ * An explicit deny overrides any matching allow. Every ancestor must allow.
+ * This is independent of booking and media-playback entitlements.
+ */
+final class ContentAccessPolicy
+{
+    public function __construct(private readonly VerificationPolicy $verification) {}
+
+    public function allows(?User $user, string $page, ?string $list = null, ?string $topic = null): bool
+    {
+        if ($topic !== null && $list === null) {
+            throw new InvalidArgumentException('Topic requires a parent list.');
+        }
+
+        if (! $this->allowsResource($user, 'page', $page)) {
+            return false;
+        }
+
+        if ($list !== null && ! $this->allowsResource($user, 'list', $page.'/'.$list)) {
+            return false;
+        }
+
+        return $topic === null || $this->allowsResource($user, 'topic', $page.'/'.$list.'/'.$topic);
+    }
+
+    /**
+     * Additive enforcement for existing endpoints: an unconfigured layer keeps
+     * its legacy behavior. Once configured, every ancestor must explicitly allow.
+     * Never substitutes for per-item entitlements or verification middleware.
+     */
+    public function allowsWhenConfigured(?User $user, string $page, ?string $list = null, ?string $topic = null): bool
+    {
+        if ($user !== null && ! $user->is_active) {
+            return false;
+        }
+
+        if ($topic !== null && $list === null) {
+            throw new InvalidArgumentException('Topic requires a parent list.');
+        }
+
+        $resources = [['page', $page]];
+        if ($list !== null) {
+            $resources[] = ['list', $page.'/'.$list];
+        }
+        if ($topic !== null) {
+            $resources[] = ['topic', $page.'/'.$list.'/'.$topic];
+        }
+
+        foreach ($resources as [$scope, $code]) {
+            // Guest navigation visibility is independent of signed-in member access.
+            // A guest-only rule must not make this a configured member layer.
+            $rules = DB::table('app_content_access_rules')
+                ->where('scope', $scope)
+                ->where('resource_code', $code);
+            if ($user === null) {
+                $rules->where('audience', 'guest');
+            } else {
+                $rules->where('audience', '!=', 'guest');
+            }
+            $configured = $rules->exists();
+
+            if ($configured && ! $this->allowsResource($user, $scope, $code)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function allowsResource(?User $user, string $scope, string $code): bool
+    {
+        if (! in_array($scope, ['page', 'list', 'topic'], true)) {
+            throw new InvalidArgumentException('Unknown access scope.');
+        }
+
+        if ($user !== null && ! $user->is_active) {
+            return false;
+        }
+
+        $audiences = $user === null ? ['guest'] : ['register_member', 'user:'.$user->id];
+        if ($user !== null && $this->verification->isSatisfiedBy($user)) {
+            $audiences[] = 'verified_member';
+        }
+
+        // Active membership levels are entitlements, never administrator roles.
+        if ($user !== null) {
+            $levelIds = DB::table('member_level_assignments')
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->where('starts_at', '<=', now())
+                ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+                ->pluck('membership_level_id');
+
+            foreach ($levelIds as $levelId) {
+                $audiences[] = 'level:'.$levelId;
+            }
+
+            // M03 approved badges are qualifications, not login states or roles.
+            // Private badges still count; revoked/expired badges never do.
+            $badgeTypeIds = DB::table('member_verifications')
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                ->pluck('verification_type_id');
+
+            foreach ($badgeTypeIds as $typeId) {
+                $audiences[] = 'badge:'.$typeId;
+            }
+        }
+
+        // A public rule never overrides an explicit guest/member denial.
+        $rules = DB::table('app_content_access_rules')
+            ->where('scope', $scope)
+            ->where('resource_code', $code)
+            ->whereIn('audience', $audiences)
+            ->pluck('allowed');
+
+        if ($rules->contains(fn ($allowed): bool => ! (bool) $allowed)) {
+            return false;
+        }
+
+        return $rules->contains(fn ($allowed): bool => (bool) $allowed);
+    }
+}

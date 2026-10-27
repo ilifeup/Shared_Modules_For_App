@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,6 +11,73 @@ use Illuminate\Support\Facades\DB;
 
 final class FamilyMembershipController extends Controller
 {
+    /**
+     * Create a new, verified, non-login family member with an independent users.id.
+     * Contact information belongs to the family profile, not login credentials.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $manager = $request->user();
+        if ((int) $manager->verified_status !== 2 || ! $manager->is_active || $manager->FamilyUser) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證的一般會員使用。');
+        }
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'relationship' => ['nullable', 'string', 'max:40'],
+            'birth_date' => ['required', 'date', 'before_or_equal:today'],
+            'address' => ['required', 'string', 'max:500'],
+            'contact_phone' => ['nullable', 'string', 'max:40'],
+            'contact_email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $result = DB::transaction(function () use ($manager, $data): array {
+            $now = now();
+            $member = User::query()->create([
+                'name' => trim($data['name']),
+                'display_name' => mb_substr(trim($data['name']), 0, 80),
+                'email' => null,
+                'phone_e164' => null,
+                'password' => \Illuminate\Support\Str::random(64),
+                'is_active' => true,
+                'verified_status' => 2,
+                'FamilyUser' => true,
+            ]);
+            $membershipId = DB::table('family_memberships')->insertGetId([
+                'member_user_id' => $member->id,
+                'manager_user_id' => $manager->id,
+                'relationship' => $data['relationship'] ?? null,
+                'status' => 'active',
+                'started_at' => $now,
+                'created_by' => $manager->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            DB::table('family_member_profiles')->insert([
+                'member_user_id' => $member->id,
+                'birth_date' => $data['birth_date'],
+                'address' => trim($data['address']),
+                'contact_phone' => $data['contact_phone'] ?? null,
+                'contact_email' => $data['contact_email'] ?? null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            DB::table('family_membership_audits')->insert([
+                'membership_id' => $membershipId,
+                'actor_user_id' => $manager->id,
+                'action' => 'created',
+                'before_data' => null,
+                'after_data' => json_encode(['member_user_id' => $member->id, 'verified_status' => 2, 'FamilyUser' => true], JSON_THROW_ON_ERROR),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return ['id' => $membershipId, 'member_user_id' => $member->id, 'verified_status' => 2, 'FamilyUser' => true];
+        });
+
+        return new JsonResponse(['data' => $result], 201);
+    }
+
     /**
      * Current manager may voluntarily revoke delegation. Historical bookings stay.
      * A member cannot be reassigned by this endpoint; transfer is an admin workflow.

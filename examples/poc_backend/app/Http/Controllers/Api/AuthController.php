@@ -46,14 +46,14 @@ class AuthController extends Controller
     {
         $user = DB::transaction(function () use ($request): User {
             $user = User::query()->create([
-            'name' => $request->string('name')->toString(),
-            'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
-            'email' => $request->input('email'),
-            'phone_e164' => $request->input('phone_e164'),
-            'password' => $request->string('password')->toString(),
-            'is_active' => true,
-            'verified_status' => 1,
-            'FamilyUser' => false,
+                'name' => $request->string('name')->toString(),
+                'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
+                'email' => $request->input('email'),
+                'phone_e164' => $request->input('phone_e164'),
+                'password' => $request->string('password')->toString(),
+                'is_active' => true,
+                'verified_status' => 1,
+                'FamilyUser' => false,
             ]);
             if (filled($request->input('family_name'))) {
                 DB::table('registration_family_info')->insert([
@@ -148,7 +148,7 @@ class AuthController extends Controller
 
         $user = $this->uniqueAccountByContact('email', mb_strtolower(trim((string) $request->input('email'))));
 
-        if ($user !== null && ! $user->hasVerifiedEmail()) {
+        if ($user !== null && ! $user->FamilyUser && ! $user->hasVerifiedEmail()) {
             $user->sendEmailVerificationNotification();
         }
 
@@ -166,7 +166,7 @@ class AuthController extends Controller
         $phone = $this->normalizePhone((string) $request->input('phone'));
         $user = $this->uniqueAccountByContact('phone_e164', $phone);
 
-        if ($user !== null && ! $user->hasVerifiedPhone()) {
+        if ($user !== null && ! $user->FamilyUser && ! $user->hasVerifiedPhone()) {
             $this->sendQuietly($user, PhoneOtp::PURPOSE_VERIFY);
         } else {
             $this->otp->throttleWithoutSending($phone, PhoneOtp::PURPOSE_VERIFY);
@@ -187,7 +187,7 @@ class AuthController extends Controller
 
         $user = $this->uniqueAccountByContact('phone_e164', $this->normalizePhone((string) $request->input('phone')));
 
-        if ($user === null || $user->hasVerifiedPhone()) {
+        if ($user === null || $user->FamilyUser || $user->hasVerifiedPhone()) {
             throw PhoneOtpService::invalidCode();
         }
 

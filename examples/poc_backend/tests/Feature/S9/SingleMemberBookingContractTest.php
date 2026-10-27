@@ -129,3 +129,27 @@ it('rejects a disabled member even when reusing a valid booking request id', fun
 
     expect(seats($event))->toBe(1);
 });
+
+it('cancels a delegated booking once and refuses a stale second cancellation', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+        'relationship' => 'child', 'status' => 'active',
+        'started_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $first = $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(), 'member_user_id' => $family->id,
+    ])->assertCreated();
+    $other = User::factory()->create(['verified_status' => 2]);
+    $waiting = $this->actingAs($other, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+
+    $url = '/api/v1/me/booking-groups/'.$first->json('data.id').'/cancel';
+    $this->actingAs($manager, 'sanctum')->postJson($url)->assertOk();
+    $this->postJson($url)->assertStatus(409)->assertJsonPath('error.code', 'BOOKING_NOT_ACTIVE');
+    expect(seats($event))->toBe(1);
+    expect(DB::table('event_booking_groups')->where('id', $waiting->json('data.id'))->value('status'))->toBe('confirmed');
+});

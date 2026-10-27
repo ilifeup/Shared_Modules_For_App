@@ -570,9 +570,7 @@ final class BookingEngine
             }
         }
 
-        if ($request->booker === null) {
-            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
-        } else {
+        {
             $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
             if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
                 throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');

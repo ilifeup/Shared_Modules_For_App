@@ -116,6 +116,42 @@ it('uses a fixed Location QR with optional GPS and the event setting first', fun
     $this->actingAs($otherMember, 'sanctum')->postJson("/api/v1/events/{$other->id}/checkin", ['attendee_ids' => [$otherAttendees[0]->id], 'location_token' => $location->token])->assertOk();
 });
 
+// M11 #38 decision B: location QR checkout does not require GPS, even if check-in does.
+it('checks out by a linked location QR without GPS while keeping event binding and check-in GPS rules', function () {
+    [$event, $member, $attendees] = checkinEvent(['checkin_gps_required' => true, 'checkin_gps_radius_m' => 100]);
+    $location = CheckinLocation::query()->create(['name' => '簽退地點', 'latitude' => 25.0330, 'longitude' => 121.5654]);
+    $location->events()->attach($event->id);
+    $locationBody = ['attendee_ids' => [$attendees[0]->id], 'location_token' => $location->token];
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", $locationBody)
+        ->assertStatus(422)->assertJsonPath('error.code', 'GPS_REQUIRED');
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody)
+        ->assertStatus(409)->assertJsonPath('error.code', 'NOT_CHECKED_IN');
+
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_ids' => [$attendees[0]->id], 'event_token' => $token,
+    ])->assertOk();
+
+    $unlinked = CheckinLocation::query()->create(['name' => '不屬於此活動', 'latitude' => 25.0330, 'longitude' => 121.5654]);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
+        'attendee_ids' => [$attendees[0]->id], 'location_token' => $unlinked->token,
+    ])->assertStatus(422)->assertJsonPath('error.code', 'LOCATION_EVENT_MISMATCH');
+
+    // GPS fields are ignored on checkout, including stale or malformed client values.
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody + [
+        'lat' => 'invalid', 'lng' => 'invalid', 'accuracy' => 'invalid',
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_out');
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", $locationBody)
+        ->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
+        ->toBe(EventAttendance::CHECKED_OUT);
+});
+
+
 // G11 / G16 / D29 — staff scan the attendee pass; only staff see the list.
 it('lets authorised staff scan attendee passes and read the attendance list', function () {
     [$event, $member, $attendees] = checkinEvent();

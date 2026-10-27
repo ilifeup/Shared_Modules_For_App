@@ -93,4 +93,15 @@ class AvEntitlementTest extends TestCase
         $assignment->forceFill(['ends_at' => now()->addDay(), 'revoked_at' => now()])->save();
         $this->assertFalse($service->video($member, $videoId));
     }
+    public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
+    {
+        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        $videoId = DB::table('av_videos')->insertGetId([
+            'youtube_id' => 'no_level_01', 'title' => 'Restricted video', 'is_published' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->assertFalse(app(AvEntitlement::class)->video($member, $videoId));
+    }
+
 }

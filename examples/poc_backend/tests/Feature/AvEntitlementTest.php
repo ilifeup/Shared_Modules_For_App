@@ -83,8 +83,10 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
         DB::table('av_videos')->where('id', $videoId)->update(['is_published' => true]);
         app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
-        // On this branch the phone policy applies immediately; PR #49 changes
-        // this expectation for existing email-verified members via grandfathering.
+        // This standalone branch does not yet include PR #49's grandfathering
+        // migration and verification policy. The integrated tree MUST replace
+        // this assertion with a grandfathered-member access regression test.
+        // Keep this assertion only as a branch-local baseline, not acceptance.
         $this->assertFalse($service->video($member, $videoId));
         $member->forceFill(['phone_verified_at' => now()]);
         $this->assertTrue($service->video($member, $videoId));

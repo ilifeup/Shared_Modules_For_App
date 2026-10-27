@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\DB;
  * - email_required: a verified email grants full member access (phone OTP optional)
  * - phone_required: a verified phone grants full member access (email can follow later)
  *
- * Enforced on every protected request, so already logged-in members cannot bypass a change.
+ * Contact checks grant membership; only persisted verified_status = 2 grants access.
+ * Changing the contact workflow must never revoke an already verified member.
  */
 final class VerificationPolicy
 {
@@ -31,8 +32,8 @@ final class VerificationPolicy
         }
 
         return match ($this->current()) {
-            Settings::POLICY_PHONE => $user->hasVerifiedPhone() ? null : 'phone',
-            default => $user->hasVerifiedEmail() ? null : 'email',
+            Settings::POLICY_PHONE => 'phone',
+            default => 'email',
         };
     }
 
@@ -43,7 +44,11 @@ final class VerificationPolicy
         // when callers do not already have an open database transaction.
         DB::transaction(function () use ($user): void {
             $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            if ((int) $fresh->verified_status === 1 && $this->missing($fresh) === null) {
+            $contactVerified = match ($this->current()) {
+                Settings::POLICY_PHONE => $fresh->hasVerifiedPhone(),
+                default => $fresh->hasVerifiedEmail(),
+            };
+            if ((int) $fresh->verified_status === 1 && $contactVerified) {
                 $fresh->forceFill(['verified_status' => 2])->save();
             }
         });

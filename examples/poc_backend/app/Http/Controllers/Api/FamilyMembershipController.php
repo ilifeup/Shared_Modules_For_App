@@ -34,14 +34,14 @@ final class FamilyMembershipController extends Controller
 
         $result = DB::transaction(function () use ($manager, $data): array {
             // Serialize creation per manager; counting without this row lock allows
-            // concurrent requests to bypass the three-member free allowance.
+            // concurrent requests to bypass the two-member free allowance.
             User::query()->whereKey($manager->id)->lockForUpdate()->firstOrFail();
             $existingCount = DB::table('family_memberships')
                 ->where('manager_user_id', $manager->id)->count();
             // External Services paid expansion is not implemented/authorized yet.
             // Never assume payment from a client-supplied flag or stale UI.
-            if ($existingCount >= 3) {
-                throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '免費家庭會員上限為 3 位；增加名額需先啟用 External Services 付費擴充。');
+            if ($existingCount >= 2) {
+                throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '免費家庭會員上限為 2 位；增加名額需先啟用 External Services 付費擴充。');
             }
 
             $now = now();

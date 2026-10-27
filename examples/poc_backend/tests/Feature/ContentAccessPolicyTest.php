@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\AuditEvent;
+use App\Models\MemberVerification;
 use App\Models\MemberLevelAssignment;
 use App\Models\MembershipLevel;
 use App\Models\User;
+use App\Models\VerificationType;
 use App\Services\ContentAccess\ContentAccessPolicy;
 use App\Services\ContentAccess\ContentAccessRuleManager;
 use Illuminate\Support\Facades\DB;
@@ -149,4 +151,38 @@ it('denies inactive authenticated members even when no content rules are configu
     expect($policy->allowsWhenConfigured($inactive, 'av'))->toBeFalse()
         ->and($policy->allowsWhenConfigured($inactive, 'av', 'music'))->toBeFalse()
         ->and($policy->allowsWhenConfigured(null, 'av'))->toBeTrue();
+});
+
+
+it('grants badge-scoped access only while the M03 approval is valid and honors explicit denial', function (): void {
+    $admin = makeAdmin();
+    $member = User::factory()->create();
+    $type = VerificationType::query()->create([
+        'name' => 'Access badge', 'requires_evidence' => false, 'required_approvals' => 1,
+        'validity_days' => null, 'allow_multiple' => false,
+        'revoke_notify' => VerificationType::NOTIFY_NONE, 'is_active' => true,
+    ]);
+    $manager = app(ContentAccessRuleManager::class);
+    $policy = app(ContentAccessPolicy::class);
+    $manager->save($admin, 'page', 'av', 'badge:'.$type->id, true);
+
+    expect($policy->allows(null, 'av'))->toBeFalse()
+        ->and($policy->allows($member, 'av'))->toBeFalse();
+
+    $badge = MemberVerification::query()->create([
+        'user_id' => $member->id, 'verification_type_id' => $type->id,
+        'granted_at' => now()->subDay(), 'expires_at' => now()->addDay(),
+        'is_public' => false,
+    ]);
+    expect($policy->allows($member, 'av'))->toBeTrue();
+
+    $badge->forceFill(['revoked_at' => now()])->save();
+    expect($policy->allows($member, 'av'))->toBeFalse();
+
+    $badge->forceFill(['revoked_at' => null, 'expires_at' => now()->subSecond()])->save();
+    expect($policy->allows($member, 'av'))->toBeFalse();
+
+    $badge->forceFill(['expires_at' => now()->addDay()])->save();
+    $manager->save($admin, 'page', 'av', 'user:'.$member->id, false);
+    expect($policy->allows($member, 'av'))->toBeFalse();
 });

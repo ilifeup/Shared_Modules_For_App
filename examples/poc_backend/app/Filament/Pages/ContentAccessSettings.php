@@ -52,12 +52,12 @@ class ContentAccessSettings extends Page
         $this->validate([
             'scope' => 'required|in:page,list,topic',
             'resourceCode' => 'required|string|max:120',
-            'audienceType' => 'required|in:guest,register_member,verified_member,level,user',
-            'audienceId' => 'required_if:audienceType,level,user|nullable|integer|min:1',
+            'audienceType' => 'required|in:guest,register_member,verified_member,level,badge,user',
+            'audienceId' => 'required_if:audienceType,level,badge,user|nullable|integer|min:1',
             'decision' => 'required|in:allow,deny',
         ]);
 
-        $audience = in_array($this->audienceType, ['level', 'user'], true)
+        $audience = in_array($this->audienceType, ['level', 'badge', 'user'], true)
             ? $this->audienceType.':'.$this->audienceId
             : $this->audienceType;
         $manager->save(auth()->user(), $this->scope, trim($this->resourceCode), $audience, $this->decision === 'allow');

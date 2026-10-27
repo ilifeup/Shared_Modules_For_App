@@ -17,11 +17,12 @@
                 <option value="register_member">register member</option>
                 <option value="verified_member">Verified Member</option>
                 <option value="level">指定會員等級（含 VIP）</option>
+                <option value="badge">指定有效認證徽章</option>
                 <option value="user">指定會員</option>
             </select>
         </label>
-        @if (in_array($audienceType, ['level', 'user'], true))
-            <label>{{ $audienceType === 'level' ? '會員等級 ID' : '會員 ID' }}
+        @if (in_array($audienceType, ['level', 'badge', 'user'], true))
+            <label>{{ $audienceType === 'level' ? '會員等級 ID' : ($audienceType === 'badge' ? '認證類型 ID' : '會員 ID') }}
                 <input wire:model="audienceId" type="number" min="1" required />
             </label>
         @endif

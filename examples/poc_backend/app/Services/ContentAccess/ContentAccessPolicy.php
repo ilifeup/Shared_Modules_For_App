@@ -97,6 +97,18 @@ final class ContentAccessPolicy
             foreach ($levelIds as $levelId) {
                 $audiences[] = 'level:'.$levelId;
             }
+
+            // M03 approved badges are qualifications, not login states or roles.
+            // Private badges still count; revoked/expired badges never do.
+            $badgeTypeIds = DB::table('member_verifications')
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                ->pluck('verification_type_id');
+
+            foreach ($badgeTypeIds as $typeId) {
+                $audiences[] = 'badge:'.$typeId;
+            }
         }
 
         // A public rule never overrides an explicit guest/member denial.

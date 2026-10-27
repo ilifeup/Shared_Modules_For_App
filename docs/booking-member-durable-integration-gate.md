@@ -28,3 +28,9 @@ Status: **IN PROGRESS / NOT ACCEPTED / DO NOT MERGE** (2026-10-27).
 - [ ] Record evidence and unresolved issues in Shared #35 and related booking trackers; do not close issues merely because CI is green.
 
 No automatic merge, deployment or issue closure.
+
+## Historical PR #28 reconciliation (source checked 2026-10-27)
+
+- PR #28 was closed without merge. Its attendee-snapshot/idempotency protection is present on `main`: persisted attendee name/member ID and seat count are compared, with a rename exception for the booking member.
+- PR #47 intentionally uses stable ordered attendee **member IDs** and seat count rather than mutable names, because guests and attendees without member IDs are forbidden. It additionally rechecks current booker activity and family delegation before returning protected replay data.
+- This is **not** evidence of cross-PR acceptance. Retest identical replay (200), changed attendee ID/order/count (409), booker profile rename (200), revoked family delegation (403), inactive attendee/booker (403), and concurrent retry creation (exactly one booking; 200 vs 201) against the combined MySQL tree. Preserve these behaviors when resolving #42/#43/#47 conflicts.

@@ -62,3 +62,44 @@ it('rejects obsolete multi-attendee payloads instead of silently booking a subse
 
     expect(seats($event))->toBe(0);
 });
+
+it('rejects an unverified member before booking or replay', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 1]);
+    $key = (string) Str::uuid();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key,
+    ])->assertForbidden();
+
+    expect(seats($event))->toBe(0);
+
+    $member->update(['verified_status' => 2]);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key,
+    ])->assertCreated();
+
+    $member->update(['verified_status' => 1]);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key,
+    ])->assertForbidden();
+
+    expect(seats($event))->toBe(1);
+});
+
+it('rejects a disabled member even when reusing a valid booking request id', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $key = (string) Str::uuid();
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key,
+    ])->assertCreated();
+
+    $member->update(['is_active' => false]);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key,
+    ])->assertForbidden();
+
+    expect(seats($event))->toBe(1);
+});

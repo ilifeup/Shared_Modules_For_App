@@ -4,6 +4,7 @@ use App\Filament\Pages\VerificationPolicySettings;
 use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\Settings;
+use App\Support\VerificationPolicy;
 use Filament\Facades\Filament;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
@@ -131,11 +132,10 @@ it('grants verified membership once and does not infer it from a contact timesta
 
     expect((int) $user->refresh()->verified_status)->toBe(1);
 
-    app(\App\Support\VerificationPolicy::class)->grantIfEligible($user);
+    app(VerificationPolicy::class)->grantIfEligible($user);
     expect((int) $user->refresh()->verified_status)->toBe(2);
 
     // Retrying a completed grant must not change the verified qualification.
-    app(\App\Support\VerificationPolicy::class)->grantIfEligible($user);
+    app(VerificationPolicy::class)->grantIfEligible($user);
     expect((int) $user->refresh()->verified_status)->toBe(2);
 });
-

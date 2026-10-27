@@ -16,7 +16,7 @@ class AvCatalogController extends Controller
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'music'), 403);
-        abort_unless($member->is_active && $verification->isSatisfiedBy($member), 403);
+        abort_unless($member->is_active && (int) $member->verified_status === 2, 403);
         $items = DB::table('av_music_tracks as tracks')
             ->where('tracks.is_published', true)
             ->where(function (Builder $query) use ($member): void {
@@ -48,7 +48,7 @@ class AvCatalogController extends Controller
     {
         $member = $request->user();
         abort_unless($access->allowsWhenConfigured($member, 'av', 'videos'), 403);
-        abort_unless($member->is_active && $verification->isSatisfiedBy($member), 403);
+        abort_unless($member->is_active && (int) $member->verified_status === 2, 403);
         $items = DB::table('av_videos as videos')
             ->where('videos.is_published', true)
             ->whereExists(function (Builder $grant) use ($member): void {

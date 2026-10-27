@@ -67,7 +67,7 @@ final class ContentAccessRuleManager
 
     private function authorize(User $actor): void
     {
-        abort_unless($actor->is_active && $actor->hasRole(User::ADMIN_ROLE), 403);
+        abort_unless($actor->canAccessPanel(\Filament\Facades\Filament::getPanel('admin')) && $actor->can('settings.manage'), 403);
     }
 
     private function validateRule(string $scope, string $code, string $audience): void

@@ -114,8 +114,8 @@ it('requires phone verification after an administrator revokes grandfathered eli
     $settings->put(['verification_policy' => Settings::POLICY_PHONE]);
     expect(app(VerificationPolicy::class)->isSatisfiedBy($member->fresh()))->toBeTrue();
 
-    // Simulate the persisted effect of a future administrator revocation action.
-    // The administrator UI and audit trail are not implemented by this test.
+    // Verify the persisted qualification check only. This does not establish
+    // that an administrator revocation UI or audit trail exists.
     $member->forceFill(['verification_grandfathered_at' => null])->save();
 
     expect(app(VerificationPolicy::class)->missing($member->fresh()))->toBe('phone');

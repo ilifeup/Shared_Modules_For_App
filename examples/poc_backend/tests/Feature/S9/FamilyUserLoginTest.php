@@ -39,3 +39,12 @@ it('creates an independent user ID on ordinary registration regardless of option
     expect((int) User::query()->findOrFail($newId)->verified_status)->toBe(1);
     expect((int) User::query()->findOrFail($managed->id)->verified_status)->toBe(2);
 });
+
+it('rejects a managed family member from verified endpoints even with an existing session', function () {
+    $managed = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+
+    $this->actingAs($managed, 'sanctum')
+        ->getJson('/api/v1/me/membership')
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+});

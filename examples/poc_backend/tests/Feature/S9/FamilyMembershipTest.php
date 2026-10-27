@@ -88,3 +88,32 @@ it('requires administrator approval before any family member account can be crea
     expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(0);
     expect(DB::table('users')->where('FamilyUser', true)->count())->toBe(0);
 });
+
+it('accepts private evidence applications without creating a family account', function () {
+    Storage::fake('local');
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $response = $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', [
+        'name' => '家庭成員',
+        'relationship' => 'child',
+        'birth_date' => '2010-01-01',
+        'address' => '台中市',
+        'relationship_evidence' => UploadedFile::fake()->create('proof.pdf', 20, 'application/pdf'),
+    ])->assertCreated()->assertJsonPath('data.status', 'pending');
+
+    $application = DB::table('family_member_applications')->where('id', $response->json('data.id'))->first();
+    expect((int) $application->manager_user_id)->toBe((int) $manager->id)
+        ->and($application->status)->toBe('pending');
+    Storage::disk('local')->assertExists($application->evidence_path);
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(0);
+});
+
+it('rejects a family application without relationship evidence', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $this->actingAs($manager, 'sanctum')->postJson('/api/v1/me/family-applications', [
+        'name' => '家庭成員',
+        'relationship' => 'child',
+        'birth_date' => '2010-01-01',
+        'address' => '台中市',
+    ])->assertUnprocessable();
+    expect(DB::table('family_member_applications')->count())->toBe(0);
+});

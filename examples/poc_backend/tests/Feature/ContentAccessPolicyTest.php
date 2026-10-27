@@ -61,3 +61,17 @@ it('rejects malformed rule identifiers and mismatched hierarchy', function (): v
     expect(fn () => app(\App\Services\ContentAccess\ContentAccessRuleManager::class)
         ->save($admin, 'topic', 'av/track', 'guest', true))->toThrow(\InvalidArgumentException::class);
 });
+
+it('audits administrator rule creation, changes and deletion without duplicate events', function (): void {
+    $admin = makeAdmin();
+    $manager = app(\App\Services\ContentAccess\ContentAccessRuleManager::class);
+
+    $manager->save($admin, 'page', 'av', 'guest', true);
+    $manager->save($admin, 'page', 'av', 'guest', true);
+    $manager->save($admin, 'page', 'av', 'guest', false);
+    $manager->remove($admin, 'page', 'av', 'guest');
+
+    expect(\App\Models\AuditEvent::query()->where('event', 'content.access_rule_saved')->count())->toBe(2)
+        ->and(\App\Models\AuditEvent::query()->where('event', 'content.access_rule_removed')->count())->toBe(1)
+        ->and(DB::table('app_content_access_rules')->where('resource_code', 'av')->exists())->toBeFalse();
+});

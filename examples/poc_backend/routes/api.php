@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
+use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\LinkAnalyticsController;
 use App\Http\Controllers\Api\MarketingController;
@@ -115,12 +116,14 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/me/notifications/{id}', [NotificationController::class, 'show'])->whereUuid('id');
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 
-    // S9 M08 group bookings, waitlist and guest-booking claim (one seat engine with S6).
+    // Family delegation: current manager may list or voluntarily revoke authority.
+    Route::get('/me/family-memberships', [FamilyMembershipController::class, 'index']);
+    Route::post('/me/family-memberships/{id}/revoke', [FamilyMembershipController::class, 'revoke'])->whereNumber('id')->middleware('throttle:auth-10');
+
+    // S9 M08 members-only group bookings and waitlist (one seat engine with S6).
     Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/booking-groups', [BookingGroupController::class, 'mine']);
     Route::post('/me/booking-groups/{id}/cancel', [BookingGroupController::class, 'cancel'])->whereNumber('id');
-    Route::get('/me/guest-bookings', [BookingGroupController::class, 'claimable']);
-    Route::post('/me/guest-bookings/{id}/claim', [BookingGroupController::class, 'claim'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S9 M09 my calendar, VIP private entries, Google Calendar (one-way).
     Route::get('/me/calendar', [MyCalendarController::class, 'index']);

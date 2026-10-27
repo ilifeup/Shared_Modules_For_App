@@ -130,24 +130,16 @@ jobs:
         timeout-minutes: 8
         run: bash scripts/s9_booking_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/s9_concurrency.log"
 
-      - name: S9 migration rollback drill (down, verify, up again; disposable CI database)
+      - name: Verify irreversible guest-purge migration and member-only schema
         id: rollback
         run: |
           set -o pipefail
           {
-            # Earlier steps left S9 data behind: the guard must refuse without explicit acceptance.
-            php artisan s9:data-report
-            if php artisan migrate:rollback --step=1 --force --no-interaction > "$RUNNER_TEMP/refused.log" 2>&1; then
-              echo "::error title=rollback drill::rollback ran although S9 data exists"; exit 1
-            fi
-            grep -q "S9 rollback refused" "$RUNNER_TEMP/refused.log" || { cat "$RUNNER_TEMP/refused.log"; echo "::error title=rollback drill::rollback failed for another reason"; exit 1; }
-            echo "ROLLBACK_GUARD_OK: refused while S9 data exists"
-            php artisan tinker --execute='echo Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") ? "TABLES_INTACT" : "TABLES_GONE", PHP_EOL;' | tee /dev/stderr | grep -q TABLES_INTACT
-            # Disposable CI database: accept the loss and run the real rollback.
-            S9_ROLLBACK_ACCEPT_DATA_LOSS=yes php artisan migrate:rollback --step=1 --force --no-interaction
-            php artisan tinker --execute='$gone = ! Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && ! Illuminate\Support\Facades\Schema::hasColumn("calendar_events", "event_series_id") && Illuminate\Support\Facades\Schema::hasTable("event_bookings"); echo $gone ? "ROLLBACK_OK" : "ROLLBACK_INCOMPLETE", PHP_EOL;' | tee /dev/stderr | grep -q ROLLBACK_OK
-            php artisan migrate --force --no-interaction
-            php artisan tinker --execute='$ok = Illuminate\Support\Facades\Schema::hasTable("event_booking_groups") && App\Models\EventBooking::query()->count() === App\Models\EventBookingGroup::query()->whereNotNull("legacy_booking_id")->count(); echo $ok ? "REMIGRATE_OK" : "BACKFILL_MISMATCH", PHP_EOL;' | tee /dev/stderr | grep -q REMIGRATE_OK
+            # Invoke this exact migration's down() directly, not migrate:rollback
+            # (which may select a different migration in the current batch).
+            php artisan tinker --execute='$migration = require base_path("database/migrations/2026_11_02_000100_remove_guest_bookings.php"); try { $migration->down(); echo "GUARD_BYPASSED", PHP_EOL; exit(1); } catch (RuntimeException $e) { if ($e->getMessage() !== "Guest booking purge is irreversible; restore the verified database backup instead.") { throw $e; } echo "IRREVERSIBLE_GUARD_OK", PHP_EOL; }' | tee /dev/stderr | grep -q IRREVERSIBLE_GUARD_OK
+            php artisan tinker --execute='$s = Illuminate\Support\Facades\Schema::class; $ok = $s::hasTable("event_booking_groups") && ! $s::hasColumn("event_booking_groups", "is_guest") && ! $s::hasColumn("event_categories", "allow_guest_booking") && ! $s::hasColumn("event_booking_groups", "claimed_at"); echo $ok ? "MEMBER_ONLY_SCHEMA_OK" : "MEMBER_ONLY_SCHEMA_FAILED", PHP_EOL;' | tee /dev/stderr | grep -q MEMBER_ONLY_SCHEMA_OK
+            echo "PASS: irreversible migration guard and member-only schema"
           } 2>&1 | tee "$RUNNER_TEMP/rollback.log"
 
       - name: Publish failure details as annotations

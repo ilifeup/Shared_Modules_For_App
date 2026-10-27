@@ -7,13 +7,8 @@ use App\Models\Article;
 use App\Models\CalendarEvent;
 use App\Models\Notice;
 use App\Services\Analytics\LinkAnalytics;
-use App\Services\Booking\BookingEngine;
-use App\Services\Booking\BookingRequest;
-use App\Services\Booking\GuestClaimService;
-use App\Support\Api\ApiException;
 use App\Support\ContentRegistry;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
@@ -24,14 +19,13 @@ use Illuminate\Support\Str;
  * Universal Links), otherwise this page. Only public content shows content and
  * Open Graph metadata; member content shows a login prompt without its title (D09).
  * Every hit is an M17 web click; the page itself reports the successful open.
- * Events open to guests carry the M08 guest booking form (D06).
+ * Shared event pages are informational; booking requires a member account.
  */
 class ContentPageController extends Controller
 {
     public function __construct(
         private readonly ContentRegistry $content,
         private readonly LinkAnalytics $analytics,
-        private readonly BookingEngine $engine,
     ) {}
 
     /** /articles/{idOrSlug} — S8 slug links keep working; new links use the fixed id. */
@@ -70,10 +64,7 @@ class ContentPageController extends Controller
         ]);
     }
 
-    /**
-     * @param  array{status: string, seats: int}|null  $result
-     */
-    public function event(Request $request, int $id, ?array $result = null): View|Response
+    public function event(Request $request, int $id): View|Response
     {
         $event = CalendarEvent::query()->with('category')->listed()->find($id);
         if ($event === null) {
@@ -85,63 +76,8 @@ class ContentPageController extends Controller
             'event' => $public ? $event : null,
             'pageTitle' => $public ? $event->title : '會員活動',
             'og' => $public ? $this->og('event', $event) : null,
-            'clickId' => $result === null ? $this->analytics->click('event', $event->id, $request) : null,
-            'guestBooking' => $public && $this->guestBookable($event),
-            'maxSeats' => max(1, min(10, (int) $event->booking_max_seats)),
-            'clientRequestId' => (string) Str::uuid(),
-            'result' => $result,
+            'clickId' => $this->analytics->click('event', $event->id, $request),
         ]);
-    }
-
-    /**
-     * POST /events/{id}/guest-booking — M08 guest booking (name + email or phone, D06).
-     */
-    public function guestBooking(Request $request, int $id): View|Response|RedirectResponse
-    {
-        $event = CalendarEvent::query()->with('category')->listed()->find($id);
-        if ($event === null || ! $this->content->isPublic('event', $event) || ! $this->guestBookable($event)) {
-            return $this->unavailable('此活動不開放訪客報名。');
-        }
-
-        $data = $request->validate([
-            'contact_name' => ['required', 'string', 'max:80'],
-            'contact_email' => ['nullable', 'email', 'max:255', 'required_without:contact_phone'],
-            'contact_phone' => ['nullable', 'string', 'max:20', 'required_without:contact_email'],
-            'attendees' => ['required', 'array', 'max:50'],
-            'attendees.*' => ['nullable', 'string', 'max:80'],
-            'client_request_id' => ['required', 'uuid'],
-        ], [
-            'contact_email.required_without' => '請填寫 Email 或手機。',
-            'contact_phone.required_without' => '請填寫 Email 或手機。',
-        ]);
-
-        $phone = GuestClaimService::normalizePhone($data['contact_phone'] ?? null);
-        if (($data['contact_phone'] ?? null) !== null && $phone === null) {
-            return back()->withErrors(['contact_phone' => '手機格式錯誤（例如 0912345678）。'])->withInput();
-        }
-        $names = array_values(array_filter(array_map(fn ($n) => trim((string) $n), $data['attendees']), fn (string $n): bool => $n !== ''));
-
-        try {
-            $group = $this->engine->book($event, new BookingRequest(
-                booker: null,
-                contactName: trim($data['contact_name']),
-                contactEmail: GuestClaimService::normalizeEmail($data['contact_email'] ?? null),
-                contactPhone: $phone,
-                attendees: array_map(fn (string $n) => ['name' => $n, 'member_user_id' => null], $names),
-                clientRequestId: $data['client_request_id'],
-            ));
-        } catch (ApiException $e) {
-            return back()->withErrors(['booking' => $e->getMessage()])->withInput();
-        }
-
-        return $this->event($request, $id, ['status' => $group->status, 'seats' => $group->seat_count]);
-    }
-
-    private function guestBookable(CalendarEvent $event): bool
-    {
-        return $event->status === CalendarEvent::STATUS_PUBLISHED && $event->booking_enabled
-            && ($event->category?->allow_guest_booking ?? false) && $event->category?->required_verification_type_id === null
-            && now()->lt($event->bookingClosesAt());
     }
 
     /**

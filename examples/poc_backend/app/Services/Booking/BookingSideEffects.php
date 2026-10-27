@@ -3,7 +3,6 @@
 namespace App\Services\Booking;
 
 use App\Models\EventBookingGroup;
-use App\Notifications\MemberNotification;
 use App\Services\Calendar\GoogleCalendarSync;
 use App\Services\MemberNotifier;
 use Illuminate\Support\Facades\DB;
@@ -22,19 +21,16 @@ class BookingSideEffects
     ) {}
 
     /**
-     * In-app notification to the member who booked; for guests it is kept on the
-     * booking and shown once a member claims it (M08-D23). Never email or SMS here.
+     * In-app notification to the registered member who booked.
+     * Never email or SMS here.
      */
     public function notify(EventBookingGroup $group, string $title, string $body): void
     {
         DB::afterCommit(function () use ($group, $title, $body): void {
             try {
-                $notification = new MemberNotification(mb_substr($title, 0, 120), mb_substr($body, 0, 2000), 'booking', 'event', (string) $group->calendar_event_id);
                 $booker = $group->booker()->first();
                 if ($booker !== null) {
-                    $this->notifier->send($booker, $notification->title, $notification->body, 'booking', 'event', (string) $group->calendar_event_id);
-                } elseif ($group->is_guest) {
-                    $group->notify($notification);
+                    $this->notifier->send($booker, mb_substr($title, 0, 120), mb_substr($body, 0, 2000), 'booking', 'event', (string) $group->calendar_event_id);
                 }
             } catch (Throwable $e) {
                 Log::warning('booking notification failed', ['group_id' => $group->id, 'error' => class_basename($e)]);

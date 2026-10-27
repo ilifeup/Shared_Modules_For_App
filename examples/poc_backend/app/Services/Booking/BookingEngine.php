@@ -10,6 +10,7 @@ use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -173,11 +174,15 @@ final class BookingEngine
     }
 
     /**
-     * S9 group booking (member, guest or admin on the member's behalf).
+     * S9 group booking (registered member or admin on the member's behalf).
      */
     public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
     {
         $created = false;
+        // Guard before idempotency replay: no legacy guest request can be replayed.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動僅接受正式會員預約。');
+        }
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -207,7 +212,6 @@ final class BookingEngine
 
                 $group = $this->createGroup($locked, [
                     'booker_user_id' => $request->booker?->id,
-                    'is_guest' => $request->booker === null,
                     'contact_name' => $request->contactName,
                     'contact_email' => $request->contactEmail,
                     'contact_phone' => $request->contactPhone,
@@ -236,8 +240,7 @@ final class BookingEngine
                 AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
                     'event_id' => $event->id,
                     'seats' => $group->seat_count,
-                    'guest' => $group->is_guest,
-                    'by' => $request->byAdmin ? 'admin' : ($group->is_guest ? 'guest' : 'member'),
+                    'by' => $request->byAdmin ? 'admin' : 'member',
                 ]);
 
                 return $group;
@@ -269,6 +272,20 @@ final class BookingEngine
             $event = $this->lock($group->event);
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
+
+            if (! $byAdmin) {
+                if ((int) $locked->booker_user_id !== (int) $actor->id) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約者可以取消此預約。');
+                }
+                foreach ($locked->attendees()->get() as $attendee) {
+                    $member = $attendee->member_user_id !== null
+                        ? User::query()->find($attendee->member_user_id)
+                        : null;
+                    if ($member === null || ! app(FamilyDelegation::class)->canManage($actor, $member, true)) {
+                        throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '此預約包含目前無權代管的家庭會員，請洽管理員處理。');
+                    }
+                }
+            }
 
             if (! $locked->isActive()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此報名已取消。');
@@ -516,13 +533,36 @@ final class BookingEngine
             throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每筆報名最多 '.max(1, (int) $event->booking_max_seats).' 人。');
         }
 
+        // Every entry point, including admin/internal calls, requires an active booker.
         if ($request->booker === null) {
-            if (! $request->byAdmin && ($event->audience !== CalendarEvent::AUDIENCE_PUBLIC || ! ($category?->allow_guest_booking ?? false))) {
-                throw new ApiException(403, 'GUEST_NOT_ALLOWED', '此活動不開放訪客報名，請先註冊會員。');
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
+        }
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+            throw new ApiException(422, 'INVALID_BOOKER', '預約者必須是有效的正式會員。');
+        }
+
+        // Enforce attendee identities for every caller, including administrators.
+        if ($request->booker !== null) {
+            $memberIds = array_map(static fn (array $a) => $a['member_user_id'] ?? null, $request->attendees);
+            if (in_array(null, $memberIds, true)) {
+                throw new ApiException(422, 'MEMBER_ID_REQUIRED', '每位參加者都必須有正式會員 ID。');
             }
-            if ($request->contactEmail === null && $request->contactPhone === null) {
-                throw new ApiException(422, 'VALIDATION_FAILED', '請填寫 Email 或手機。', ['contact' => ['請填寫 Email 或手機。']]);
+            if (count($memberIds) !== count(array_unique($memberIds))) {
+                throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
             }
+            foreach ($memberIds as $memberId) {
+                if (! User::query()->whereKey($memberId)->where('is_active', true)->exists()) {
+                    throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
+                }
+                // Do not permit arbitrary proxy booking before verified family delegation exists.
+                if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($memberId), true)) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+                }
+            }
+        }
+
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
         } else {
             $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
             if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
@@ -534,17 +574,13 @@ final class BookingEngine
             }
         }
 
-        // D05 "每人名額": the limit is per booker (or guest contact) and occurrence, not
+        // D05 "每人名額": the limit is per booker and occurrence, not
         // per request — several smaller bookings cannot add up past it (admins exempt).
         if (! $request->byAdmin) {
             $limit = max(1, (int) $event->booking_max_seats);
             $already = (int) EventBookingGroup::query()->where('calendar_event_id', $event->id)
                 ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])
-                ->when($request->booker !== null,
-                    fn ($q) => $q->where('booker_user_id', $request->booker->id),
-                    fn ($q) => $q->whereNull('booker_user_id')->where(fn ($c) => $c
-                        ->when($request->contactEmail !== null, fn ($e) => $e->orWhere('contact_email', $request->contactEmail))
-                        ->when($request->contactPhone !== null, fn ($p) => $p->orWhere('contact_phone', $request->contactPhone))))
+                ->where('booker_user_id', $request->booker->id)
                 ->sum('seat_count');
             if ($already + $seats > $limit) {
                 throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每人於此場次最多可報名 '.$limit.' 位（已報名 '.$already.' 位）。');
@@ -557,9 +593,6 @@ final class BookingEngine
 
     private function permanentFailure(EventBookingGroup $group): ?string
     {
-        if ($group->is_guest && $group->booker_user_id === null) {
-            return null; // unclaimed guest booking (a claimed one is checked like a member's)
-        }
         $booker = $group->booker_user_id !== null ? User::query()->find($group->booker_user_id) : null;
 
         return match (true) {
@@ -647,26 +680,30 @@ final class BookingEngine
             && ($request->booker !== null || ($existing->contact_name === $request->contactName
                 && $existing->contact_email === $request->contactEmail
                 && $existing->contact_phone === $request->contactPhone));
-        // A retry must represent the original booking, not a different attendee list.
-        // Compare the persisted attendee snapshot rather than the current member profile.
-        $stored = $existing->attendees()->orderBy('id')->get(['name', 'member_user_id'])->map(fn ($attendee): array => [
-            'name' => $attendee->name,
-            'member_user_id' => $attendee->member_user_id === null ? null : (int) $attendee->member_user_id,
-        ])->all();
-        $incoming = array_map(fn (array $attendee): array => [
-            'name' => mb_substr(trim($attendee['name']), 0, 80),
-            'member_user_id' => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
-        ], $request->attendees);
-        // The booker's own display name may change between retries. Their stable
-        // member ID identifies that seat; proxy/guest attendee names remain immutable.
-        foreach ($stored as $index => $attendee) {
-            if ($request->booker !== null && $attendee['member_user_id'] === $request->booker->id
-                && isset($incoming[$index]) && $incoming[$index]['member_user_id'] === $request->booker->id) {
-                $incoming[$index]['name'] = $attendee['name'];
-            }
-        }
-        if (! $same || $existing->seat_count !== count($incoming) || $stored !== $incoming) {
+        // Member IDs (and order), not mutable display names, identify the original
+        // attendees. A profile rename must not turn a legitimate retry into 409.
+        $storedMemberIds = $existing->attendees()->orderBy('id')->pluck('member_user_id')
+            ->map(static fn ($id): ?int => $id === null ? null : (int) $id)->all();
+        $incomingMemberIds = array_map(
+            static fn (array $attendee): ?int => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
+            $request->attendees,
+        );
+        if (! $same || $existing->seat_count !== count($incomingMemberIds) || $storedMemberIds !== $incomingMemberIds) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
+        }
+
+        // An idempotent replay is still a read of protected booking details.
+        // Recheck current identity/delegation; revocation must take effect immediately.
+        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '預約者已停用。');
+        }
+        if (! $request->byAdmin) {
+            foreach ($existing->attendees()->get() as $attendee) {
+                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->first();
+                if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
+                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
+                }
+            }
         }
 
         return $existing->load('attendees', 'waitlistEntry');

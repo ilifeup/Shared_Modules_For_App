@@ -32,8 +32,6 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/checkin/l/{token}', [WellKnownController::class, 'checkinLocation'])->where('token', '[A-Za-z0-9]{16,40}');
     Route::get('/oauth/google/callback', [WellKnownController::class, 'googleCallback'])->name('google.callback');
 });
-// S9 M08 guest booking (name + email or phone; no email or SMS is sent).
-Route::post('/events/{id}/guest-booking', [ContentPageController::class, 'guestBooking'])->whereNumber('id')->middleware('throttle:10,1');
 
 // S9 M14 App Links / Universal Links association (404 until the real IDs are configured).
 Route::get('/.well-known/assetlinks.json', [WellKnownController::class, 'assetLinks']);

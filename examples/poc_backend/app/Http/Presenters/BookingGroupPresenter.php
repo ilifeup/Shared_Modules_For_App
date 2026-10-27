@@ -6,6 +6,7 @@ use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
 use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 
 /**
  * S9 M08 JSON of a booking group (separate from the S6 Booking DTO).
@@ -25,6 +26,14 @@ final class BookingGroupPresenter
                 ->where('status', EventWaitlistEntry::WAITING)->where('sequence', '<=', $group->waitlistEntry->sequence)->count();
         }
         $cancelUntil = $event->cancelClosesAt();
+        $canCancel = $group->isActive()
+            && ($group->status === EventBookingGroup::STATUS_WAITLISTED || now()->lt($cancelUntil))
+            && $viewer !== null
+            && (int) $group->booker_user_id === (int) $viewer->id
+            && app(FamilyDelegation::class)->canManageMemberIds(
+                $viewer,
+                $group->attendees->pluck('member_user_id')->all()
+            );
 
         return [
             'id' => (string) $group->id,
@@ -32,14 +41,13 @@ final class BookingGroupPresenter
             'status' => $group->status,
             'seat_count' => $group->seat_count,
             'contact_name' => $group->contact_name,
-            'is_guest' => $group->is_guest,
             'booked_at' => $group->booked_at->toIso8601ZuluString(),
             'confirmed_at' => $group->confirmed_at?->toIso8601ZuluString(),
             'cancelled_at' => $group->cancelled_at?->toIso8601ZuluString(),
             'waitlist_position' => $position,
             'cancel_deadline' => $cancelUntil->toIso8601ZuluString(),
             // Waitlist entries can always be withdrawn (D15); confirmed ones until the deadline.
-            'can_cancel' => $group->isActive() && ($group->status === EventBookingGroup::STATUS_WAITLISTED || now()->lt($cancelUntil)),
+            'can_cancel' => $canCancel,
             'attendees' => $group->attendees->map(fn (EventBookingAttendee $a): array => [
                 'id' => (string) $a->id,
                 'name' => $a->name,

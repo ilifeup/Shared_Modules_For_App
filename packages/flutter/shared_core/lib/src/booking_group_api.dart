@@ -31,7 +31,7 @@ class BookingAttendee {
       );
 }
 
-/// S9 M08 booking group: one booker (or guest contact) with 1..n attendees;
+/// S9 M08 members-only booking group with 1..n identified attendees;
 /// confirmed or waitlisted as a whole (strict FIFO).
 class BookingGroup {
   const BookingGroup({
@@ -138,7 +138,7 @@ class BookingGroupPage {
   final int lastPage;
 }
 
-/// S9 M08 group booking, waitlist and guest-booking claim. Retries must reuse
+/// S9 M08 members-only group booking and waitlist. Retries must reuse
 /// the same [clientRequestId] (UUID) so a booking is never created twice.
 class BookingGroupApi {
   const BookingGroupApi(this.transport);
@@ -151,20 +151,53 @@ class BookingGroupApi {
     String eventId, {
     required String clientRequestId,
     bool includeSelf = true,
-    List<String> attendeeNames = const [],
+    List<int> attendeeMemberIds = const [],
   }) async {
+    if (attendeeMemberIds.any((id) => id <= 0) ||
+        attendeeMemberIds.toSet().length != attendeeMemberIds.length) {
+      throw ArgumentError.value(
+        attendeeMemberIds,
+        'attendeeMemberIds',
+        'Expected distinct positive member IDs',
+      );
+    }
     final json = await transport.request(
       'POST',
       '/api/v1/events/${s9Seg(eventId)}/booking-groups',
       body: {
         'include_self': includeSelf,
         'attendees': [
-          for (final name in attendeeNames) {'name': name},
+          for (final id in attendeeMemberIds) {'member_user_id': id},
         ],
         'client_request_id': clientRequestId,
       },
     );
     return BookingGroup.fromJson(s9Data(json));
+  }
+
+  /// IDs of active family members for whom this account can currently book.
+  /// The server is authoritative; the POST rechecks delegation under its lock.
+  Future<List<int>> manageableMemberIds() async {
+    final json = await transport.request(
+      'GET',
+      '/api/v1/me/family-memberships',
+    );
+    final data = json['data'];
+    if (data is! List) {
+      throw const FormatException('Expected family membership list');
+    }
+    return data
+        .map((row) {
+          if (row is! Map<String, dynamic>) {
+            throw const FormatException('Invalid family membership');
+          }
+          final id = row['member_user_id'];
+          if (id is! int || id <= 0) {
+            throw const FormatException('Invalid family member ID');
+          }
+          return id;
+        })
+        .toList(growable: false);
   }
 
   /// [status]: `active`, `confirmed`, `waitlisted` or `cancelled`.
@@ -189,21 +222,6 @@ class BookingGroupApi {
     final json = await transport.request(
       'POST',
       '/api/v1/me/booking-groups/${s9Seg(groupId)}/cancel',
-    );
-    return BookingGroup.fromJson(s9Data(json));
-  }
-
-  /// Guest bookings made with this member's verified email or phone.
-  Future<List<BookingGroup>> claimable() async {
-    final json = await transport.request('GET', '/api/v1/me/guest-bookings');
-    return s9List(json['data'], BookingGroup.fromJson);
-  }
-
-  /// 404 when not claimable; 409 CLAIM_CONFLICT (already booked this occurrence).
-  Future<BookingGroup> claim(String groupId) async {
-    final json = await transport.request(
-      'POST',
-      '/api/v1/me/guest-bookings/${s9Seg(groupId)}/claim',
     );
     return BookingGroup.fromJson(s9Data(json));
   }

@@ -6,26 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Http\Presenters\BookingGroupPresenter;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Booking\GuestClaimService;
+use App\Services\Family\FamilyDelegation;
+use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S9 M08 multi-attendee bookings and waitlist for members (verified), plus the
- * guest-booking claim. The S6 single-booking API stays unchanged (BookingController).
+ * S9 M08 members-only group bookings and waitlist.
+ * The S6 single-booking API stays unchanged (BookingController).
  */
 class BookingGroupController extends Controller
 {
     public function __construct(
         private readonly BookingEngine $engine,
-        private readonly GuestClaimService $claims,
     ) {}
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {include_self, attendees:[{name}], client_request_id}
+     * Body: {include_self, attendees:[{member_user_id}], client_request_id}
      * 201 confirmed or waitlisted (whole group), 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
@@ -33,7 +34,7 @@ class BookingGroupController extends Controller
         $data = $request->validate([
             'include_self' => ['sometimes', 'boolean'],
             'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.name' => ['required', 'string', 'min:1', 'max:80'],
+            'attendees.*.member_user_id' => ['required', 'integer'],
             'client_request_id' => ['required', 'uuid'],
         ]);
 
@@ -44,7 +45,18 @@ class BookingGroupController extends Controller
             $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
         }
         foreach ($data['attendees'] ?? [] as $a) {
-            $attendees[] = ['name' => trim($a['name']), 'member_user_id' => null];
+            $attendeeId = (int) $a['member_user_id'];
+            // Missing and unauthorized member IDs must have the same response.
+            // Never reveal account existence through 422 vs 403 differences.
+            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->first();
+            if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+            }
+            $attendees[] = ['name' => $attendee->name, 'member_user_id' => $attendee->id];
+        }
+        $ids = array_column($attendees, 'member_user_id');
+        if (count($ids) !== count(array_unique($ids))) {
+            throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
         }
 
         // The engine determines whether this was created or replayed under its event lock.
@@ -52,7 +64,7 @@ class BookingGroupController extends Controller
         $group = $this->engine->book($event, new BookingRequest(
             booker: $member,
             contactName: $member->name,
-            contactEmail: GuestClaimService::normalizeEmail($member->email),
+            contactEmail: $member->email !== null ? mb_strtolower(trim($member->email)) : null,
             contactPhone: $member->phone_e164,
             attendees: $attendees,
             clientRequestId: $data['client_request_id'],
@@ -91,28 +103,10 @@ class BookingGroupController extends Controller
     public function cancel(Request $request, int $id): JsonResponse
     {
         $group = EventBookingGroup::query()->where('booker_user_id', $request->user()->id)->findOrFail($id);
-        $cancelled = $this->engine->cancelGroup($group, $request->user());
+        // BookingEngine rechecks delegation under the cancellation transaction lock.
+        $actor = $request->user();
+        $cancelled = $this->engine->cancelGroup($group, $actor);
 
         return new JsonResponse(['data' => BookingGroupPresenter::present($cancelled, $request->user())]);
-    }
-
-    /**
-     * GET /api/v1/me/guest-bookings — guest bookings made with my verified email / phone.
-     */
-    public function claimable(Request $request): JsonResponse
-    {
-        return new JsonResponse(['data' => $this->claims->claimable($request->user())
-            ->map(fn (EventBookingGroup $g) => BookingGroupPresenter::present($g, $request->user()))->values()->all()]);
-    }
-
-    /**
-     * POST /api/v1/me/guest-bookings/{id}/claim
-     */
-    public function claim(Request $request, int $id): JsonResponse
-    {
-        $group = EventBookingGroup::query()->findOrFail($id);
-        $claimed = $this->claims->claim($group, $request->user());
-
-        return new JsonResponse(['data' => BookingGroupPresenter::present($claimed, $request->user())]);
     }
 }

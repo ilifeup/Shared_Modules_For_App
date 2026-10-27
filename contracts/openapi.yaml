@@ -1303,8 +1303,28 @@ paths:
       operationId: bookGroup
       x-verification: required
       x-dart: BookingGroupApi.book -> BookingGroup
-      description: 'S9 M08 group booking (self and/or named attendees, idempotent by client_request_id). Whole group confirmed or waitlisted (strict FIFO).'
+      description: 'S9 M08 members-only booking. Every attendee must have a valid member_user_id; only self-booking is allowed until authorized family delegation exists. Idempotent by client_request_id; 201 created and 200 replayed.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_request_id]
+              properties:
+                client_request_id: { type: string, format: uuid }
+                include_self: { type: boolean, default: true }
+                attendees:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [member_user_id]
+                    properties:
+                      member_user_id: { type: integer, minimum: 1 }
       responses:
         '201': { $ref: '#/components/responses/BookingGroupResponse' }
         '200': { $ref: '#/components/responses/BookingGroupResponse' }
@@ -1313,6 +1333,62 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/family-memberships:
+    get:
+      tags: [bookings]
+      operationId: myFamilyMemberships
+      x-verification: required
+      description: List active family delegations managed by the authenticated member.
+      responses:
+        '200':
+          description: Active family delegations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, member_user_id]
+                      properties:
+                        id: { type: integer }
+                        member_user_id: { type: integer }
+                        relationship: { type: [string, 'null'] }
+                        started_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /me/family-memberships/{id}/revoke:
+    post:
+      tags: [bookings]
+      operationId: revokeFamilyMembership
+      x-verification: required
+      description: Revoke an active delegation owned by the authenticated manager; historical bookings remain but cancellation authority is removed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Delegation revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, status]
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [revoked] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/booking-groups:
@@ -1345,34 +1421,6 @@ paths:
         '403': { $ref: '#/components/responses/VerificationRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
-
-  /me/guest-bookings:
-    get:
-      tags: [bookings]
-      operationId: claimableGuestBookings
-      x-verification: required
-      x-dart: BookingGroupApi.claimable -> List<BookingGroup>
-      description: 'S9 M08 guest bookings made with my verified email or phone (D07).'
-      responses:
-        '200': { $ref: '#/components/responses/BookingGroupList' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
-
-  /me/guest-bookings/{id}/claim:
-    post:
-      tags: [bookings]
-      operationId: claimGuestBooking
-      x-verification: required
-      x-dart: BookingGroupApi.claim -> BookingGroup
-      description: 'S9 M08 claim a guest booking after the original contact is verified on my account.'
-      parameters: [{ $ref: '#/components/parameters/Id' }]
-      responses:
-        '200': { $ref: '#/components/responses/BookingGroupResponse' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/VerificationRequired' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/calendar:
     get:

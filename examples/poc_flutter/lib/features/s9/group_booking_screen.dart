@@ -60,10 +60,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   List<int>? _pendingMemberIds;
   bool? _pendingIncludeSelf;
 
-   Future<void> _submit() async {
+  Future<void> _submit() async {
     if (_busy) return;
-    final memberIds =
-        _pendingMemberIds ?? _memberIds.whereType<int>().toList();
+    final memberIds = _pendingMemberIds ?? _memberIds.whereType<int>().toList();
     final includeSelf = _pendingIncludeSelf ?? _includeSelf;
     if (_pendingMemberIds == null) {
       final allowed = ref.read(manageableFamilyMemberIdsProvider).value;
@@ -167,7 +166,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),
-                onRetry: () => ref.invalidate(manageableFamilyMemberIdsProvider),
+                onRetry: () =>
+                    ref.invalidate(manageableFamilyMemberIdsProvider),
               ),
             if (availableIds != null && availableIds.isEmpty)
               const Text('目前沒有已授權可代訂的家庭會員。'),
@@ -187,7 +187,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                               child: Text('會員 ID $id'),
                             ),
                         ],
-                        onChanged: _busy ||
+                        onChanged:
+                            _busy ||
                                 _pendingMemberIds != null ||
                                 availableIds == null
                             ? null
@@ -211,7 +212,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ),
             OutlinedButton(
               key: const Key('group-add-member'),
-              onPressed: _busy ||
+              onPressed:
+                  _busy ||
                       _pendingMemberIds != null ||
                       availableIds == null ||
                       _memberIds.length >= availableIds.length ||

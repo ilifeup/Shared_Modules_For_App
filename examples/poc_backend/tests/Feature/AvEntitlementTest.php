@@ -96,6 +96,43 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
     }
 
+    public function test_video_entitlement_rejects_inactive_member_and_future_level(): void
+    {
+        $member = User::factory()->create([
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+        $levelId = DB::table('membership_levels')->insertGetId([
+            'code' => 'av_future_video', 'name' => 'Future Video',
+            'rank' => 92, 'is_default' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $assignment = MemberLevelAssignment::query()->create([
+            'user_id' => $member->id,
+            'membership_level_id' => $levelId,
+            'starts_at' => now()->addDay(),
+            'reason' => 'test',
+        ]);
+        $videoId = DB::table('av_videos')->insertGetId([
+            'youtube_id' => 'future_video_01',
+            'title' => 'Future video',
+            'is_published' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('av_video_level_access')->insert([
+            'video_id' => $videoId, 'member_level_id' => $levelId,
+        ]);
+
+        $service = app(AvEntitlement::class);
+        $this->assertFalse($service->video($member, $videoId));
+
+        $assignment->update(['starts_at' => now()->subDay()]);
+        $this->assertTrue($service->video($member, $videoId));
+
+        $member->forceFill(['is_active' => false]);
+        $this->assertFalse($service->video($member, $videoId));
+    }
+
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
     {
         $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);

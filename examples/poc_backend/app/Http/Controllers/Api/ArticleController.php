@@ -261,13 +261,25 @@ class ArticleController extends Controller
             $attachment = DB::transaction(function () use ($user, $comment, $file, &$path) {
                 $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 abort_unless($locked->canUploadArticleAttachments(), 403);
-                $weekStart = now('Asia/Taipei')->startOfWeek()->utc();
-                $weekEnd = now('Asia/Taipei')->startOfWeek()->addWeek()->utc();
-                $uploads = ArticleCommentAttachment::query()
+                $weekStart = now('Asia/Taipei')->startOfWeek();
+                $weekEnd = $weekStart->copy()->addWeek();
+                // Locking the member row serializes concurrent uploads.
+                // The administrator's persisted limits control both count and bytes.
+                $usage = DB::table('article_comment_attachments')
                     ->where('user_id', $locked->id)
-                    ->where('created_at', '>=', $weekStart)
-                    ->where('created_at', '<', $weekEnd);
-                abort_if($uploads->count() >= 1, 429, 'Weekly attachment quota exceeded.');
+                    ->where('created_at', '>=', $weekStart->utc())
+                    ->where('created_at', '<', $weekEnd->utc())
+                    ->selectRaw('COUNT(*) AS total_count, COALESCE(SUM(size_bytes), 0) AS total_bytes')
+                    ->first();
+                $countLimit = (int) ($locked->attachment_weekly_upload_count ?? 1);
+                $bytesLimit = (int) ($locked->attachment_weekly_upload_bytes ?? 5 * 1024 * 1024);
+                $nextSize = (int) $file->getSize();
+                abort_if(
+                    (int) $usage->total_count >= $countLimit
+                    || (int) $usage->total_bytes + $nextSize > $bytesLimit,
+                    429,
+                    'Weekly attachment quota exceeded.',
+                );
                 $path = $file->store('private/article-comment-attachments', 'local');
                 abort_unless($path !== false, 500);
 

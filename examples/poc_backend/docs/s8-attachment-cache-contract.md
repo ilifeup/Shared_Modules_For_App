@@ -7,11 +7,11 @@ Status: design + initial database models only. **Not production ready.**
 - Uploading is manually enabled/disabled by an administrator on the member record, including when payment is collected outside the App. Membership level and payment transaction records do not grant it automatically.
 - The sole membership qualification authority is `users.verified_status = 2` (and `users.is_active = true`). Email/phone verification timestamps and policy are workflow inputs, never independent membership grants. A policy change must not revoke existing verified membership.
 - Upload entitlement and article/attachment read permission are independent. Disabling uploads does not revoke authorized reading.
-- Defaults for an enabled uploader: one file and 5 MiB total per Asia/Taipei calendar week (Monday 00:00); backend atomic enforcement is still TODO.
+- Defaults for an enabled uploader: one file and 5 MiB total per Asia/Taipei calendar week (Monday 00:00). The upload API enforces administrator count/byte overrides inside a database transaction with a locked `users` row; independent-process MySQL concurrency acceptance remains NOT TESTED.
 
 ## Reader and expiry
 
-- New attachments default to `view_expires_at = created_at + 3 calendar months` (calendar month arithmetic, not 90 days); actual creation logic is TODO.
+- New attachments default to `view_expires_at = created_at + 3 calendar months` (calendar month arithmetic, not 90 days); the upload API sets this on creation.
 - The API MUST check article visibility, comment visibility, attachment `removed_at`, and `view_expires_at > now()` for **every** reader authorization request. Never trust a Client-side expiry check alone.
 - Expired attachments remain stored on the private server disk. Expiry disables reading immediately, independently of the scheduled maintenance job.
 - Never return the private `storage_path` or a public, permanent file URL to the Client.

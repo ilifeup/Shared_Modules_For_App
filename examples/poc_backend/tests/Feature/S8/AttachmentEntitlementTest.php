@@ -222,3 +222,67 @@ it('rejects persisted attachment paths pointing outside the private attachment d
     $this->getJson('/api/v1/attachments/'.$attachment->id.'/access')->assertNotFound();
     $this->get('/api/v1/attachments/'.$attachment->id.'/content')->assertNotFound();
 });
+
+it('honors the administrator weekly upload count override', function () {
+    Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member->forceFill([
+        'attachment_upload_enabled' => true,
+        'attachment_weekly_upload_count' => 2,
+    ])->save();
+    $article = Article::query()->create([
+        'title' => 'Count quota test', 'body_html' => '<p>test</p>',
+        'author_name' => 'Test Author', 'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Count quota', 'status' => ArticleComment::STATUS_VISIBLE,
+    ]);
+
+    $this->actingAs($member, 'sanctum');
+    foreach (['first.pdf', 'second.pdf'] as $name) {
+        $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+            'file' => UploadedFile::fake()->create($name, 20, 'application/pdf'),
+        ])->assertCreated();
+    }
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => UploadedFile::fake()->create('third.pdf', 20, 'application/pdf'),
+    ])->assertStatus(429);
+    $this->assertDatabaseCount('article_comment_attachments', 2);
+});
+
+it('enforces the administrator weekly byte quota independently of count', function () {
+    Storage::fake('local');
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member->forceFill([
+        'attachment_upload_enabled' => true,
+        'attachment_weekly_upload_count' => 3,
+        'attachment_weekly_upload_bytes' => 25 * 1024,
+    ])->save();
+    $article = Article::query()->create([
+        'title' => 'Byte quota test', 'body_html' => '<p>test</p>',
+        'author_name' => 'Test Author', 'status' => Article::STATUS_PUBLISHED,
+        'visibility' => Article::VISIBILITY_PUBLIC,
+    ]);
+    $comment = ArticleComment::query()->create([
+        'article_id' => $article->id, 'user_id' => $member->id,
+        'body' => 'Byte quota', 'status' => ArticleComment::STATUS_VISIBLE,
+    ]);
+
+    $this->actingAs($member, 'sanctum');
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => UploadedFile::fake()->create('first.pdf', 20, 'application/pdf'),
+    ])->assertCreated();
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => UploadedFile::fake()->create('second.pdf', 10, 'application/pdf'),
+    ])->assertStatus(429);
+    $this->assertDatabaseCount('article_comment_attachments', 1);
+
+    // Increasing the admin byte limit does not reset already-consumed quota.
+    $member->forceFill(['attachment_weekly_upload_bytes' => 40 * 1024])->save();
+    $this->post('/api/v1/article-comments/'.$comment->id.'/attachments', [
+        'file' => UploadedFile::fake()->create('second.pdf', 10, 'application/pdf'),
+    ])->assertCreated();
+    $this->assertDatabaseCount('article_comment_attachments', 2);
+});

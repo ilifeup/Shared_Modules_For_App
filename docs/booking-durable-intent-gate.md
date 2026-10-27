@@ -45,7 +45,7 @@ If a same-transaction durable queue job can be proven safe, prototype it without
 | Duplicate job execution | No duplicate in-app notification or Google event |
 | Google succeeds then worker fails before acknowledgement | Safe retry with deterministic ID |
 | Cancel while earlier upsert pending | Google reflects latest authoritative DB state |
-| Guest booking and later member claim | Existing notification ownership behavior retained |
+| Guest reads public announcements | Public read only; no booking, personal inbox, booking notification, or guest-claim flow |
 | OAuth revoked / 429 / 5xx | Appropriate reconnect or retry/terminal state |
 | Flutter request timeout | Query authoritative booking status; do not blindly rebook |
 | MySQL concurrency and crash | Repeatable evidence from MySQL, not SQLite alone |
@@ -65,8 +65,8 @@ If a same-transaction durable queue job can be proven safe, prototype it without
 - The above Pest tests use `RefreshDatabase` with an outer test transaction. This proves transaction/savepoint feasibility in CI MySQL, **not** process-kill survival or production worker availability.
 - `GoogleCalendarSync::queueBooking` intentionally skips users without an ACTIVE connection. Never require a Google job for an unconnected user. A connected user has both a mapping and queued job in the positive control.
 - `BookingEngine::notifyChange` queues notifications/sync outside its own transaction and calls `flush()`. Other booking methods call `flush()` after their transaction. Any change must handle both paths; blindly moving `flush()` inside the transaction would call `BookingSideEffects::afterCommit`, **not** make the effect durable.
-- **Next minimal implementation:** enqueue a small durable booking-effect command on the same database connection **inside** each booking transaction, with `after_commit=false`; worker performs the existing `BookingSideEffects` operations after commit. Do not enqueue the existing Google job alone for every booking: connection state, guest notices, waitlist promotions, and retry semantics differ. Preserve existing `SyncGoogleCalendarItem` and Google mapping logic.
-- **Hard stop:** do not switch production queue driver, remove post-commit notifications, or replace `flush()` until a job/worker contract and tests cover `notifyChange`, cancellation, guest notifications, retry idempotency, and the non-database queue configuration. The first two RED tests currently assume implementation shape and must be revised into behavioral assertions before acceptance.
+- **Next minimal implementation:** enqueue a small durable booking-effect command on the same database connection **inside** each booking transaction, with `after_commit=false`; worker performs the existing `BookingSideEffects` operations after commit. Do not enqueue the existing Google job alone for every booking: connection state, member notices, waitlist promotions, and retry semantics differ. Preserve existing `SyncGoogleCalendarItem` and Google mapping logic.
+- **Hard stop:** do not switch production queue driver, remove post-commit notifications, or replace `flush()` until a job/worker contract and tests cover `notifyChange`, cancellation, member-only notifications, retry idempotency, and the non-database queue configuration. The first two RED tests currently assume implementation shape and must be revised into behavioral assertions before acceptance.
 
 ## Mandatory final deliverable: 已驗證機制基線｜避免 AI 重複調查與開發
 
@@ -84,3 +84,9 @@ Acceptance checklist for this obligation:
 - [ ] Baseline evidence and remaining limitations reviewed
 - [ ] Links added to Shared #25/#35 and Tiandi #34/#38
 - [ ] PR review completed; **no automatic merge or issue closure**
+
+## Guest notification boundary (user-confirmed 2026-10-27)
+
+Guests may read **public announcements only**. Guests have no personal App notification inbox and receive no individual booking, event, or other member notification. Event booking is always restricted to registered members, without any guest exception or later guest-claim workflow. `DispatchBookingNotification` must deliver only to an actual member booker; never fall back to an `EventBookingGroup` notification recipient. Do not confuse a publicly readable announcement with a private in-app notification. Keep public announcement visibility rules independent of authenticated member-notification delivery.
+
+Acceptance requires regression tests proving that an absent member booker receives no personal notification, that a valid member receives the expected idempotent notification, and that guest requests cannot book or read member-specific notification endpoints. PR #43's member-only schema must be integrated before final acceptance; old guest fixtures and obsolete guest-claim test expectations must be removed or updated, not preserved as allowed behavior.

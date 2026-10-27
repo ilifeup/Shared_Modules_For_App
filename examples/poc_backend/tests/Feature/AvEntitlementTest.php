@@ -170,8 +170,18 @@ class AvEntitlementTest extends TestCase
         $member->forceFill(['is_active' => false]);
         $this->assertFalse($service->track($member, $trackId));
 
-        $member->forceFill(['is_active' => true, 'membership_verified_at' => null]);
-        $this->assertFalse($service->track($member, $trackId));
+        // A member-specific allow rule must not bypass the DB membership gate,
+        // even if both contact verification workflows were completed.
+        $member->forceFill([
+            'is_active' => true,
+            'membership_verified_at' => null,
+            'email_verified_at' => now(),
+            'phone_verified_at' => now(),
+        ])->save();
+        $this->assertFalse($service->track($member->fresh(), $trackId));
+
+        $member->forceFill(['membership_verified_at' => now()])->save();
+        $this->assertTrue($service->track($member->fresh(), $trackId));
     }
 
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void

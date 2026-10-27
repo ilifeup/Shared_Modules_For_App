@@ -693,9 +693,19 @@ final class BookingEngine
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
+        // Replays cannot revive or disclose historical guest/group bookings.
+        // The current MVP contract applies even when the idempotency key exists.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約。');
+        }
+        $this->assertActiveVerifiedMember($request->booker);
+        if (count($incomingMemberIds) !== 1 || $incomingMemberIds[0] === null
+            || $existing->seat_count !== 1 || count($storedMemberIds) !== 1 || $storedMemberIds[0] === null) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', '每筆預約只能對應一名正式會員。');
+        }
+
         // An idempotent replay is still a read of protected booking details.
         // Recheck current identity/delegation; revocation must take effect immediately.
-        $this->assertActiveVerifiedMember($request->booker);
         if (! $request->byAdmin) {
             foreach ($existing->attendees()->get() as $attendee) {
                 $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->where('verified_status', 2)->first();

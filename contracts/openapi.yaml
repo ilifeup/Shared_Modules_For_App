@@ -42,6 +42,93 @@ tags:
 security:
   - bearer: []
 paths:
+  /av/tracks/{id}/access:
+    get:
+      tags: [av]
+      operationId: avTrackAccess
+      summary: Recheck music track entitlement on each open
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Access granted without exposing storage path }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /av/tracks/{id}/content:
+    get:
+      tags: [av]
+      operationId: avTrackContent
+      summary: Stream encrypted private music payload after entitlement recheck
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Private payload unavailable }
+  /av/videos/{id}/access:
+    get:
+      tags: [av]
+      operationId: avVideoAccess
+      summary: Recheck current video entitlement on each open
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Video access granted }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /attachments/{id}/access:
+    get:
+      tags: [articles]
+      operationId: articleAttachmentAccess
+      summary: Revalidate private attachment article, comment, and expiry
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Private attachment readable }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Attachment unavailable or expired }
+  /attachments/{id}/content:
+    get:
+      tags: [articles]
+      operationId: articleAttachmentContent
+      summary: Serve private attachment after fresh access check
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Attachment unavailable or expired }
+  /article-comments/{id}/attachments:
+    post:
+      tags: [articles]
+      operationId: uploadArticleCommentAttachment
+      summary: Upload one private PDF or image per Taiwan calendar week with admin grant
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: Private attachment created without exposing storage path }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Comment not found }
+        '422': { description: Invalid file type or size }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /av/tracks:
     get:
       tags: [av]

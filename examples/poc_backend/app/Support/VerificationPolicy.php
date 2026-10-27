@@ -33,7 +33,7 @@ final class VerificationPolicy
 
     public function isSatisfiedBy(User $user): bool
     {
-        return $this->missing($user) === null;
+        return (int) $user->verified_status === 2;
     }
 
     /**
@@ -41,11 +41,12 @@ final class VerificationPolicy
      */
     public function describe(User $user): array
     {
-        $missing = $this->missing($user);
+        $satisfied = $this->isSatisfiedBy($user);
+        $missing = $satisfied ? null : $this->missing($user);
 
         return [
             'policy' => $this->current(),
-            'satisfied' => $missing === null,
+            'satisfied' => $satisfied,
             'missing' => $missing,
         ];
     }

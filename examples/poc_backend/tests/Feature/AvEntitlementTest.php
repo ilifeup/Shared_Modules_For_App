@@ -133,6 +133,35 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
     }
 
+    public function test_track_override_cannot_bypass_member_eligibility_or_publication(): void
+    {
+        $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
+        $trackId = DB::table('av_music_tracks')->insertGetId([
+            'title' => 'Override only track',
+            'category' => 'test',
+            'encrypted_storage_path' => 'av/override-only.enc',
+            'is_published' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('av_track_member_access')->insert([
+            'track_id' => $trackId, 'user_id' => $member->id, 'allowed' => true,
+        ]);
+
+        $service = app(AvEntitlement::class);
+        $this->assertTrue($service->track($member, $trackId));
+
+        DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => false]);
+        $this->assertFalse($service->track($member, $trackId));
+
+        DB::table('av_music_tracks')->where('id', $trackId)->update(['is_published' => true]);
+        $member->forceFill(['is_active' => false]);
+        $this->assertFalse($service->track($member, $trackId));
+
+        $member->forceFill(['is_active' => true, 'email_verified_at' => null]);
+        $this->assertFalse($service->track($member, $trackId));
+    }
+
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
     {
         $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);

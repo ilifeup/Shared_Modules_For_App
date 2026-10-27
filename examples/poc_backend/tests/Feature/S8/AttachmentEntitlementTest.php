@@ -74,3 +74,10 @@ it('does not grant attachment upload through a contact verification timestamp or
     $member->forceFill(['verified_status' => 1])->save();
     expect($member->fresh()->canUploadArticleAttachments())->toBeFalse();
 });
+
+it('does not expose attachment access to a missing attachment', function () {
+    $member = User::factory()->create(['verified_status' => 2]);
+    $this->actingAs($member, 'sanctum')
+        ->getJson('/api/v1/attachments/999999999/access')
+        ->assertNotFound();
+});

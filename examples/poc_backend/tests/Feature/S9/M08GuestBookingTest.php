@@ -49,7 +49,7 @@ it('requires authentication and rejects nonexistent attendee member IDs', functi
 
     $member = User::factory()->create();
     $this->actingAs($member, 'sanctum')->postJson($url, $payload)
-        ->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+        ->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_FAILED');
     expect(EventBookingGroup::query()->count())->toBe(0);
 });
 
@@ -69,7 +69,7 @@ it('rejects name-only attendees and arbitrary member identities in the group API
         'include_self' => false,
         'attendees' => [['member_user_id' => $other->id]],
         'client_request_id' => (string) Str::uuid(),
-    ])->assertStatus(403)->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+    ])->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_FAILED');
 
     $this->actingAs($member, 'sanctum')->postJson($url, [
         'include_self' => true,

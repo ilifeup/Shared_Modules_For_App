@@ -103,3 +103,37 @@ it('rejects a disabled member even when reusing a valid booking request id', fun
 
     expect(seats($event))->toBe(1);
 });
+
+it('does not expose a family members booking history after delegation is revoked', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    DB::table('family_memberships')->insert([
+        'member_user_id' => $member->id, 'manager_user_id' => $manager->id,
+        'relationship' => 'child', 'status' => 'active', 'started_at' => now(),
+        'created_by' => $manager->id, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $key = (string) Str::uuid();
+    $response = $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => $key, 'member_user_id' => $member->id,
+        ])->assertCreated();
+    $groupId = $response->json('data.id');
+
+    $this->getJson('/api/v1/me/booking-groups')->assertOk()->assertJsonCount(1, 'data');
+
+    DB::table('family_memberships')
+        ->where('manager_user_id', $manager->id)
+        ->where('member_user_id', $member->id)
+        ->update(['status' => 'ended', 'ended_at' => now()]);
+
+    $this->getJson('/api/v1/me/booking-groups')
+        ->assertOk()->assertJsonCount(0, 'data')->assertJsonPath('meta.total', 0);
+    $this->postJson('/api/v1/me/booking-groups/'.$groupId.'/cancel', [])
+        ->assertForbidden();
+    $this->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => $key, 'member_user_id' => $member->id,
+    ])->assertForbidden();
+    expect(seats($event))->toBe(1);
+});

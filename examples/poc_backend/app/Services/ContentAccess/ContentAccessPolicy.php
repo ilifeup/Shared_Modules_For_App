@@ -76,9 +76,9 @@ final class ContentAccessPolicy
             return false;
         }
 
-        $audiences = $user === null ? ['guest', 'all'] : ['member', 'all', 'user:'.$user->id];
+        $audiences = $user === null ? ['guest'] : ['register_member', 'user:'.$user->id];
         if ($user !== null && $this->verification->isSatisfiedBy($user)) {
-            $audiences[] = 'verified';
+            $audiences[] = 'verified_member';
         }
 
         // Active membership levels are entitlements, never administrator roles.

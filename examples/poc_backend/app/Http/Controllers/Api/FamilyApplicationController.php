@@ -208,7 +208,7 @@ final class FamilyApplicationController extends Controller
         $this->requireAdmin($request);
         $data = $request->validate([
             'manager_user_id' => ['required', 'integer', 'exists:users,id'],
-            'payment_reference' => ['required', 'string', 'max:120'],
+            'payment_reference' => ['required', 'string', 'max:120', 'unique:family_member_paid_credits,payment_reference'],
         ]);
         $target = DB::table('users')->where('id', $data['manager_user_id'])->first();
         if ($target === null || ! $target->is_active || (int) $target->verified_status !== 2 || $target->FamilyUser) {

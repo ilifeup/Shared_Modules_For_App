@@ -93,6 +93,7 @@ paths:
       operationId: appLegalNotices
       security: []
       description: Current App notice texts for guest entry, registration and member verification; no individual consent records.
+      x-rate-limit: 60/min per client
       responses:
         '200':
           description: Current administrator-editable notice texts
@@ -109,6 +110,7 @@ paths:
                       guest_disclaimer: { type: string }
                       registration_privacy: { type: string }
                       verification_privacy: { type: string }
+        '429': { $ref: '#/components/responses/Error' }
 
   /auth/register:
     post:

@@ -243,6 +243,50 @@ class ArticleController extends Controller
         ]);
     }
 
+    /** Upload one private PDF/image per Taiwan calendar week. */
+    public function uploadCommentAttachment(Request $request, int $id): JsonResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'max:5120', 'mimetypes:application/pdf,image/jpeg,image/png,image/webp']]);
+        $user = $request->user();
+        $comment = ArticleComment::query()->where('status', ArticleComment::STATUS_VISIBLE)->findOrFail($id);
+        abort_unless((int) $comment->user_id === (int) $user->id, 403);
+        $this->interactive($request, (int) $comment->article_id);
+        $file = $request->file('file');
+        $path = null;
+
+        try {
+            $attachment = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $comment, $file, &$path) {
+                $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                abort_unless($locked->canUploadArticleAttachments(), 403);
+                $weekStart = now('Asia/Taipei')->startOfWeek()->utc();
+                $uploads = \App\Models\ArticleCommentAttachment::query()
+                    ->where('user_id', $locked->id)->where('created_at', '>=', $weekStart);
+                abort_if($uploads->count() >= 1, 429, 'Weekly attachment quota exceeded.');
+                $path = $file->store('private/article-comment-attachments', 'local');
+                abort_unless($path !== false, 500);
+                return \App\Models\ArticleCommentAttachment::query()->create([
+                    'article_comment_id' => $comment->id,
+                    'user_id' => $locked->id,
+                    'storage_path' => $path,
+                    'original_name' => basename($file->getClientOriginalName()),
+                    'mime_type' => $file->getMimeType(),
+                    'size_bytes' => $file->getSize(),
+                    'view_expires_at' => now()->addMonthsNoOverflow(3),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            if ($path !== null) {
+                Storage::disk('local')->delete($path);
+            }
+            throw $e;
+        }
+
+        return new JsonResponse(['data' => [
+            'id' => $attachment->id,
+            'view_expires_at' => $attachment->view_expires_at,
+        ]], 201);
+    }
+
     /**
      * POST /api/v1/article-comments/{id}/reports
      */

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\VerificationPolicy;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Contracts\View\View;
 
@@ -19,8 +21,16 @@ class EmailVerificationController extends Controller
 
         abort_unless($user->email !== null && hash_equals(sha1($user->getEmailForVerification()), $hash), 403);
 
-        if (! $user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
+        $newlyVerified = DB::transaction(function () use ($user): bool {
+            $fresh = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $changed = ! $fresh->hasVerifiedEmail();
+            if ($changed) {
+                $fresh->markEmailAsVerified();
+            }
+            app(VerificationPolicy::class)->grantIfEligible($fresh);
+            return $changed;
+        });
+        if ($newlyVerified) {
             event(new Verified($user));
         }
 

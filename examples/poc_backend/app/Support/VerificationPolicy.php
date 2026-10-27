@@ -26,7 +26,7 @@ final class VerificationPolicy
     public function missing(User $user): ?string
     {
         return match ($this->current()) {
-            Settings::POLICY_PHONE => $user->hasVerifiedPhone() ? null : 'phone',
+            Settings::POLICY_PHONE => ($user->hasVerifiedPhone() || $user->verification_grandfathered_at !== null) ? null : 'phone',
             default => $user->hasVerifiedEmail() ? null : 'email',
         };
     }

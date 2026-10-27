@@ -21,7 +21,7 @@ class EnsureMemberVerified
     {
         $user = $request->user();
 
-        if ($user !== null && ! $this->policy->isSatisfiedBy($user)) {
+        if ($user !== null && ((int) $user->verified_status !== 2 || ! $user->is_active)) {
             $missing = $this->policy->missing($user);
 
             throw new ApiException(

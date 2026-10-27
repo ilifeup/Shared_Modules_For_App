@@ -28,10 +28,11 @@ it('counts S6 single bookings and S9 group attendees in one ledger', function ()
     $this->actingAs($legacy, 'sanctum')->postJson("/api/v1/events/{$event->id}/bookings")
         ->assertCreated()->assertJsonPath('data.booked_count', 1)->assertJsonPath('data.remaining', 2);
 
-    groupBook($event, $booker, ['同行者'])->assertCreated()
+    groupBook($event, $booker)->assertCreated()
         ->assertJsonPath('data.status', 'confirmed')
-        ->assertJsonPath('data.seat_count', 2)
-        ->assertJsonCount(2, 'data.attendees');
+        ->assertJsonPath('data.seat_count', 1)
+        ->assertJsonCount(1, 'data.attendees');
+    groupBook($event, User::factory()->create())->assertCreated();
 
     expect(seats($event))->toBe(3);
     $this->actingAs($legacy, 'sanctum')->getJson("/api/v1/events/{$event->id}/booking")
@@ -218,8 +219,8 @@ it('lets admins reduce capacity only by choosing whom to cancel', function () {
     $admin = makeAdmin();
     $a = User::factory()->create();
     $b = User::factory()->create();
-    groupBook($event, $a, ['A2']);
-    groupBook($event, $b, ['B2']);
+    groupBook($event, $a);
+    groupBook($event, $b);
     $engine = app(BookingEngine::class);
 
     expect(fn () => $engine->changeCapacity($event, 3, [], $admin))->toThrow(ApiException::class);
@@ -230,7 +231,7 @@ it('lets admins reduce capacity only by choosing whom to cancel', function () {
 
     expect($event->refresh()->booking_capacity)->toBe(3)
         ->and($groupB->refresh()->status)->toBe('cancelled')
-        ->and(seats($event))->toBe(2)
+        ->and(seats($event))->toBe(1)
         ->and(AuditEvent::query()->where('event', 'event.capacity_changed')->sole()->details['cancelled_groups'])->toBe([$groupB->id])
         ->and($b->notifications()->first()->data['body'])->toContain('場地縮小');
 });
@@ -276,7 +277,7 @@ it('lets admins reorder the waitlist with an audited reason', function () {
 it('lists my booking groups and keeps others private', function () {
     $event = s9Event();
     $member = User::factory()->create();
-    groupBook($event, $member, ['友人']);
+    groupBook($event, $member);
     $other = User::factory()->create();
 
     $this->actingAs($member, 'sanctum')->getJson('/api/v1/me/booking-groups')

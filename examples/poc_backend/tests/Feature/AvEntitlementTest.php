@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\MemberLevelAssignment;
 use App\Models\User;
-use App\Support\Settings;
 use App\Services\Av\AvEntitlement;
+use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;

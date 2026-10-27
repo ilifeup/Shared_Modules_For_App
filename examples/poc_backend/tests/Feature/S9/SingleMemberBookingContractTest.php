@@ -74,12 +74,12 @@ it('rejects an unverified member before booking or replay', function () {
 
     expect(seats($event))->toBe(0);
 
-    $member->update(['verified_status' => 2]);
+    $member->forceFill(['verified_status' => 2])->save();
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
         'client_request_id' => $key,
     ])->assertCreated();
 
-    $member->update(['verified_status' => 1]);
+    $member->forceFill(['verified_status' => 1])->save();
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
         'client_request_id' => $key,
     ])->assertForbidden();

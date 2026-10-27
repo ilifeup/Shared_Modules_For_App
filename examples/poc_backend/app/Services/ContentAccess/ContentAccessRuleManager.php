@@ -76,7 +76,7 @@ final class ContentAccessRuleManager
             || strlen($code) > 120
             || ! preg_match('/^[a-z0-9_-]+(?:\/[a-z0-9_-]+){0,2}$/', $code)
             || substr_count($code, '/') !== ['page' => 0, 'list' => 1, 'topic' => 2][$scope]
-            || ! (in_array($audience, ['all', 'guest', 'member', 'verified'], true) || preg_match('/^user:[1-9][0-9]*$/', $audience))
+            || ! (in_array($audience, ['all', 'guest', 'member', 'verified'], true) || preg_match('/^(user|level):[1-9][0-9]*$/', $audience))
         ) {
             throw new InvalidArgumentException('Invalid content access rule.');
         }

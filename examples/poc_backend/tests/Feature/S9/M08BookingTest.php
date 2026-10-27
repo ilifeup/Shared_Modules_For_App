@@ -143,7 +143,7 @@ it('skips a waitlisted attendee whose verified membership was revoked', function
 
     $manager = User::factory()->create();
     $dependent = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
-    \Illuminate\Support\Facades\DB::table('family_memberships')->insert([
+    DB::table('family_memberships')->insert([
         'member_user_id' => $dependent->id,
         'manager_user_id' => $manager->id,
         'relationship' => 'child',
@@ -154,7 +154,7 @@ it('skips a waitlisted attendee whose verified membership was revoked', function
         'updated_at' => now(),
     ]);
     $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
-        'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+        'client_request_id' => (string) Str::uuid(),
         'member_user_id' => $dependent->id,
     ])->assertCreated()->assertJsonPath('data.status', 'waitlisted');
 

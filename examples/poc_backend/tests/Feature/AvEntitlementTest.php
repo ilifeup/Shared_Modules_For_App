@@ -133,6 +133,43 @@ class AvEntitlementTest extends TestCase
         $this->assertFalse($service->video($member, $videoId));
     }
 
+    public function test_new_email_only_member_cannot_access_video_after_phone_policy_switch(): void
+    {
+        app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
+        $member = User::factory()->create([
+            'is_active' => true,
+            'email_verified_at' => now(),
+            'phone_verified_at' => null,
+        ]);
+        $levelId = DB::table('membership_levels')->insertGetId([
+            'code' => 'av_new_phone_policy', 'name' => 'New Phone Policy',
+            'rank' => 93, 'is_default' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        MemberLevelAssignment::query()->create([
+            'user_id' => $member->id,
+            'membership_level_id' => $levelId,
+            'starts_at' => now()->subDay(),
+            'reason' => 'test',
+        ]);
+        $videoId = DB::table('av_videos')->insertGetId([
+            'youtube_id' => 'phone_policy_01',
+            'title' => 'Phone-policy video',
+            'is_published' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('av_video_level_access')->insert([
+            'video_id' => $videoId, 'member_level_id' => $levelId,
+        ]);
+
+        $service = app(AvEntitlement::class);
+        $this->assertNull($member->fresh()->verification_grandfathered_at);
+        $this->assertFalse($service->video($member, $videoId));
+
+        $member->forceFill(['phone_verified_at' => now()]);
+        $this->assertTrue($service->video($member, $videoId));
+    }
+
     public function test_video_entitlement_never_grants_access_without_a_current_member_level(): void
     {
         $member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);

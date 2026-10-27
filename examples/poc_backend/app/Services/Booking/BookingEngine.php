@@ -587,18 +587,9 @@ final class BookingEngine
             throw new ApiException(409, 'ALREADY_BOOKED', '此會員已預約此活動。');
         }
 
-        // D05 "每人名額": the limit is per booker and occurrence, not
-        // per request — several smaller bookings cannot add up past it (admins exempt).
-        if (! $request->byAdmin) {
-            $limit = max(1, (int) $event->booking_max_seats);
-            $already = (int) EventBookingGroup::query()->where('calendar_event_id', $event->id)
-                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])
-                ->where('booker_user_id', $request->booker->id)
-                ->sum('seat_count');
-            if ($already + $seats > $limit) {
-                throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每人於此場次最多可報名 '.$limit.' 位（已報名 '.$already.' 位）。');
-            }
-        }
+        // MVP limit is per attendee users.id, enforced by activeAttendeeOf().
+        // Do not cap bookings per booker: one guardian may book separately
+        // for multiple authorized family members, one member per request.
 
         // Eligibility is checked when booking only (D10, D19).
         $this->assertEligible($event, $attendee);

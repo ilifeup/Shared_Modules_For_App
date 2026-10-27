@@ -544,29 +544,20 @@ final class BookingEngine
             throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
         }
 
-        // Enforce attendee identities for every caller, including administrators.
-        if ($request->booker !== null) {
-            $memberIds = array_map(static fn (array $a) => $a['member_user_id'] ?? null, $request->attendees);
-            if (in_array(null, $memberIds, true)) {
-                throw new ApiException(422, 'MEMBER_ID_REQUIRED', '每位參加者都必須有正式會員 ID。');
-            }
-            if (count($memberIds) !== count(array_unique($memberIds))) {
-                throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
-            }
-            foreach ($memberIds as $memberId) {
-                if (! User::query()->whereKey($memberId)->where('is_active', true)->where('verified_status', 2)->exists()) {
-                    throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
-                }
-                // Do not permit arbitrary proxy booking before verified family delegation exists.
-                if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($memberId), true)) {
-                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
-                }
-            }
+        // Only a real, active and verified users.id can occupy the one seat.
+        $attendeeId = $request->attendees[0]['member_user_id'] ?? null;
+        if ($attendeeId === null || ! is_numeric($attendeeId)) {
+            throw new ApiException(422, 'MEMBER_ID_REQUIRED', '參加者必須有正式會員 ID。');
         }
-
-        // A single attendee may be the booker or one authorized family member.
-        $attendeeId = (int) $request->attendees[0]['member_user_id'];
-        if (! $request->byAdmin && $this->activeAttendeeOf($event, User::query()->findOrFail($attendeeId)) !== null) {
+        $attendee = User::query()->whereKey((int) $attendeeId)
+            ->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null) {
+            throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
+        }
+        if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, $attendee, true)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+        }
+        if ($this->activeAttendeeOf($event, $attendee) !== null) {
             throw new ApiException(409, 'ALREADY_BOOKED', '此會員已預約此活動。');
         }
 
@@ -584,7 +575,7 @@ final class BookingEngine
         }
 
         // Eligibility is checked when booking only (D10, D19).
-        $this->assertEligible($event, User::query()->findOrFail($request->attendees[0]['member_user_id']));
+        $this->assertEligible($event, $attendee);
     }
 
     private function permanentFailure(EventBookingGroup $group): ?string

@@ -149,6 +149,49 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
+    public function test_my_course_enrollments_hide_revoked_and_unverified_family_members(): void
+    {
+        $manager = $this->verified();
+        $family = $this->verified();
+        $family->forceFill(['FamilyUser' => true])->save();
+        $other = $this->verified();
+        $term = $this->term(3);
+        $now = now();
+
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $family->id,
+            'status' => 'active',
+            'started_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $service = app(CourseEnrollmentService::class);
+        $own = $service->enroll($term, $manager, $manager);
+        $delegated = $service->enroll($term, $manager, $family);
+        $service->enroll($term, $other, $other);
+
+        $url = '/api/v1/me/course-enrollments';
+        $this->actingAs($manager, 'sanctum')->getJson($url)
+            ->assertOk()->assertJsonCount(2, 'data');
+
+        $family->forceFill(['verified_status' => 0])->save();
+        $this->actingAs($manager, 'sanctum')->getJson($url)
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $own['id']);
+
+        $family->forceFill(['verified_status' => 2])->save();
+        DB::table('family_memberships')
+            ->where('manager_user_id', $manager->id)
+            ->where('member_user_id', $family->id)
+            ->update(['status' => 'ended', 'ended_at' => now(), 'updated_at' => now()]);
+
+        $response = $this->actingAs($manager, 'sanctum')->getJson($url)
+            ->assertOk()->assertJsonCount(1, 'data');
+        $this->assertNotEquals($delegated['id'], $response->json('data.0.id'));
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

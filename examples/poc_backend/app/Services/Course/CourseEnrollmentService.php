@@ -106,8 +106,22 @@ final class CourseEnrollmentService
         $eligible = $member !== null && $booker !== null
             && $this->bookings->canManageFamily($booker, $member);
 
+        // Advisory PaidCheck must not offer confirmation for a missing, expired
+        // or mismatched term invoice. confirmCash() rechecks under DB locks.
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollmentId)->first();
+        $invoiceReady = $invoice !== null
+            && (int) $invoice->invoice_status === 0
+            && (int) $invoice->product_id === (int) $entry->course_term_id
+            && (int) $invoice->member_id === (int) $entry->user_id
+            && (int) $invoice->booker_user_id === (int) $entry->booker_user_id
+            && (float) $invoice->invoice_amount >= 1
+            && $invoice->currency === 'TWD'
+            && $invoice->payment_due_at !== null
+            && ! now()->gt($invoice->payment_due_at);
+
         $ready = $entry->status === 'pending_payment' && $sessionIds !== []
-            && $invalidSessionIds === [] && $eligible;
+            && $invalidSessionIds === [] && $eligible && $invoiceReady;
 
         return [
             'id' => $enrollmentId,
@@ -119,7 +133,9 @@ final class CourseEnrollmentService
                 ? '本期尚未設定單堂課程。'
                 : ($invalidSessionIds !== []
                     ? '部分從屬場次預約關聯不存在或尚未確認。'
-                    : (! $eligible ? '會員資格或代管權限不符。' : ($ready ? '從屬場次預約已建立，可確認實際現金收款。' : '此報名目前不可確認收費。'))),
+                    : (! $eligible ? '會員資格或代管權限不符。'
+                        : (! $invoiceReady ? '整期帳單不存在、已逾期或與報名資料不符。'
+                            : ($ready ? '從屬場次預約已建立，可確認實際現金收款。' : '此報名目前不可確認收費。')))),
         ];
     }
 

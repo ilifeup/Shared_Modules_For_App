@@ -368,6 +368,14 @@ final class CashInvoiceService
                     ]);
                 }
 
+                // Paid bookings must never settle below the NT$1 minimum,
+                // even if an invoice amount was corrupted after enrollment.
+                if ((float) $invoice->invoice_amount < 1 || $invoice->currency !== 'TWD') {
+                    throw ValidationException::withMessages([
+                        'invoice' => '整期帳單金額不得低於 NT$1，且幣別必須為 TWD。',
+                    ]);
+                }
+
                 // The enrollment transaction already creates every derived
                 // booking; refuse cash if any required booking is missing.
                 $sessionIds = DB::table('course_sessions')

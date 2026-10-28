@@ -213,6 +213,67 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
     }
 
+    public function test_readiness_rejects_missing_expired_or_mismatched_term_invoice(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $other = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+
+        DB::table('invoices')->where('id', $invoiceId)->update(['member_id' => $other->id]);
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($result['ready']);
+        $this->assertSame('整期帳單不存在、已逾期或與報名資料不符。', $result['reason']);
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'member_id' => $member->id, 'payment_due_at' => now()->subMinute(),
+        ]);
+        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'payment_due_at' => now()->addHour(), 'invoice_status' => 3,
+        ]);
+        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+
+        DB::table('invoices')->where('id', $invoiceId)->delete();
+        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(0, DB::table('payment_transactions')->count());
+    }
+
+    public function test_paid_check_rejects_sub_one_dollar_term_invoice_without_mutation(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        DB::table('invoices')->where('id', $invoiceId)->update(['invoice_amount' => '0.50']);
+        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        try {
+            $service->paidCheck($enrollment['id'], $admin);
+            $this->fail('Cash settlement must reject a sub-NT$1 invoice.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoiceId)->invoice_status);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+        $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_term_capacity_and_fifo_waitlist_are_independent(): void
     {
         $term = $this->term();

@@ -30,7 +30,10 @@ final class FamilyMembershipController extends Controller
         $result = DB::transaction(function () use ($manager, $data): array {
             // Serialize creation per manager; counting without this row lock allows
             // concurrent requests to bypass the configured family member cap.
-            User::query()->whereKey($manager->id)->lockForUpdate()->firstOrFail();
+            $lockedManager = User::query()->whereKey($manager->id)->lockForUpdate()->first();
+            if ($lockedManager === null || (int) $lockedManager->verified_status !== 2 || ! $lockedManager->is_active || $lockedManager->FamilyUser) {
+                throw new ApiException(403, 'MEMBER_NOT_VERIFIED', 'Manager is no longer eligible.');
+            }
             $application = DB::table('family_member_applications')
                 ->where('id', $data['application_id'])
                 ->where('manager_user_id', $manager->id)

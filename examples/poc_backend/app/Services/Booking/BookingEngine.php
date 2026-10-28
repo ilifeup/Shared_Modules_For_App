@@ -876,7 +876,7 @@ final class BookingEngine
         $this->assertDurableQueueConfiguration();
 
         try {
-            return DB::transaction($callback);
+            return DB::transaction($callback, 3);
         } catch (\Throwable $e) {
             $this->pendingNotices = [];
             $this->pendingSync = [];

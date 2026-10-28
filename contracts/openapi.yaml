@@ -78,6 +78,11 @@ paths:
                       current_page: { type: integer }
                       last_page: { type: integer }
                       total: { type: integer }
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/VerificationRequired' }
 
   /course-terms/{id}/enrollments:

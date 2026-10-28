@@ -4,7 +4,6 @@ namespace Tests\Feature\S9;
 
 use App\Models\CalendarEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class EventWaitlistCapacityTest extends TestCase

@@ -37,6 +37,9 @@ class CalendarEvent extends Model
 
     public const MAX_RESULTS = 200;
 
+    // Keep newly created Eloquent instances aligned with the MySQL column default.
+    protected $attributes = ['waitlist_capacity' => 5];
+
     protected $fillable = [
         'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
         'booking_enabled', 'booking_capacity', 'waitlist_capacity', 'booking_opens_at', 'booking_closes_at',

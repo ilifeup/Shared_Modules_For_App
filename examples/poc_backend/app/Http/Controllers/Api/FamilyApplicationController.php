@@ -48,7 +48,11 @@ final class FamilyApplicationController extends Controller
         $path = $request->file('relationship_evidence')->store('family-evidence', 'local');
         try {
             $id = DB::transaction(function () use ($actor, $data, $path) {
-                DB::table('users')->where('id', $actor->id)->lockForUpdate()->first();
+                $lockedActor = DB::table('users')->where('id', $actor->id)->lockForUpdate()->first();
+                if ($lockedActor === null || (int) $lockedActor->verified_status !== 2
+                    || ! $lockedActor->is_active || $lockedActor->FamilyUser) {
+                    throw new ApiException(403, 'MEMBER_NOT_VERIFIED', 'Only verified members may apply.');
+                }
                 $count = DB::table('family_memberships')->where('manager_user_id', $actor->id)->count();
                 $maxNow = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
                 if ($count >= $maxNow) {
@@ -65,25 +69,26 @@ final class FamilyApplicationController extends Controller
                     throw new ApiException(403, 'FAMILY_PAYMENT_REQUIRED', '請先付費。');
                 }
                 $id = DB::table('family_member_applications')->insertGetId([
-                'manager_user_id' => $actor->id,
-                'member_name' => trim($data['name']),
-                'relationship' => $data['relationship'],
-                'birth_date' => $data['birth_date'],
-                'address' => trim($data['address']),
-                'contact_phone' => $data['contact_phone'] ?? null,
-                'contact_email' => $data['contact_email'] ?? null,
-                'evidence_path' => $path,
-                'status' => 'pending',
-                'payment_verified' => $credit !== null,
-                'payment_verified_by' => $credit?->verified_by,
-                'payment_verified_at' => $credit?->created_at,
-                'created_at' => now(),
-                'updated_at' => now(),
+                    'manager_user_id' => $actor->id,
+                    'member_name' => trim($data['name']),
+                    'relationship' => $data['relationship'],
+                    'birth_date' => $data['birth_date'],
+                    'address' => trim($data['address']),
+                    'contact_phone' => $data['contact_phone'] ?? null,
+                    'contact_email' => $data['contact_email'] ?? null,
+                    'evidence_path' => $path,
+                    'status' => 'pending',
+                    'payment_verified' => $credit !== null,
+                    'payment_verified_by' => $credit?->verified_by,
+                    'payment_verified_at' => $credit?->created_at,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
                 if ($credit !== null) {
                     DB::table('family_member_paid_credits')->where('id', $credit->id)
                         ->update(['used_application_id' => $id, 'updated_at' => now()]);
                 }
+ 
                 return $id;
             });
         } catch (\Throwable $e) {
@@ -108,6 +113,7 @@ final class FamilyApplicationController extends Controller
 
         return new JsonResponse(['data' => $rows]);
     }
+
     public function review(Request $request, int $id): JsonResponse
     {
         if (! $request->user()->is_active || ! $request->user()->isAdmin()) {

@@ -6,18 +6,24 @@ use App\Models\User;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class FamilyManagement extends Page
 {
-    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-users';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationLabel = '家庭會員管理';
+
     protected static ?string $title = '家庭會員管理';
+
     protected string $view = 'filament.pages.family-management';
 
     public int $maxMembers = 2;
+
     public ?int $managerId = null;
+
     public string $paymentReference = '';
+
     public string $reviewNote = '';
 
     public static function canAccess(): bool
@@ -108,10 +114,11 @@ class FamilyManagement extends Page
         if ($application === null || ! is_string($application->evidence_path)
             || preg_match('/\Afamily-evidence\/[A-Za-z0-9._-]+\z/D', $application->evidence_path) !== 1
             || str_contains($application->evidence_path, '..')
-            || ! \Illuminate\Support\Facades\Storage::disk('local')->exists($application->evidence_path)) {
+            || ! Storage::disk('local')->exists($application->evidence_path)) {
             throw ValidationException::withMessages(['reviewNote' => '找不到證明文件。']);
         }
-        return \Illuminate\Support\Facades\Storage::disk('local')
+ 
+        return Storage::disk('local')
             ->download($application->evidence_path, 'family-evidence-'.$id);
     }
 

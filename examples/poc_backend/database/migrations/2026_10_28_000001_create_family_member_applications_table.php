@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -44,7 +45,7 @@ return new class extends Migration
             $table->unsignedInteger('max_members')->default(2);
             $table->timestamps();
         });
-        \Illuminate\Support\Facades\DB::table('family_member_settings')->insert([
+        DB::table('family_member_settings')->insert([
             'id' => 1, 'max_members' => 2, 'created_at' => now(), 'updated_at' => now(),
         ]);
     }

@@ -6,8 +6,8 @@ use App\Filament\Resources\Members\MemberResource;
 use App\Models\AuditEvent;
 use App\Models\User;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class EditMember extends EditRecord
 {

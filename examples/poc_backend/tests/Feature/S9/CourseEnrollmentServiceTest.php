@@ -70,6 +70,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->enroll($term, $member, $member);
     }
+
     public function test_fee_confirmation_is_blocked_until_atomic_session_booking_exists(): void
     {
         $term = $this->term();
@@ -100,5 +101,4 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $member);
     }
-
 }

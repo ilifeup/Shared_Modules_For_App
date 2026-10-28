@@ -50,7 +50,6 @@ it('accepts scalar attendee_id for member check-in and rejects another member', 
     ])->assertNotFound();
 });
 
-
 it('revoked family delegation hides passes and blocks former manager check-in and checkout', function () {
     $event = s9Event([
         'starts_at' => now()->addMinutes(30), 'ends_at' => now()->addHours(2),

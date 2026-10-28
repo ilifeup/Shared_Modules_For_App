@@ -30,6 +30,13 @@ final class CourseEnrollmentService
             throw ValidationException::withMessages(['admin' => '僅管理員可確認收費。']);
         }
 
+        // Legacy entry point must not bypass the real cash invoice ledger.
+        // The integrated course booking/payment migration will replace this
+        // method after its session-booking atomicity is verified.
+        throw ValidationException::withMessages([
+            'invoice' => '舊版課程收費確認已停用；請使用整期帳單確認現金收款。',
+        ]);
+
         return DB::transaction(function () use ($enrollmentId): array {
             $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
             if ($entry === null) {

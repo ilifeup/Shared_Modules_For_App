@@ -43,6 +43,7 @@ class CalendarEvent extends Model
     protected $fillable = [
         'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
         'booking_enabled', 'booking_capacity', 'waitlist_capacity', 'booking_opens_at', 'booking_closes_at',
+        'payment_hold_hours', 'price_amount',
         // S9 (M08/M09/M11)
         'event_category_id', 'timezone', 'floor', 'studio', 'booking_max_seats', 'waitlist_enabled',
         'booking_close_offset_minutes', 'cancel_closes_at', 'cancel_offset_minutes',
@@ -61,6 +62,8 @@ class CalendarEvent extends Model
             'waitlist_capacity' => 'integer',
             'booking_opens_at' => 'datetime',
             'booking_closes_at' => 'datetime',
+            'payment_hold_hours' => 'integer',
+            'price_amount' => 'decimal:2',
             'series_original_start_at' => 'datetime',
             'is_series_exception' => 'boolean',
             'booking_max_seats' => 'integer',
@@ -97,6 +100,30 @@ class CalendarEvent extends Model
                 throw ValidationException::withMessages([
                     'waitlist_capacity' => ['候補名額不得小於 0。'],
                 ]);
+            }
+
+            if ($event->payment_hold_hours !== null && $event->payment_hold_hours < 1) {
+                throw ValidationException::withMessages([
+                    'payment_hold_hours' => ['付款保留時間必須至少 1 小時。'],
+                ]);
+            }
+
+            if ($event->price_amount !== null && (float) $event->price_amount < 0) {
+                throw ValidationException::withMessages([
+                    'price_amount' => ['活動價格不得為負數。'],
+                ]);
+            }
+
+            // A paid bookable event must allow the last booker their entire
+            // configured payment hold period before the event starts.
+            if ($event->booking_enabled && (float) $event->price_amount > 0) {
+                $hours = $event->payment_hold_hours ?? 38;
+                $closes = $event->bookingClosesAt();
+                if ($closes->copy()->addHours($hours)->greaterThan($event->starts_at)) {
+                    throw ValidationException::withMessages([
+                        'booking_closes_at' => ['最後預約時間加上付款保留時間，不得晚於活動開始時間。'],
+                    ]);
+                }
             }
 
             // The legacy per-booking seat setting remains readable for old event rows.

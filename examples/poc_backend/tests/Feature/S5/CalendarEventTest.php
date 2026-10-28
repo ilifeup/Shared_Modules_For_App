@@ -210,3 +210,32 @@ it('rejects invalid intervals on direct model create and update but accepts over
         expect($event->ends_at->toDateTimeString())->toBe('2026-11-11 01:00:00');
     }
 });
+
+
+it('rejects paid events whose booking deadline violates the cash hold period', function () {
+    expect(fn () => calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 500,
+        'booking_closes_at' => '2026-11-09 02:00:00',
+    ]))->toThrow(ValidationException::class);
+
+    $valid = calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 500,
+        'booking_closes_at' => '2026-11-08 12:00:00',
+    ]);
+    expect($valid->exists)->toBeTrue();
+
+    expect(fn () => $valid->update([
+        'payment_hold_hours' => 48,
+    ]))->toThrow(ValidationException::class);
+});
+
+it('rejects nonpositive cash hold hours and negative event prices', function () {
+    expect(fn () => calendarEvent(['payment_hold_hours' => 0]))
+        ->toThrow(ValidationException::class);
+    expect(fn () => calendarEvent(['price_amount' => -1]))
+        ->toThrow(ValidationException::class);
+});

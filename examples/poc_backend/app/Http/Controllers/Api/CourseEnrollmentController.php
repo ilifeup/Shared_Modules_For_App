@@ -61,6 +61,12 @@ final class CourseEnrollmentController extends Controller
         $entries = DB::table('course_enrollments as e')
             ->join('course_terms as t', 't.id', '=', 'e.course_term_id')
             ->whereIn('e.user_id', $memberIds)
+            // Only family-member history is limited to the last two months.
+            // The member's own enrollment history remains unchanged.
+            ->where(function ($query) use ($actor) {
+                $query->where('e.user_id', $actor->id)
+                    ->orWhere('e.created_at', '>=', now()->subMonths(2));
+            })
             ->orderByDesc('e.id')
             ->select('e.id', 'e.course_term_id', 'e.user_id', 'e.status',
                 'e.waitlist_sequence', 'e.fee_confirmed_at', 't.title as course_title')

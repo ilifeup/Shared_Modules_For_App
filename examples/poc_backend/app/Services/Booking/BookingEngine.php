@@ -533,7 +533,7 @@ final class BookingEngine
             }
 
             // Strict FIFO: do not skip the head if the full cash hold cannot fit.
-            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(\\App\\Support\\Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
+            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(\App\Support\Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
                 break;
             }
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();

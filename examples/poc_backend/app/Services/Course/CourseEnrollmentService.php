@@ -60,6 +60,12 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['member' => '會員資格已失效，無法確認整期課程。']);
             }
 
+            // A guardian's authority may have ended after term enrollment.
+            // Recheck the current database relationship before any session seat is booked.
+            if (! $this->delegation->canManage($booker, $member, true)) {
+                throw ValidationException::withMessages(['member' => '家庭代管權限已失效，無法確認整期課程。']);
+            }
+
             foreach ($sessions as $eventId) {
                 $event = CalendarEvent::query()->findOrFail($eventId);
                 // Course confirmation must never create a waitlist place.

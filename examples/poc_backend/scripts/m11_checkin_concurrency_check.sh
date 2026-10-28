@@ -76,7 +76,7 @@ for n in 1 2; do
   curl -sS --max-time 40 -o "$OUT/$n.json" -w '%{http_code}' \
     -X POST "$BASE/api/v1/events/$EVENT/checkin" \
     -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-    -d "{\"attendee_ids\":[$FIRST],\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
+    -d "{\"attendee_id\":$FIRST,\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
   pids+=("$!")
 done
 wait "${pids[@]}"

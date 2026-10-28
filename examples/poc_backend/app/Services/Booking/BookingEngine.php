@@ -492,8 +492,8 @@ final class BookingEngine
                 continue;
             }
 
-            if ($this->confirmedSeats($event) + $group->seat_count > (int) $event->booking_capacity) {
-                break; // strict FIFO: later (smaller) groups never jump the head group
+            if ($this->confirmedSeats($event) >= (int) $event->booking_capacity) {
+                break; // Strict FIFO: the next single-member booking must wait for one free seat.
             }
 
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
@@ -502,7 +502,7 @@ final class BookingEngine
             $head->forceFill(['status' => EventWaitlistEntry::PROMOTED, 'resolved_at' => now()])->save();
 
             AuditEvent::record('booking.promoted', null, $group, ['event_id' => $event->id, 'seats' => $group->seat_count]);
-            $this->notice($group, '候補成功：'.$event->title, '已為您保留 '.$group->seat_count.' 個名額，請準時出席。');
+            $this->notice($group, '候補成功：'.$event->title, '已為您保留 1 個名額，請準時出席。');
             if ($group->booker_user_id !== null) {
                 $this->queueSync($group->booker_user_id, $event->id);
             }

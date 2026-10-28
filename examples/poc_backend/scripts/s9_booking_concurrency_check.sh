@@ -16,6 +16,8 @@ LEGACY=50     # S6 POST /events/{id}/bookings (1 seat each)
 GROUP_COUNT=40     # S9 POST /events/{id}/booking-groups (one member, one seat)
 RETRIES=10    # the first RETRIES groups send the same client_request_id twice in parallel
 CAPACITY=20
+# This stress fixture deliberately raises the per-event waitlist limit above
+# all parallel requests. Default-five and WAITLIST_FULL are tested in Pest.
 export OUT LEGACY GROUP_COUNT CAPACITY
 
 php artisan cache:clear > "$OUT/cache.log" 2>&1
@@ -25,7 +27,7 @@ $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "CI ä½µç
 $event = App\Models\CalendarEvent::query()->create([
     "title" => "S9 concurrency", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHour(),
     "status" => "published", "audience" => "members", "booking_enabled" => true, "booking_capacity" => (int) getenv("CAPACITY"),
-    "booking_max_seats" => 5, "waitlist_enabled" => true, "waitlist_capacity" => 40, "event_category_id" => $category->id,
+    "booking_max_seats" => 5, "waitlist_enabled" => true, "waitlist_capacity" => 100, "event_category_id" => $category->id,
 ]);
 file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;

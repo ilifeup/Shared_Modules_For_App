@@ -44,7 +44,7 @@ final class FamilyMembershipController extends Controller
                 ->where('manager_user_id', $manager->id)->count();
             // External Services paid expansion is not implemented/authorized yet.
             // Never assume payment from a client-supplied flag or stale UI.
-            $max = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
+            $max = (int) DB::table('family_member_settings')->where('id', 1)->lockForUpdate()->value('max_members');
             if ($existingCount >= $max) {
                 throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的家庭會員上限。');
             }

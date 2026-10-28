@@ -54,7 +54,7 @@ final class FamilyApplicationController extends Controller
                     throw new ApiException(403, 'MEMBER_NOT_VERIFIED', 'Only verified members may apply.');
                 }
                 $count = DB::table('family_memberships')->where('manager_user_id', $actor->id)->count();
-                $maxNow = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
+                $maxNow = (int) DB::table('family_member_settings')->where('id', 1)->lockForUpdate()->value('max_members');
                 if ($count >= $maxNow) {
                     throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的上限。');
                 }
@@ -139,7 +139,7 @@ final class FamilyApplicationController extends Controller
                 if ($manager === null || ! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser) {
                     throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '主要會員目前不符合家庭會員資格。');
                 }
-                $max = (int) DB::table('family_member_settings')->where('id', 1)->value('max_members');
+                $max = (int) DB::table('family_member_settings')->where('id', 1)->lockForUpdate()->value('max_members');
                 $count = DB::table('family_memberships')->where('manager_user_id', $application->manager_user_id)->count();
                 if ($count >= $max) {
                     throw new ApiException(403, 'FAMILY_MEMBER_LIMIT_REACHED', '已達管理員設定的上限。');

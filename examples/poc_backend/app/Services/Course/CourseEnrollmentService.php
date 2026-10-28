@@ -191,9 +191,6 @@ final class CourseEnrollmentService
                 // session booking if any session is unavailable.
                 foreach ($sessions as $eventId) {
                     $event = CalendarEvent::query()->findOrFail($eventId);
-                    if ($this->bookings->unavailableReason($event, 1, true) !== null) {
-                        throw ValidationException::withMessages(['session' => '課程預約未完成，請聯絡管理員。']);
-                    }
                     $group = $this->bookings->book($event, new BookingRequest(
                         booker: $booker,
                         contactName: $booker->name,

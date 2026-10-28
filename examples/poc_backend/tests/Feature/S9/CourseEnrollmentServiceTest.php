@@ -70,4 +70,35 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->enroll($term, $member, $member);
     }
+    public function test_fee_confirmation_is_blocked_until_atomic_session_booking_exists(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        try {
+            $service->confirmFee($enrollment['id'], $admin);
+            $this->fail('Premature fee confirmation must be blocked.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('enrollment', $exception->errors());
+        }
+
+        $row = DB::table('course_enrollments')->find($enrollment['id']);
+        $this->assertSame('pending_payment', $row->status);
+        $this->assertNull($row->fee_confirmed_at);
+    }
+
+    public function test_non_admin_cannot_confirm_fee(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $this->expectException(ValidationException::class);
+        app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $member);
+    }
+
 }

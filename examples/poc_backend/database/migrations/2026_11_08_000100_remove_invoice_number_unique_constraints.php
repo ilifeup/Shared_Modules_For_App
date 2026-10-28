@@ -10,12 +10,15 @@ return new class extends Migration
     {
         // Existing installations may have run the original unique-index migrations.
         // Invoice numbers are editable and intentionally not unique.
-        Schema::table('invoices', function (Blueprint $table) {
-            $table->dropUnique('invoices_invoice_no_unique');
-        });
-        Schema::table('invoice_number_corrections', function (Blueprint $table) {
-            $table->dropUnique('invoice_number_corrections_old_number_unique');
-        });
+        foreach (['invoices' => 'invoices_invoice_no_unique',
+            'invoice_number_corrections' => 'invoice_number_corrections_old_number_unique'] as $tableName => $indexName) {
+            $indexes = Schema::getIndexes($tableName);
+            if (collect($indexes)->contains(fn (array $index): bool => $index['name'] === $indexName && $index['unique'])) {
+                Schema::table($tableName, function (Blueprint $table) use ($indexName) {
+                    $table->dropUnique($indexName);
+                });
+            }
+        }
     }
 
     public function down(): void

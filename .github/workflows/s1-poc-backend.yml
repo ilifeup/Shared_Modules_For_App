@@ -111,7 +111,7 @@ jobs:
             # diagnostics. Do not alter the checked-out source or weaken Gate.
             vendor/bin/pint --quiet
             echo 'PINT_PATCH_BEGIN'
-            git diff --no-ext-diff --unified=3 -- examples/poc_backend
+            git diff --no-ext-diff --unified=3 -- .
             echo 'PINT_PATCH_END'
             exit 1
           fi

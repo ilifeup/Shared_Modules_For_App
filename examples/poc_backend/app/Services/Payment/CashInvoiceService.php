@@ -246,6 +246,7 @@ final class CashInvoiceService
         $this->create('02', $termId, '02', (int) $head->id,
             (int) $head->user_id, (int) $head->booker_user_id,
             (string) $term->price_amount, $hours);
+
         return true;
     }
 

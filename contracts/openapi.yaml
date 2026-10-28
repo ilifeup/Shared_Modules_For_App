@@ -112,6 +112,31 @@ paths:
         '404': { description: Enrollment not found }
         '422': { description: 'Enrollment is not pending payment or a course session is unavailable' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /course-terms:
+    get:
+      tags: [courses]
+      operationId: listCourseTerms
+      summary: List course terms with published upcoming sessions
+      x-verification: required
+      responses:
+        '200':
+          description: Available course terms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        location: { type: string, nullable: true }
+                        enrollment_capacity: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
   /course-terms/{id}/enrollments:
     post:
       tags: [courses]

@@ -142,6 +142,74 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
+    public function test_readiness_rechecks_current_database_member_qualification(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+
+        $member->forceFill(['verified_status' => 1])->save();
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($result['ready']);
+        $this->assertSame('會員資格或代管權限不符。', $result['reason']);
+        $this->assertSame([], $result['invalid_session_event_ids']);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->count());
+    }
+
+    public function test_readiness_rechecks_existing_family_manager_qualification(): void
+    {
+        $term = $this->term();
+        $manager = $this->verified();
+        $family = $this->verified();
+        $family->forceFill(['FamilyUser' => true])->save();
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $family->id,
+            'status' => 'active',
+            'started_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $manager, $family);
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+
+        $manager->forceFill(['is_active' => false])->save();
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($result['ready']);
+        $this->assertSame('會員資格或代管權限不符。', $result['reason']);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('member_user_id', $family->id)->count());
+    }
+
     public function test_fee_confirmation_rolls_back_all_sessions_if_one_is_unavailable(): void
     {
         $term = $this->term();

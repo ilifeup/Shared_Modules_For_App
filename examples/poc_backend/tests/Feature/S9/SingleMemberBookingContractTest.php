@@ -216,3 +216,34 @@ it('creates separate single-seat bookings when one manager books for two family 
         ->orderBy('id')->pluck('member_user_id')->all())->toBe($familyIds);
     expect(seats($event))->toBe(2);
 });
+
+
+it('rejects a second active booking for the same member even with a new request key', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+
+    $this->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertStatus(409)->assertJsonPath('error.code', 'ALREADY_BOOKED');
+
+    expect(DB::table('event_booking_groups')->where('calendar_event_id', $event->id)->count())->toBe(1);
+    expect(DB::table('event_booking_attendees')->where('calendar_event_id', $event->id)->count())->toBe(1);
+    expect(seats($event))->toBe(1);
+});
+
+it('resolves the new single-attendee relation for a member booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $response = $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+
+    $booking = \App\Models\EventBookingGroup::query()->findOrFail($response->json('data.id'));
+    expect($booking->attendee)->not->toBeNull();
+    expect((int) $booking->attendee->member_user_id)->toBe($member->id);
+    expect($booking->attendees()->count())->toBe(1);
+});

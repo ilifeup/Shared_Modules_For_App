@@ -1884,7 +1884,7 @@ paths:
       operationId: checkIn
       x-verification: required
       x-dart: CheckinApi.checkIn -> List<CheckinResult>
-      description: 'S9 M11 member check-in by event QR (60 s + 10 s grace) or Location QR (+ GPS when required). Body {attendee_ids, event_token | location_token, lat?, lng?, accuracy?}.'
+      description: 'S9 M11 member check-in by event QR (60 s + 10 s grace) or Location QR (+ GPS when required). Body {attendee_id, event_token | location_token, lat?, lng?, accuracy?}; one registered member per request.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultList' }
@@ -1901,7 +1901,7 @@ paths:
       operationId: checkOut
       x-verification: required
       x-dart: CheckinApi.checkOut -> List<CheckinResult>
-      description: 'S9 M11 checkout with the same QR entry; no self re-check-in afterwards.'
+      description: 'S9 M11 checkout with {attendee_id, event_token | location_token}; one member per request, no self re-check-in afterwards.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultList' }
@@ -1961,7 +1961,7 @@ paths:
       operationId: staffCheckIn
       x-verification: required
       x-dart: CheckinApi.staffScan -> CheckinResult
-      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?, contact?}. Manual check-in of an unclaimed guest needs the booking Email or phone in contact (D11): 422 CONTACT_REQUIRED / CONTACT_MISMATCH.'
+      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?, contact?}. Guest bookings are prohibited; manual check-in must reference an existing registered-member attendee.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultResponse' }

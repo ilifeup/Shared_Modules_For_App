@@ -105,7 +105,16 @@ jobs:
       - name: Pint (diagnostic, checked by Gate)
         id: pint
         continue-on-error: true
-        run: vendor/bin/pint --test -v
+        run: |
+          if ! vendor/bin/pint --test -v; then
+            # Print the formatter's exact proposed patch for reproducible CI
+            # diagnostics. Do not alter the checked-out source or weaken Gate.
+            vendor/bin/pint --quiet
+            echo 'PINT_PATCH_BEGIN'
+            git diff --no-ext-diff --unified=3 -- examples/poc_backend
+            echo 'PINT_PATCH_END'
+            exit 1
+          fi
 
       - name: Pest (MySQL)
         id: pest

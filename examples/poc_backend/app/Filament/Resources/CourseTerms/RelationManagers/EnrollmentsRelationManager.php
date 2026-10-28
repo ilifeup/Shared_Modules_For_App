@@ -28,7 +28,7 @@ class EnrollmentsRelationManager extends RelationManager
                 TextColumn::make('invoice.invoice_code')->label('整期帳單編號')->placeholder('—'),
                 TextColumn::make('invoice.invoice_amount')->label('應收金額')->placeholder('—'),
                 TextColumn::make('invoice.invoice_status')->label('帳單狀態')
-                    ->formatStateUsing(fn ($state): string => match ((int) $state) {
+                    ->formatStateUsing(fn ($state): string => $state === null ? '無帳單' : match ((int) $state) {
                         0 => '未付款',
                         1 => '已付款',
                         2 => '已取消',

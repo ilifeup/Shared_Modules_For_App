@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('invoice_number_corrections', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained('invoices')->restrictOnDelete();
-            $table->string('old_number', 10)->unique();
+            $table->string('old_number', 10);
             $table->string('new_number', 10);
             $table->string('reason', 1000);
             $table->foreignId('staff_id')->constrained('users')->restrictOnDelete();

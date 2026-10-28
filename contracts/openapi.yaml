@@ -63,7 +63,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Term or member not found }
-        '422': { description: Enrollment ineligible, duplicate, or capacity exceeded }
+        '422': { description: 'Enrollment ineligible, duplicate, or capacity exceeded' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /av/tracks/{id}/access:
     get:

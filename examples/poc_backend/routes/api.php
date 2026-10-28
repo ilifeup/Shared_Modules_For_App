@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\CourseEnrollmentController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvCatalogController;
@@ -9,6 +8,7 @@ use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
+use App\Http\Controllers\Api\CourseEnrollmentController;
 use App\Http\Controllers\Api\FamilyApplicationController;
 use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\HealthController;

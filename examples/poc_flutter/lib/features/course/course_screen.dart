@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
+import '../family/family_screen.dart';
 
 final myCourseEnrollmentsProvider = FutureProvider.autoDispose<List<dynamic>>((
   ref,
 ) async {
-  final response = await ref.watch(dioProvider).get('/me/course-enrollments');
+  final response = await ref.watch(dioProvider).get('/api/v1/me/course-enrollments');
   return response.data['data'] as List<dynamic>;
 });
 
@@ -18,25 +19,21 @@ class CourseScreen extends ConsumerStatefulWidget {
 
 class _CourseScreenState extends ConsumerState<CourseScreen> {
   final _term = TextEditingController();
-  final _member = TextEditingController();
+  int? _selectedMemberId;
   bool _saving = false;
   String? _message;
 
   @override
   void dispose() {
     _term.dispose();
-    _member.dispose();
     super.dispose();
   }
 
   Future<void> _enroll() async {
     final termId = int.tryParse(_term.text.trim());
-    final memberText = _member.text.trim();
-    final memberId = memberText.isEmpty ? null : int.tryParse(memberText);
-    if (termId == null ||
-        termId <= 0 ||
-        (memberText.isNotEmpty && (memberId == null || memberId <= 0))) {
-      setState(() => _message = '請輸入有效的課程及家庭會員 ID');
+    final memberId = _selectedMemberId;
+    if (termId == null || termId <= 0) {
+      setState(() => _message = '請輸入有效的課程 ID');
       return;
     }
     setState(() {
@@ -47,7 +44,7 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
       await ref
           .read(dioProvider)
           .post(
-            '/course-terms/$termId/enrollments',
+            '/api/v1/course-terms/$termId/enrollments',
             data: {'member_user_id': ?memberId},
           );
       ref.invalidate(myCourseEnrollmentsProvider);
@@ -72,10 +69,24 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(labelText: '課程 ID'),
           ),
-          TextField(
-            controller: _member,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '家庭會員 ID（留空為本人）'),
+          ref.watch(familyMembersProvider).when(
+            loading: () => const LinearProgressIndicator(),
+            error: (error, _) => Text('家庭會員讀取失敗：$error'),
+            data: (members) => DropdownButtonFormField<int>(
+              initialValue: members.any((item) => item['member_user_id'] == _selectedMemberId)
+                  ? _selectedMemberId
+                  : null,
+              decoration: const InputDecoration(labelText: '報名對象'),
+              items: [
+                const DropdownMenuItem<int>(value: null, child: Text('本人')),
+                for (final member in members)
+                  DropdownMenuItem<int>(
+                    value: member['member_user_id'] as int,
+                    child: Text(member['name']?.toString() ?? '家庭會員'),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _selectedMemberId = value),
+            ),
           ),
           const SizedBox(height: 8),
           FilledButton(

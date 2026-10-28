@@ -84,19 +84,27 @@ final class CashInvoiceService
             ->get(['id', 'booking_id']);
         foreach ($courseDue as $item) {
             $didExpire = DB::transaction(function () use ($item): bool {
-                $invoice = DB::table('invoices')->where('id', $item->id)->lockForUpdate()->first();
-                if ($invoice === null || (int) $invoice->invoice_status !== 0
-                    || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
+                // Resolve the parent without a write lock, then acquire locks
+                // in the shared order: term -> enrollment -> invoice.
+                $hint = DB::table('invoices')->where('id', $item->id)->first();
+                if ($hint === null || $hint->booking_type !== '02') {
                     return false;
                 }
-                $termId = DB::table('course_enrollments')->where('id', $invoice->booking_id)
+                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
                     ->value('course_term_id');
-                if ($termId !== null) {
-                    DB::table('course_terms')->where('id', $termId)->lockForUpdate()->first();
+                if ($termId === null || DB::table('course_terms')->where('id', $termId)
+                    ->lockForUpdate()->first() === null) {
+                    return false;
                 }
-                $entry = DB::table('course_enrollments')->where('id', $invoice->booking_id)
+                $entry = DB::table('course_enrollments')->where('id', $hint->booking_id)
                     ->lockForUpdate()->first();
-                if ($entry === null || $entry->status !== 'pending_payment') {
+                $invoice = DB::table('invoices')->where('id', $item->id)->lockForUpdate()->first();
+                if ($entry === null || (int) $entry->course_term_id !== (int) $termId
+                    || $entry->status !== 'pending_payment'
+                    || $invoice === null || $invoice->booking_type !== '02'
+                    || (int) $invoice->booking_id !== (int) $entry->id
+                    || (int) $invoice->invoice_status !== 0
+                    || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
                     return false;
                 }
                 DB::table('course_enrollments')->where('id', $entry->id)

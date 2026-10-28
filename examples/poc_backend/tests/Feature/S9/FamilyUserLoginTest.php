@@ -1,18 +1,17 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
 
-it('rejects a managed family member password login even with correct credentials', function () {
+it('rejects a passwordless family member login', function () {
     $member = User::factory()->create([
         'FamilyUser' => true,
         'verified_status' => 2,
-        'password' => Hash::make('family-password-123'),
+        'password' => null,
     ]);
 
     $this->postJson('/api/v1/auth/login', [
         'identifier' => $member->email,
-        'password' => 'family-password-123',
+        'password' => 'any-password-cannot-work',
     ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
 });
 
@@ -21,6 +20,7 @@ it('creates an independent user ID on ordinary registration regardless of option
         'FamilyUser' => true,
         'verified_status' => 2,
         'name' => 'Existing Family Member',
+        'password' => null,
     ]);
 
     $response = $this->postJson('/api/v1/auth/register', [
@@ -41,7 +41,7 @@ it('creates an independent user ID on ordinary registration regardless of option
 });
 
 it('rejects a managed family member from verified endpoints even with an existing session', function () {
-    $managed = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    $managed = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2, 'password' => null]);
 
     $this->actingAs($managed, 'sanctum')
         ->getJson('/api/v1/me/membership')

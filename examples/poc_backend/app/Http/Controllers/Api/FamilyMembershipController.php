@@ -8,7 +8,6 @@ use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 final class FamilyMembershipController extends Controller
 {
@@ -61,7 +60,7 @@ final class FamilyMembershipController extends Controller
                 'display_name' => mb_substr(trim($application->member_name), 0, 80),
                 'email' => null,
                 'phone_e164' => null,
-                'password' => Str::random(64),
+                'password' => null, // Family members never have login credentials.
                 'is_active' => true,
                 'verified_status' => 2,
                 'FamilyUser' => true,

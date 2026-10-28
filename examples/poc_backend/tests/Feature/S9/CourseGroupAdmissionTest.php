@@ -4,7 +4,6 @@ namespace Tests\Feature\S9;
 
 use App\Models\User;
 use App\Services\Course\CourseGroupAdmission;
-use App\Services\Course\CourseGroupReadiness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -19,24 +18,33 @@ final class CourseGroupAdmissionTest extends TestCase
             'name' => '基礎班', 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        return DB::table('course_groups')->insertGetId([
+        $groupId = DB::table('course_groups')->insertGetId([
             'course_category_id' => $categoryId, 'name' => '基礎班第一梯',
             'capacity' => $capacity, 'waitlist_capacity' => 5,
-            'expected_event_count' => 12, 'price_amount' => '1200.00',
+            'expected_event_count' => 1, 'price_amount' => '1200.00',
+            'payment_hold_hours' => 24,
             'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
         ]);
+        $event = s9Event([
+            'booking_capacity' => max(2, $capacity),
+            'booking_enabled' => true,
+            'status' => 'published',
+            'starts_at' => now()->addDays(7),
+        ]);
+        DB::table('course_group_events')->insert([
+            'course_group_id' => $groupId,
+            'calendar_event_id' => $event->id,
+            'position' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $groupId;
     }
 
     private function member(): User
     {
         return User::factory()->create(['is_active' => true, 'verified_status' => 2]);
-    }
-
-    private function ready(): void
-    {
-        $this->mock(CourseGroupReadiness::class, function ($mock): void {
-            $mock->shouldReceive('inspect')->andReturn(['ready' => true]);
-        });
     }
 
     public function test_malformed_request_key_is_rejected_before_writing(): void
@@ -60,7 +68,6 @@ final class CourseGroupAdmissionTest extends TestCase
 
     public function test_last_seat_then_waitlist_and_idempotent_replay(): void
     {
-        $this->ready();
         $group = $this->group();
         $first = $this->member();
         $second = $this->member();
@@ -83,7 +90,6 @@ final class CourseGroupAdmissionTest extends TestCase
 
     public function test_replay_is_forbidden_after_member_verification_revoked(): void
     {
-        $this->ready();
         $group = $this->group();
         $member = $this->member();
         $requestId = '00000000-0000-4000-8000-000000000004';
@@ -106,7 +112,6 @@ final class CourseGroupAdmissionTest extends TestCase
 
     public function test_waitlist_is_bounded_and_sequence_is_monotonic(): void
     {
-        $this->ready();
         $group = $this->group();
         DB::table('course_groups')->where('id', $group)->update(['waitlist_capacity' => 1]);
         $members = [$this->member(), $this->member(), $this->member()];
@@ -130,7 +135,6 @@ final class CourseGroupAdmissionTest extends TestCase
 
     public function test_same_request_key_for_different_member_is_conflict(): void
     {
-        $this->ready();
         $group = $this->group();
         $first = $this->member();
         $second = $this->member();
@@ -150,7 +154,6 @@ final class CourseGroupAdmissionTest extends TestCase
 
     public function test_failed_event_booking_rolls_back_seat_and_request_key(): void
     {
-        $this->ready();
         $group = $this->group();
         $member = $this->member();
 

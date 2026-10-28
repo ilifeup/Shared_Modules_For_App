@@ -9,8 +9,8 @@ use Illuminate\Support\Str;
 it('lists only active delegations belonging to the logged-in manager', function () {
     $manager = User::factory()->create();
     $otherManager = User::factory()->create();
-    $member = User::factory()->create();
-    $otherMember = User::factory()->create();
+    $member = User::factory()->create(['FamilyUser' => true]);
+    $otherMember = User::factory()->create(['FamilyUser' => true]);
     $now = now();
 
     DB::table('family_memberships')->insert([
@@ -27,7 +27,7 @@ it('lists only active delegations belonging to the logged-in manager', function 
 
 it('replays by member ID after a delegated attendee changes their display name', function () {
     $manager = User::factory()->create();
-    $member = User::factory()->create(['name' => '原姓名']);
+    $member = User::factory()->create(['name' => '原姓名', 'FamilyUser' => true]);
     $event = s9Event(['booking_capacity' => 5, 'booking_max_seats' => 5]);
     $now = now();
     DB::table('family_memberships')->insert([

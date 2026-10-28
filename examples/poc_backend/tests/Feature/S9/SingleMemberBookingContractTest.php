@@ -53,7 +53,7 @@ it('books one seat for a delegated family member without booking the manager', f
 it('keeps a family booking in the original bookers history without changing the attendee', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $manager = User::factory()->create(['verified_status' => 2]);
-    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true, 'FamilyUser' => true]);
     DB::table('family_memberships')->insert([
         'member_user_id' => $member->id, 'manager_user_id' => $manager->id,
         'relationship' => 'child', 'status' => 'active', 'started_at' => now(),

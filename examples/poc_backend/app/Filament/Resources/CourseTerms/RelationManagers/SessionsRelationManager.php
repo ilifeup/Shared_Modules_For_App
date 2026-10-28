@@ -17,6 +17,12 @@ class SessionsRelationManager extends RelationManager
         return $table->columns([
             TextColumn::make('id')->label('課堂 ID'),
                 TextColumn::make('event.title')->label('課堂名稱')->searchable(),
+                TextColumn::make('event.status')->label('活動狀態')->formatStateUsing(fn (?string $state): string => match ($state) {
+                    'draft' => '草稿',
+                    'published' => '已發布',
+                    'cancelled' => '已取消',
+                    default => $state ?? '—',
+                }),
                 TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->sortable(),
                 TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i'),
                 TextColumn::make('makeup_capacity')->label('補課名額'),

@@ -88,7 +88,7 @@ final class FamilyApplicationController extends Controller
                     DB::table('family_member_paid_credits')->where('id', $credit->id)
                         ->update(['used_application_id' => $id, 'updated_at' => now()]);
                 }
- 
+
                 return $id;
             });
         } catch (\Throwable $e) {
@@ -163,8 +163,12 @@ final class FamilyApplicationController extends Controller
                 'review_note' => $data['note'] ?? null,
                 'updated_at' => now(),
             ]);
+            
+
             return ['id' => $id, 'status' => $data['decision']];
         });
+        
+
         return new JsonResponse(['data' => $result]);
     }
 
@@ -183,6 +187,8 @@ final class FamilyApplicationController extends Controller
             || ! Storage::disk('local')->exists($application->evidence_path)) {
             throw new ApiException(404, 'EVIDENCE_NOT_FOUND', 'Evidence not found.');
         }
+        
+
         return Storage::disk('local')->download($application->evidence_path, 'relationship-evidence');
     }
 
@@ -193,6 +199,8 @@ final class FamilyApplicationController extends Controller
         }
         $rows = DB::table('family_member_applications')->where('status', 'pending')
             ->orderBy('id')->paginate(20, ['id', 'manager_user_id', 'member_name', 'relationship', 'payment_verified', 'created_at']);
+        
+
         return new JsonResponse(['data' => $rows->items(), 'meta' => ['total' => $rows->total()]]);
     }
 
@@ -202,6 +210,8 @@ final class FamilyApplicationController extends Controller
         $max = DB::table('family_member_settings')->where('id', 1)->value('max_members');
         $counts = DB::table('family_memberships')->select('manager_user_id')
             ->selectRaw('COUNT(*) as family_count')->groupBy('manager_user_id')->get();
+        
+
         return new JsonResponse(['data' => ['max_members' => (int) $max, 'free_members' => 1,
             'members' => $counts]]);
     }
@@ -220,6 +230,8 @@ final class FamilyApplicationController extends Controller
             DB::table('family_member_settings')->where('id', 1)
                 ->update(['max_members' => $data['max_members'], 'updated_at' => now()]);
         });
+        
+
         return new JsonResponse(['data' => ['max_members' => (int) $data['max_members'], 'free_members' => 1]]);
     }
 
@@ -240,6 +252,8 @@ final class FamilyApplicationController extends Controller
             'verified_by' => $request->user()->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        
+
         return new JsonResponse(['data' => ['id' => $id, 'verified' => true]], 201);
     }
 
@@ -249,5 +263,4 @@ final class FamilyApplicationController extends Controller
             throw new ApiException(403, 'ADMIN_REQUIRED', 'Administrator required.');
         }
     }
-
 }

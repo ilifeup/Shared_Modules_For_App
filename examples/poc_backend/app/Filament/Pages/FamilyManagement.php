@@ -12,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 class FamilyManagement extends Page
 {
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-users';
+
     protected static ?string $navigationLabel = '家庭會員管理';
 
     protected static ?string $title = '家庭會員管理';
@@ -117,7 +118,7 @@ class FamilyManagement extends Page
             || ! Storage::disk('local')->exists($application->evidence_path)) {
             throw ValidationException::withMessages(['reviewNote' => '找不到證明文件。']);
         }
- 
+
         return Storage::disk('local')
             ->download($application->evidence_path, 'family-evidence-'.$id);
     }

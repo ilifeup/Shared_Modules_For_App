@@ -24,7 +24,7 @@ class SessionsRelationManager extends RelationManager
                     default => $state ?? '—',
                 }),
                 TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->sortable(),
-                TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i'),
+                TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->sortable(),
                 TextColumn::make('makeup_capacity')->label('補課名額'),
         ])->recordActions([
             Action::make('editEvent')->label('編輯課堂活動')

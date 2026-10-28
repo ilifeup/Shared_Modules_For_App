@@ -77,6 +77,34 @@ final class CashInvoiceService
             }
         }
 
+        // Course holds reserve one whole-term seat, not one seat per session.
+        $courseDue = DB::table('invoices')->where('invoice_status', 0)
+            ->where('booking_type', '02')->whereNotNull('payment_due_at')
+            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
+            ->get(['id', 'booking_id']);
+        foreach ($courseDue as $item) {
+            $didExpire = DB::transaction(function () use ($item): bool {
+                $invoice = DB::table('invoices')->where('id', $item->id)->lockForUpdate()->first();
+                if ($invoice === null || (int) $invoice->invoice_status !== 0
+                    || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
+                    return false;
+                }
+                $entry = DB::table('course_enrollments')->where('id', $invoice->booking_id)
+                    ->lockForUpdate()->first();
+                if ($entry === null || $entry->status !== 'pending_payment') {
+                    return false;
+                }
+                DB::table('course_enrollments')->where('id', $entry->id)
+                    ->update(['status' => 'cancelled', 'updated_at' => now()]);
+                DB::table('invoices')->where('id', $invoice->id)
+                    ->update(['invoice_status' => 3, 'updated_at' => now()]);
+                return true;
+            }, 3);
+            if ($didExpire) {
+                $expired++;
+            }
+        }
+
         return $expired;
     }
 

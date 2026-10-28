@@ -218,6 +218,32 @@ final class CashInvoiceService
                 if ($enrollment === null || $enrollment->status !== 'pending_payment') {
                     throw ValidationException::withMessages(['invoice' => '整期課程名額已失效，禁止收款。']);
                 }
+                // Do not accept cash before every course session has an active
+                // booking for this exact enrollment. The existing enrollment
+                // flow does not yet create these bookings; fail closed until
+                // the atomic reservation migration is completed.
+                $sessionIds = DB::table('course_sessions')
+                    ->where('course_term_id', $enrollment->course_term_id)
+                    ->pluck('calendar_event_id');
+                if ($sessionIds->isEmpty()) {
+                    throw ValidationException::withMessages(['invoice' => '本期尚未安排課堂，禁止確認收款。']);
+                }
+                foreach ($sessionIds as $eventId) {
+                    $requestId = (string) \Ramsey\Uuid\Uuid::uuid5(
+                        \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                        'course-enrollment:'.$enrollment->id.':event:'.$eventId,
+                    );
+                    $booked = EventBookingGroup::query()
+                        ->where('client_request_id', $requestId)
+                        ->where('calendar_event_id', $eventId)
+                        ->where('status', EventBookingGroup::STATUS_CONFIRMED)
+                        ->exists();
+                    if (! $booked) {
+                        throw ValidationException::withMessages([
+                            'invoice' => '整期課堂預約尚未全部建立，禁止確認現金收款。',
+                        ]);
+                    }
+                }
             }
             if ($invoice->booking_type === '01') {
                 $group = EventBookingGroup::query()->whereKey($invoice->booking_id)->first();

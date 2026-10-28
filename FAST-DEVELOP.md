@@ -208,3 +208,28 @@ P0：永久會員制、權限、資料庫一致性、不可逆清除安全；P1�
 - PR #53 HEAD `aafce3637f6d81b0243ddf0e24ff2ebe13067e4a`，Backend run `40615619027`：`pint=failure`，其餘 PHP、MySQL migration、Pest、E2E、並行與 rollback 檢查均 PASS。
 - 同一測試檔 `SingleMemberBookingContractTest.php` 的 `no_extra_blank_lines`：第 189、217 行附近兩處多餘空白行。先前只修正 `fully_qualified_stric`，未跑完整 Pint，因此再度浪費完整 CI。
 - **新增強制檢查**：修正任何 Pint diff 後，必須重新執行 **完整** `vendor/bin/pint --test`，不可因一項已修就假定其他格式問題消失；若無本地環境，標示未驗證，從 CI 的全部 Pint diff 一次修完。不得反覆只修單一格式問題後立即 Push。
+
+
+## 19. Flutter ListView 點擊失敗：永久 Debug 紀錄（DEBUG-FLUTTER-LISTVIEW-001）
+
+**適用：所有 Flutter Widget Tests、ChatGPT、Claude、Codex。** 同類問題先查本節，不得反覆猜測像素距離。
+
+### PR #53 真實失敗與修法（2026-10-28）
+- 測試：`examples/poc_flutter/test/app_flow_test.dart` 的手機 OTP 流程。Android CI 59 通過、1 失敗：`profile-change-phone` 點擊中心 `Offset(752,600)` 位於測試畫面 `800×600` 的邊界，點擊未命中；接著找不到 `change-phone`。
+- `754c85b5`：首次定位失敗；`613f5154`：僅加 `ensureVisible` 仍失敗；`7836637d`：固定 `drag(Offset(0,-120))` 是脆弱修補，不應沿用。
+- `47ae08e6`：改為針對目標 Key 使用 `tester.scrollUntilVisible()`，捲動後 `pumpAndSettle()`、點擊，並立即 `expect(find.byKey(const Key('change-phone')), findsOneWidget)` 驗證導航。**此為已提交的修正候選；須以該 SHA 的 Android CI 結果確認，不能預先宣稱通過。**
+
+### Reddit 實戰參考
+https://www.reddit.com/r/flutterhelp/comments/1joue8z/
+
+經驗：ListView 裡的 Widget 被 finder 找到，不代表在可點擊範圍內。先確認實際 Scrollable 和唯一 finder，再捲動至目標；如 `scrollUntilVisible` 遇到多重匹配或不適用，依 log 選擇正確清單的 `dragUntilVisible` 或 `fling`。導航後先確認新頁面出現，再輸入表單，避免後續錯誤掩蓋真正原因。
+
+### 強制排查流程
+1. 先讀 **exact HEAD SHA 的 Android job log**，找第一個 tap/hit-test/offset 錯誤與測試行號；不得只看最後的 `No element` 就猜後端問題。
+2. 使用唯一穩定的 `Key`，確認目標所在的 `Scrollable`；巢狀 ListView 不得盲目選 `.first`。
+3. 優先採用依目標捲動的 `scrollUntilVisible`；不適用時依實際錯誤使用 `dragUntilVisible` 或 `fling`。**禁止反覆猜測固定 -120、-200 像素。**
+4. `pumpAndSettle()` 後點擊，**立即斷言新頁面唯一 Key 或標題**，再執行後續輸入、OTP 等操作。
+5. 先跑受影響的單一 Flutter 測試，再跑 format、analyze、完整 test。沒有本地 Flutter 環境須標示 **LOCAL FLUTTER NOT RUN**，以 CI 實際結果為準。
+6. 同根因集中一次修改，遵守第 17 節 GitHub 提交間隔。記錄 PR、SHA、job、根因、修正與驗證結果；CI PASS 不代表整個 PR 完成驗收。
+
+**禁止：** `warnIfMissed: false` 掩蓋點擊錯誤、刪除失敗測試、跳過導航斷言、為單一測試盲目大改 UI。

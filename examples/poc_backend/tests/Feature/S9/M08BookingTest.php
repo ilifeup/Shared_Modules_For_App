@@ -59,6 +59,38 @@ it('prevents the same member from holding two places through old and new entry p
         ->and(seats($event))->toBe(2);
 });
 
+// Each occurrence owns its own waitlist limit; standalone courses use the same event engine.
+it('enforces five waitlist places per standalone event without affecting another event', function () {
+    $activity = s9Event(['booking_capacity' => 1]);
+    $course = s9Event(['booking_capacity' => 1]);
+    groupBook($activity, User::factory()->create())->assertCreated();
+    groupBook($course, User::factory()->create())->assertCreated();
+
+    foreach ([$activity, $course] as $event) {
+        for ($i = 0; $i < 5; $i++) {
+            groupBook($event, User::factory()->create())->assertCreated()
+                ->assertJsonPath('data.status', 'waitlisted');
+        }
+        groupBook($event, User::factory()->create())->assertStatus(409)
+            ->assertJsonPath('error.code', 'WAITLIST_FULL');
+        expect(EventWaitlistEntry::query()->where('calendar_event_id', $event->id)
+            ->where('status', EventWaitlistEntry::WAITING)->count())->toBe(5);
+    }
+});
+
+it('rejects new waitlist entries at zero and does not delete existing entries when limit falls', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_capacity' => 2]);
+    groupBook($event, User::factory()->create())->assertCreated();
+    groupBook($event, User::factory()->create())->assertJsonPath('data.status', 'waitlisted');
+    groupBook($event, User::factory()->create())->assertJsonPath('data.status', 'waitlisted');
+
+    $event->update(['waitlist_capacity' => 0]);
+    groupBook($event, User::factory()->create())->assertStatus(409)
+        ->assertJsonPath('error.code', 'WAITLIST_FULL');
+    expect(EventWaitlistEntry::query()->where('calendar_event_id', $event->id)
+        ->where('status', EventWaitlistEntry::WAITING)->count())->toBe(2);
+});
+
 // G07 / G08 — strict FIFO, whole groups, the head group blocks smaller later ones.
 it('promotes the oldest single-member waitlist booking first', function () {
     $event = s9Event(['booking_capacity' => 1]);

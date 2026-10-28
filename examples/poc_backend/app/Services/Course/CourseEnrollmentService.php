@@ -200,6 +200,10 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['term' => '課程期別不存在。']);
             }
 
+            if ($term->price_amount === null || (float) $term->price_amount < 1) {
+                throw ValidationException::withMessages(['price_amount' => '課程最低實收 NT$1。']);
+            }
+
             if (! $this->bookings->canManageFamily($booker, $member, true)) {
                 throw ValidationException::withMessages(['member' => '會員資格或代管權限不符。']);
             }
@@ -236,7 +240,7 @@ final class CourseEnrollmentService
                 'updated_at' => now(),
             ]);
 
-            if ($status === 'pending_payment' && (float) ($term->price_amount ?? 0) > 0) {
+            if ($status === 'pending_payment') {
                 $hours = (int) ($term->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'));
                 $firstStart = DB::table('course_sessions')
                     ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')

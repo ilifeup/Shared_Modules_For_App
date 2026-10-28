@@ -182,3 +182,24 @@ P0：永久會員制、權限、資料庫一致性、不可逆清除安全；P1�
 - 等待期間**繼續工作**：查詢 PR／CI、閱讀程式、檢查 Bug、整理下一批修正、準備測試；不要空等，也不要為規避間隔改用另一個 PR。
 - **滿 45 秒才允許評估提交，不代表一定要提交。** 優先集中同類修正，避免每改一個檔案就 Push；若新 Push 會取消仍需保留的 CI 驗收，先檢查 CI 狀態再決定。
 - 提交後重新計算 45 秒；未經核准不得自動合併、部署或降低測試門檻。
+
+
+## 18. 永久 Debug 記錄：Backend CI 的 Laravel Pint 格式失敗（2026-10-28）
+
+**事件 ID：DEBUG-PHP-PINT-001；適用：Shared Modules 全部 PHP 修改、所有 AI 與排程。**
+
+### 已確認的歷史案例（不可重複從零調查）
+- PR #53，HEAD `307ca3f467a394c18618dd98a0f3f5e2cc17be6b`，Backend run `40615003113` / job `122575436620`：`pint=failure`；但 `php/validate/install/audit/mysql/migrate/openapi/pest/e2e/concurrency/booking_concurrency/s9_concurrency/m11_concurrency/rollback=success`。
+- 唯一格式差異：`tests/Feature/S9/SingleMemberBookingContractTest.php` 使用 `\\App\\Models\\EventBookingGroup::query()`，Pint `fully_qualified_stric` 要求 `use App\\Models\\EventBookingGroup;` 並改用 `EventBookingGroup::query()`。
+- 修正提交：`6660d66ebfbc8cff7d51b9826e21942fcf3dfb0c`。**此處記錄的是修法，不代表修正提交的 CI 已 PASS；仍須查 exact-SHA。**
+
+### 強制預防流程：修改 PHP → 先格式檢查 → 才 Push
+1. 在 `examples/poc_backend` 目錄，先執行 `vendor/bin/pint --test`（完整 PHP 範圍）；若只需快速定位，可先執行 `vendor/bin/pint --test -v path/to/changed.php`，但不得取代提交前完整檢查。
+2. 格式失敗時，先執行 `vendor/bin/pint path/to/changed.php`（或集中修正後執行 `vendor/bin/pint`），檢查 `git diff`，再重跑 `vendor/bin/pint --test`。**不得**關閉 Pint、修改 CI 忽略錯誤、刪除測試或放寬規則來取得綠燈。
+3. Pint PASS 後才跑受影響的 Pest／OpenAPI／資料庫測試；所有預計修改集中完成後再一次 Push。AI 若無可執行 PHP/Composer 的工作環境，必須明確標記 **PINT NOT RUN**，不可宣稱已驗證；可先對照 repo 既有 Pint 規範並審查 import，但不能取代實際執行。
+4. CI 失敗優先讀取該 SHA 的 **workflow job logs + OUTCOMES**，依 `pint/pest/migrate/openapi/e2e` 分類。若僅 `pint=failure`，直接查 Pint diff 修正，不要重查已 PASS 的預約功能；修復後仍需取得新 SHA 的完整 required checks。
+5. 記錄 `PR、SHA、run/job ID、第一個根因、受影響檔案、修正 SHA、驗證結果` 到本節或 #35；同類失敗先查此紀錄。CI 綠燈不等於驗收，也不能自動結案。
+
+**常見易犯項：** 完整命名空間寫在程式中（Pint 要求 import）、未使用的 import、use 排序、空白／換行、測試新增後漏跑 Pint。優先用實際 Pint diff 定位，禁止憑猜測大規模改碼。
+
+**效能原則：** Pint 是便宜的提交前 Gate，應在耗時較高的 MySQL／E2E／Flutter CI 之前執行；避免僅因一個格式錯誤反覆觸發完整 GitHub Actions。

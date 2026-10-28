@@ -224,6 +224,12 @@ final class BookingEngine
                     default => throw self::unavailable($reason),
                 };
 
+                // Serialized by the event row lock; never create a group past the waitlist limit.
+                if ($status === EventBookingGroup::STATUS_WAITLISTED
+                    && $this->waitingGroups($locked) >= (int) $locked->waitlist_capacity) {
+                    throw new ApiException(409, 'WAITLIST_FULL', '候補名額已滿。');
+                }
+
                 $group = $this->createGroup($locked, [
                     'booker_user_id' => $request->booker?->id,
                     'contact_name' => $request->contactName,

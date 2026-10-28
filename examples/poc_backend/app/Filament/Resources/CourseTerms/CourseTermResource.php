@@ -61,6 +61,14 @@ class CourseTermResource extends Resource
         ])->recordActions([EditAction::make()]);
     }
 
+    public static function getRelations(): array
+    {
+        return [
+            \App\Filament\Resources\CourseTerms\RelationManagers\SessionsRelationManager::class,
+            \App\Filament\Resources\CourseTerms\RelationManagers\EnrollmentsRelationManager::class,
+        ];
+    }
+
     public static function getPages(): array
     {
         return [

@@ -134,6 +134,13 @@ final class CashInvoiceService
             if ((int) $invoice->invoice_status !== 0 || now()->gt($invoice->payment_due_at)) {
                 throw ValidationException::withMessages(['invoice' => '帳單已取消、過期或不允許付款。']);
             }
+            if ($invoice->booking_type === '02') {
+                $enrollment = DB::table('course_enrollments')
+                    ->where('id', $invoice->booking_id)->lockForUpdate()->first();
+                if ($enrollment === null || $enrollment->status !== 'pending_payment') {
+                    throw ValidationException::withMessages(['invoice' => '整期課程名額已失效，禁止收款。']);
+                }
+            }
             if ($invoice->booking_type === '01') {
                 $group = EventBookingGroup::query()->whereKey($invoice->booking_id)->first();
                 if ($group === null || $group->status !== EventBookingGroup::STATUS_CONFIRMED) {

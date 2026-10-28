@@ -42,11 +42,17 @@ final class CourseEnrollmentController extends Controller
     public function mine(Request $request): JsonResponse
     {
         $actor = $request->user();
+        // Only active, verified family members may be shown. Revoked,
+        // disabled or unverified members must not leak enrollment records.
         $memberIds = DB::table('family_memberships')
-            ->where('manager_user_id', $actor->id)
-            ->where('status', 'active')
-            ->whereNull('ended_at')
-            ->pluck('member_user_id')
+            ->join('users as family_user', 'family_user.id', '=', 'family_memberships.member_user_id')
+            ->where('family_memberships.manager_user_id', $actor->id)
+            ->where('family_memberships.status', 'active')
+            ->whereNull('family_memberships.ended_at')
+            ->where('family_user.FamilyUser', true)
+            ->where('family_user.is_active', true)
+            ->where('family_user.verified_status', 2)
+            ->pluck('family_memberships.member_user_id')
             ->push($actor->id)
             ->unique()
             ->values()

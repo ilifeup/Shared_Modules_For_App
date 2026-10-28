@@ -246,3 +246,37 @@ it('resolves the new single-attendee relation for a member booking', function ()
     expect((int) $booking->attendee->member_user_id)->toBe($member->id);
     expect($booking->attendees()->count())->toBe(1);
 });
+
+it('replays the same member request without adding seats and rejects another member on the same key', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $family = [];
+    foreach (range(1, 2) as $index) {
+        $member = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $member->id,
+            'relationship' => 'child',
+            'status' => 'active',
+            'started_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $family[] = $member;
+    }
+
+    $key = (string) Str::uuid();
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+    $payload = ['client_request_id' => $key, 'member_user_id' => $family[0]->id];
+    $first = $this->actingAs($manager, 'sanctum')->postJson($url, $payload)->assertCreated();
+    $this->postJson($url, $payload)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
+    $this->postJson($url, [
+        'client_request_id' => $key,
+        'member_user_id' => $family[1]->id,
+    ])->assertStatus(409)->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+    expect(DB::table('event_booking_groups')->where('calendar_event_id', $event->id)->count())->toBe(1);
+    expect(DB::table('event_booking_attendees')->where('calendar_event_id', $event->id)
+        ->pluck('member_user_id')->all())->toBe([$family[0]->id]);
+    expect(seats($event))->toBe(1);
+});

@@ -212,7 +212,7 @@ final class BookingEngine
     /**
      * S9 group booking (registered member or admin on the member's behalf).
      */
-    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
+    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null, bool $coveredByCourseTerm = false): EventBookingGroup
     {
         $created = false;
         // Guard before idempotency replay: no legacy guest request can be replayed.
@@ -231,7 +231,7 @@ final class BookingEngine
 
         $replayed = null;
         try {
-            $group = $this->transaction(function () use ($event, $request, &$replayed): ?EventBookingGroup {
+            $group = $this->transaction(function () use ($event, $request, $coveredByCourseTerm, &$replayed): ?EventBookingGroup {
                 $locked = $this->lock($event);
                 // A parallel retry with the same id may have committed while we waited for the lock.
                 if ($request->clientRequestId !== null
@@ -271,7 +271,9 @@ final class BookingEngine
                 $attendee = $request->attendees[0];
                 $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
                 if ($status === EventBookingGroup::STATUS_CONFIRMED) {
-                    app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
+                    if (! $coveredByCourseTerm) {
+                        app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
+                    }
                 }
 
                 if ($status === EventBookingGroup::STATUS_WAITLISTED) {

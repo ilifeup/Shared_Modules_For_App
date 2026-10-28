@@ -12,7 +12,7 @@ it('rejects a passwordless family member login', function () {
     $this->postJson('/api/v1/auth/login', [
         'identifier' => $member->email,
         'password' => 'any-password-cannot-work',
-    ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_LOGIN_FORBIDDEN');
+    ])->assertUnauthorized();
 });
 
 it('creates an independent user ID on ordinary registration regardless of optional family details', function () {

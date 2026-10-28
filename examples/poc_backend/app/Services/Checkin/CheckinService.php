@@ -357,7 +357,7 @@ class CheckinService
                 // Serialize concurrent first scans before the attendance row exists.
                 EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
                 // The attendee parent lock serializes this key; avoid gap-locking a missing attendance row.
-            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
+                $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
                 if ($row !== null && $row->status === EventAttendance::CHECKED_IN) {
                     return [$row, 'already_checked_in'];
                 }

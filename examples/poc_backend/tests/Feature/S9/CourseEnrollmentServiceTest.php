@@ -129,10 +129,11 @@ class CourseEnrollmentServiceTest extends TestCase
         $admin->assignRole(User::ADMIN_ROLE);
 
         $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)->value('calendar_event_id');
         DB::table('event_booking_groups')
             ->where('client_request_id', (string) \Ramsey\Uuid\Uuid::uuid5(
                 \Ramsey\Uuid\Uuid::NAMESPACE_URL,
-                'course-enrollment:'.$enrollment['id'].':event:'.$event->id,
+                'course-enrollment:'.$enrollment['id'].':event:'.$eventId,
             ))->update(['status' => 'cancelled']);
 
         $invoice = DB::table('invoices')->where('booking_type', '02')

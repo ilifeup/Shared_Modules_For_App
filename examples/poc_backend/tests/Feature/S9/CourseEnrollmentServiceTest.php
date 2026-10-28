@@ -192,6 +192,37 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNotEquals($delegated['id'], $response->json('data.0.id'));
     }
 
+    public function test_delegated_family_history_is_limited_to_two_months_but_own_history_is_not(): void
+    {
+        $manager = $this->verified();
+        $family = $this->verified();
+        $family->forceFill(['FamilyUser' => true])->save();
+        $term = $this->term(3);
+        $now = now();
+
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $family->id,
+            'status' => 'active',
+            'started_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $service = app(CourseEnrollmentService::class);
+        $own = $service->enroll($term, $manager, $manager);
+        $familyEnrollment = $service->enroll($term, $manager, $family);
+
+        DB::table('course_enrollments')->whereIn('id', [$own['id'], $familyEnrollment['id']])
+            ->update(['created_at' => now()->subMonths(3)]);
+
+        $this->actingAs($manager, 'sanctum')
+            ->getJson('/api/v1/me/course-enrollments')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $own['id']);
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

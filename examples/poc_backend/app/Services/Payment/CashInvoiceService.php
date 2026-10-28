@@ -80,6 +80,43 @@ final class CashInvoiceService
         return $expired;
     }
 
+    /**
+     * Manual cash refund only. Does not reassign an issued invoice number.
+     * The operator must complete the real-world refund before recording it here.
+     */
+    public function recordManualRefund(int $invoiceId, User $admin, string $reason): array
+    {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw ValidationException::withMessages(['admin' => '僅管理員可記錄退款。']);
+        }
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => '請填寫退款原因。']);
+        }
+        return DB::transaction(function () use ($invoiceId, $admin, $reason): array {
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($invoice === null || (int) $invoice->invoice_status !== 1) {
+                throw ValidationException::withMessages(['invoice' => '僅已付款且尚未退款的帳單可以退款。']);
+            }
+            DB::table('payment_transactions')->insert([
+                'invoice_id' => $invoiceId,
+                'transaction_code' => 'REFUND-'.\Illuminate\Support\Str::uuid(),
+                'transaction_amount' => bcmul((string) $invoice->invoice_amount, '-1', 2),
+                'currency' => $invoice->currency,
+                'payment_method' => 0, 'transaction_status' => 1,
+                'staff_id' => $admin->id, 'processed_at' => now(),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('invoices')->where('id', $invoiceId)->update([
+                'invoice_status' => 5, 'staff_id' => $admin->id, 'updated_at' => now(),
+            ]);
+            DB::table('invoice_refund_audits')->insert([
+                'invoice_id' => $invoiceId, 'staff_id' => $admin->id,
+                'reason' => $reason, 'created_at' => now(),
+            ]);
+            return ['id' => $invoiceId, 'status' => 5];
+        }, 3);
+    }
+
     public function confirmCash(int $invoiceId, User $admin): array
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {

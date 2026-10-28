@@ -124,6 +124,11 @@ final class CashInvoiceService
         if ($term === null) {
             return;
         }
+        $occupied = DB::table('course_enrollments')->where('course_term_id', $termId)
+            ->whereIn('status', ['pending_payment', 'confirmed'])->count();
+        if ($occupied >= (int) $term->enrollment_capacity) {
+            return;
+        }
         $head = DB::table('course_enrollments')->where('course_term_id', $termId)
             ->where('status', 'waitlisted')->orderBy('waitlist_sequence')->orderBy('id')
             ->lockForUpdate()->first();

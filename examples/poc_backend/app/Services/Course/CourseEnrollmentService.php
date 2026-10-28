@@ -48,6 +48,38 @@ final class CourseEnrollmentService
     }
 
     /**
+     * Read-only fee confirmation readiness. Never records a payment or books seats.
+     * The administrator can correct missing sessions before confirming a term.
+     */
+    public function confirmationReadiness(int $enrollmentId, User $admin): array
+    {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw ValidationException::withMessages(['admin' => '僅管理員可查看收費確認狀態。']);
+        }
+
+        $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
+        if ($entry === null) {
+            throw ValidationException::withMessages(['enrollment' => '報名紀錄不存在。']);
+        }
+
+        $sessionIds = DB::table('course_sessions')
+            ->where('course_term_id', $entry->course_term_id)
+            ->orderBy('id')
+            ->pluck('calendar_event_id')
+            ->all();
+
+        return [
+            'id' => $enrollmentId,
+            'status' => $entry->status,
+            'session_count' => count($sessionIds),
+            'ready' => false,
+            'reason' => count($sessionIds) === 0
+                ? '本期尚未設定單堂課程。'
+                : '單堂 Booking 原子性整合尚未完成，禁止確認收費。',
+        ];
+    }
+
+    /**
      * One term seat per verified member. Lock the term before capacity checks.
      * Guardian delegation is verified inside the same transaction.
      */

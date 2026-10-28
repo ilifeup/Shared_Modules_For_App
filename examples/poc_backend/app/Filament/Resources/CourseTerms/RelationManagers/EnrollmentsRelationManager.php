@@ -14,7 +14,7 @@ class EnrollmentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table->columns([
-            TextColumn::make('id')->label('報名 ID'),
+            TextColumn::make('id')->label('報名 ID')->sortable(),
                 TextColumn::make('user.name')->label('會員姓名')->searchable(),
                 TextColumn::make('user.email')->label('會員 Email')->placeholder('—'),
                 TextColumn::make('booker.name')->label('報名操作人')->placeholder('—'),
@@ -37,8 +37,8 @@ class EnrollmentsRelationManager extends RelationManager
                         5 => '已退款',
                         default => '—',
                     })->placeholder('—'),
-                TextColumn::make('waitlist_sequence')->label('候補順位')->placeholder('—'),
-                TextColumn::make('fee_confirmed_at')->label('收款確認時間')->dateTime('Y-m-d H:i')->placeholder('—'),
+                TextColumn::make('waitlist_sequence')->label('候補順位')->sortable()->placeholder('—'),
+                TextColumn::make('fee_confirmed_at')->label('收款確認時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->placeholder('—'),
         ]);
     }
 }

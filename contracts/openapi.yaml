@@ -78,7 +78,6 @@ paths:
                       current_page: { type: integer }
                       last_page: { type: integer }
                       total: { type: integer }
-        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/VerificationRequired' }
 
   /course-terms/{id}/enrollments:

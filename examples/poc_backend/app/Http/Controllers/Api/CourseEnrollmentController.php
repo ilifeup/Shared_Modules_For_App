@@ -67,34 +67,21 @@ final class CourseEnrollmentController extends Controller
         return new JsonResponse(['data' => $result]);
     }
 
-    /** GET /api/v1/me/course-enrollments: own and currently delegated family enrollments. */
+    /** GET /api/v1/me/course-enrollments: own and original-booker family history. */
     public function mine(Request $request): JsonResponse
     {
         $actor = $request->user();
-        // Only active, verified family members may be shown. Revoked,
-        // disabled or unverified members must not leak enrollment records.
-        $memberIds = DB::table('family_memberships')
-            ->join('users as family_user', 'family_user.id', '=', 'family_memberships.member_user_id')
-            ->where('family_memberships.manager_user_id', $actor->id)
-            ->where('family_memberships.status', 'active')
-            ->whereNull('family_memberships.ended_at')
-            ->where('family_user.FamilyUser', true)
-            ->where('family_user.is_active', true)
-            ->where('family_user.verified_status', 2)
-            ->pluck('family_memberships.member_user_id')
-            ->push($actor->id)
-            ->unique()
-            ->values()
-            ->all();
-
+        // Keep the original booker's recent family enrollment history after
+        // delegation or qualification changes. Own enrollments have no cutoff.
+        // Current delegation is required for mutations, not historical reads.
         $entries = DB::table('course_enrollments as e')
             ->join('course_terms as t', 't.id', '=', 'e.course_term_id')
-            ->whereIn('e.user_id', $memberIds)
-            // Only family-member history is limited to the last two months.
-            // The member's own enrollment history remains unchanged.
             ->where(function ($query) use ($actor) {
                 $query->where('e.user_id', $actor->id)
-                    ->orWhere('e.created_at', '>=', now()->subMonths(2));
+                    ->orWhere(function ($history) use ($actor) {
+                        $history->where('e.booker_user_id', $actor->id)
+                            ->where('e.created_at', '>=', now()->subMonths(2));
+                    });
             })
             ->orderByDesc('e.id')
             ->select('e.id', 'e.course_term_id', 'e.user_id', 'e.status',

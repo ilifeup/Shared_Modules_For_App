@@ -567,7 +567,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
-    public function test_my_course_enrollments_hide_revoked_and_unverified_family_members(): void
+    public function test_my_course_enrollments_keep_original_booker_history_after_revocation(): void
     {
         $manager = $this->verified();
         $family = $this->verified();
@@ -596,8 +596,9 @@ class CourseEnrollmentServiceTest extends TestCase
 
         $family->forceFill(['verified_status' => 0])->save();
         $this->actingAs($manager, 'sanctum')->getJson($url)
-            ->assertOk()->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $own['id']);
+            ->assertOk()->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.id', $delegated['id'])
+            ->assertJsonPath('data.1.id', $own['id']);
 
         $family->forceFill(['verified_status' => 2])->save();
         DB::table('family_memberships')
@@ -605,9 +606,11 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $family->id)
             ->update(['status' => 'ended', 'ended_at' => now(), 'updated_at' => now()]);
 
-        $response = $this->actingAs($manager, 'sanctum')->getJson($url)
-            ->assertOk()->assertJsonCount(1, 'data');
-        $this->assertNotEquals($delegated['id'], $response->json('data.0.id'));
+        $this->actingAs($manager, 'sanctum')->getJson($url)
+            ->assertOk()->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.id', $delegated['id']);
+        $this->actingAs($other, 'sanctum')->getJson($url)
+            ->assertOk()->assertJsonPath('meta.total', 1);
     }
 
     public function test_delegated_family_history_is_limited_to_two_months_but_own_history_is_not(): void

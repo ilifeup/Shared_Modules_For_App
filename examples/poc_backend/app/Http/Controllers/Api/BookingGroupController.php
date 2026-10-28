@@ -73,23 +73,14 @@ class BookingGroupController extends Controller
         $status = $request->input('status');
         $actorId = $request->user()->id;
         $page = EventBookingGroup::query()->where('booker_user_id', $actorId)
+            // History belongs to the original booker, even if delegation or
+            // member verification changes later. Family history is limited to
+            // two months; own-member bookings have no history cutoff.
             ->whereHas('attendees', function ($query) use ($actorId) {
                 $query->where('member_user_id', $actorId)
-                    ->orWhere(function ($family) use ($actorId) {
-                        $family->where('event_booking_groups.booked_at', '>=', now()->subMonths(2))
-                            ->whereHas('member', function ($member) use ($actorId) {
-                                $member->where('FamilyUser', true)
-                                    ->where('is_active', true)
-                                    ->where('verified_status', 2)
-                                    ->whereExists(function ($delegation) use ($actorId) {
-                                        $delegation->selectRaw('1')
-                                            ->from('family_memberships')
-                                            ->whereColumn('family_memberships.member_user_id', 'users.id')
-                                            ->where('family_memberships.manager_user_id', $actorId)
-                                            ->where('family_memberships.status', 'active')
-                                            ->whereNull('family_memberships.ended_at');
-                                    });
-                            });
+                    ->orWhere(function ($history) {
+                        $history->whereNotNull('member_user_id')
+                            ->where('event_booking_groups.booked_at', '>=', now()->subMonths(2));
                     });
             })
             ->when($status === 'active', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED]))

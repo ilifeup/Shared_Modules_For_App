@@ -113,8 +113,8 @@ paths:
     get:
       tags: [courses]
       operationId: myCourseEnrollments
-      summary: List own and currently delegated family term enrollments
-      description: Verified member only; 20 per page. Only active family delegations are visible.
+      summary: List own and original-booker family term enrollment history
+      description: Verified member only; 20 per page. Own enrollment history has no cutoff; recent (two-month) family enrollments remain visible to the original booker after delegation or qualification changes. Mutations still require current authorization.
       x-verification: required
       parameters:
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
@@ -1933,7 +1933,7 @@ paths:
       operationId: myBookingGroups
       x-verification: required
       x-dart: BookingGroupApi.mine -> BookingGroupPage
-      description: 'S9 M08 groups I booked, newest first, 20 per page.'
+      description: 'S9 M08 groups booked by the original booker, newest first, 20 per page. Own-member history has no cutoff; family-member history is visible for two months even if delegation or verification is later revoked. Cancellation still requires current authorization.'
       parameters:
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
         - { name: status, in: query, required: false, schema: { type: string, enum: [active, confirmed, waitlisted, cancelled] } }

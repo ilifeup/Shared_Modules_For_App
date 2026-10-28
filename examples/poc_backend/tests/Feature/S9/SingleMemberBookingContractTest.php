@@ -321,7 +321,7 @@ it('limits delegated family booking history to two months without hiding own boo
         ->assertOk()->assertJsonPath('meta.total', 1);
 });
 
-it('hides recent delegated family booking history after delegation ends', function () {
+it('preserves recent original-booker family history after delegation or verification is revoked', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $manager = User::factory()->create(['verified_status' => 2]);
     $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
@@ -346,6 +346,15 @@ it('hides recent delegated family booking history after delegation ends', functi
         ->where('member_user_id', $family->id)
         ->update(['status' => 'ended', 'ended_at' => now()]);
 
+    $family->forceFill(['verified_status' => 0])->save();
+
     $this->actingAs($manager, 'sanctum')->getJson('/api/v1/me/booking-groups')
-        ->assertOk()->assertJsonPath('meta.total', 0);
+        ->assertOk()->assertJsonPath('meta.total', 1);
+
+    // Read-only history remains visible; changing/cancelling it still requires
+    // the current family delegation.
+    $group = EventBookingGroup::query()->where('booker_user_id', $manager->id)->firstOrFail();
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$group->id}/cancel")
+        ->assertStatus(403);
 });

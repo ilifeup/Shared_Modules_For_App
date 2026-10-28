@@ -72,6 +72,7 @@ class CheckinController extends Controller
 
         $result = DB::transaction(function () use ($attendeeId, $attendee, $event, $request): array {
             EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
+            $this->checkins->assertMemberMayManageAttendee($request->user(), $attendee);
 
             return $this->result($this->checkins->checkOut($event, $attendee, $request->user()));
         });

@@ -9,6 +9,7 @@ use App\Models\EventAttendance;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Database\QueryException;
@@ -46,12 +47,28 @@ class CheckinService
      */
     public function attendeesOf(CalendarEvent $event, User $member): Collection
     {
-        return EventBookingAttendee::query()->with('attendance', 'group')
+        if (! $member->is_active || ! $member->isVerifiedMember() || $member->FamilyUser) {
+            return collect();
+        }
+
+        return EventBookingAttendee::query()->with('attendance', 'group', 'member')
             ->where('calendar_event_id', $event->id)
             ->where(fn ($q) => $q->where('member_user_id', $member->id)
                 ->orWhereIn('event_booking_group_id', EventBookingGroup::query()->select('id')->where('calendar_event_id', $event->id)->where('booker_user_id', $member->id)))
             ->whereIn('status', [EventBookingAttendee::STATUS_CONFIRMED, EventBookingAttendee::STATUS_WAITLISTED])
-            ->orderBy('id')->get();
+            ->orderBy('id')->get()
+            ->filter(fn (EventBookingAttendee $attendee): bool => $attendee->member !== null
+                && app(FamilyDelegation::class)->canManage($member, $attendee->member))
+            ->values();
+    }
+
+    /** Recheck current delegation under the attendance transaction lock. */
+    public function assertMemberMayManageAttendee(User $member, EventBookingAttendee $attendee): void
+    {
+        $subject = User::query()->find($attendee->member_user_id);
+        if ($subject === null || ! app(FamilyDelegation::class)->canManage($member, $subject, true)) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
+        }
     }
 
     /**
@@ -85,6 +102,7 @@ class CheckinService
 
         return DB::transaction(function () use ($attendeeId, $attendee, $event, $member, $source): array {
             EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
+            $this->assertMemberMayManageAttendee($member, $attendee);
 
             return [$this->checkIn($event, $attendee, $member, $source)];
         }, 3);

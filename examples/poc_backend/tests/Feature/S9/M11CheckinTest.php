@@ -11,6 +11,7 @@ use App\Services\Checkin\CheckinTokens;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 /** An occurrence open for check-in now, with one confirmed registered-member booking. */
@@ -47,6 +48,43 @@ it('accepts scalar attendee_id for member check-in and rejects another member', 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
         'attendee_id' => $attendees[1]->id, 'event_token' => $token,
     ])->assertNotFound();
+});
+
+
+it('revoked family delegation hides passes and blocks former manager check-in and checkout', function () {
+    $event = s9Event([
+        'starts_at' => now()->addMinutes(30), 'ends_at' => now()->addHours(2),
+        'checkin_enabled' => true, 'checkout_enabled' => true,
+    ]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+        'relationship' => 'child', 'status' => 'active', 'started_at' => now(),
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'member_user_id' => $family->id, 'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+    $attendee = EventBookingAttendee::query()->where('member_user_id', $family->id)->sole();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $url = "/api/v1/events/{$event->id}";
+
+    $this->getJson("$url/checkin")->assertOk()->assertJsonCount(1, 'data.attendees');
+    $this->postJson("$url/checkin", ['attendee_id' => $attendee->id, 'event_token' => $token])
+        ->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+
+    DB::table('family_memberships')->where('manager_user_id', $manager->id)
+        ->where('member_user_id', $family->id)
+        ->update(['status' => 'revoked', 'ended_at' => now(), 'updated_at' => now()]);
+
+    $this->getJson("$url/checkin")->assertOk()->assertJsonCount(0, 'data.attendees');
+    $this->getJson("$url/checkin/pass")->assertOk()->assertJsonCount(0, 'data.passes');
+    $this->postJson("$url/checkin", ['attendee_id' => $attendee->id, 'event_token' => $token])->assertNotFound();
+    $this->postJson("$url/checkout", ['attendee_id' => $attendee->id, 'event_token' => $token])->assertNotFound();
+
+    expect(EventAttendance::query()->where('event_booking_attendee_id', $attendee->id)->sole()->status)
+        ->toBe(EventAttendance::CHECKED_IN);
 });
 
 // G10 — 60-second rotation with a 10-second grace for the previous window, server time.

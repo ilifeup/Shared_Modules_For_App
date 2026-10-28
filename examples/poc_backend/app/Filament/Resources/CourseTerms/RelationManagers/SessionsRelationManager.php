@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\CourseTerms\RelationManagers;
 
+use Filament\Actions\Action;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -19,6 +20,9 @@ class SessionsRelationManager extends RelationManager
                 TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i'),
                 TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i'),
                 TextColumn::make('makeup_capacity')->label('補課名額'),
+        ])->recordActions([
+            Action::make('editEvent')->label('編輯課堂活動')
+                ->url(fn ($record): string => \App\Filament\Resources\CalendarEvents\CalendarEventResource::getUrl('edit', ['record' => $record->calendar_event_id])),
         ]);
     }
 }

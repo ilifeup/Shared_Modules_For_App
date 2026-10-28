@@ -171,6 +171,46 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
     }
 
+    public function test_revoked_family_delegation_blocks_fee_confirmation_and_all_session_bookings(): void
+    {
+        $term = $this->term();
+        $manager = $this->verified();
+        $family = $this->verified();
+        $family->forceFill(['FamilyUser' => true])->save();
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $family->id,
+            'status' => 'active',
+            'started_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $manager, $family);
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('family_memberships')->where('manager_user_id', $manager->id)
+            ->where('member_user_id', $family->id)
+            ->update(['status' => 'ended', 'ended_at' => now()]);
+
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        try {
+            $service->confirmFee($enrollment['id'], $admin);
+            $this->fail('Revoked delegation must block fee confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('member', $exception->errors());
+        }
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('member_user_id', $family->id)->count());
+    }
+
     public function test_non_admin_cannot_confirm_fee(): void
     {
         $term = $this->term();

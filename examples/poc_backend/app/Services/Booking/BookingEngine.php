@@ -13,7 +13,6 @@ use App\Models\EventWaitlistEntry;
 use App\Models\GoogleCalendarConnection;
 use App\Models\MemberVerification;
 use App\Models\User;
-use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +37,30 @@ final class BookingEngine
     private array $pendingSync = [];
 
     public function __construct(private readonly BookingSideEffects $effects) {}
+
+    /** Current database authorization for self or a delegated family member. */
+    public function canManageFamily(User $manager, User $member, bool $lock = false): bool
+    {
+        if (! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser
+            || ! $member->is_active || (int) $member->verified_status !== 2) {
+            return false;
+        }
+        if ($manager->id === $member->id) {
+            return true;
+        }
+        if (! $member->FamilyUser) {
+            return false;
+        }
+        $query = DB::table('family_memberships')
+            ->where('manager_user_id', $manager->id)
+            ->where('member_user_id', $member->id)
+            ->where('status', 'active')
+            ->whereNull('ended_at');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        return $query->first() !== null;
+    }
 
     public function confirmedSeats(CalendarEvent $event): int
     {
@@ -301,7 +324,7 @@ final class BookingEngine
                     $member = $attendee->member_user_id !== null
                         ? User::query()->find($attendee->member_user_id)
                         : null;
-                    if ($member === null || ! app(FamilyDelegation::class)->canManage($actor, $member, true)) {
+                    if ($member === null || ! $this->canManageFamily($actor, $member, true)) {
                         throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '此預約包含目前無權代管的家庭會員，請洽管理員處理。');
                     }
                 }
@@ -486,7 +509,7 @@ final class BookingEngine
                     // A family proxy may lose delegation while waiting.
                     // Recheck current authorization before granting a seat.
                     $booker = User::query()->find($group->booker_user_id);
-                    if ($booker === null || ! app(FamilyDelegation::class)->canManage($booker, $member, true)) {
+                    if ($booker === null || ! $this->canManageFamily($booker, $member, true)) {
                         $permanent = 'delegation_revoked';
                     }
                 }
@@ -603,7 +626,7 @@ final class BookingEngine
         if ($attendee === null) {
             throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
         }
-        if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, $attendee, true)) {
+        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
         }
         if ($this->activeAttendeeOf($event, $attendee) !== null) {
@@ -736,7 +759,7 @@ final class BookingEngine
         if ($attendee === null) {
             throw new ApiException(403, 'INVALID_ATTENDEE', '參加者會員資格已失效。');
         }
-        if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, $attendee, true)) {
+        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
         }
 

@@ -115,6 +115,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/course-enrollments', [CourseEnrollmentController::class, 'mine']);
     Route::post('/admin/invoice-number-ranges', [CashInvoiceController::class, 'addRange'])->middleware('throttle:auth-10');
+    Route::post('/admin/invoices/{id}/correct-number', [CashInvoiceController::class, 'correct'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/admin/invoices/{id}/allocate-number', [CashInvoiceController::class, 'allocate'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/admin/invoices/{id}/record-refund', [CashInvoiceController::class, 'refund'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/admin/invoices/{id}/confirm-cash', [CashInvoiceController::class, 'confirm'])->whereNumber('id')->middleware('throttle:auth-10');

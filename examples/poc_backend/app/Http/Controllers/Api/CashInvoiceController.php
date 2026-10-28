@@ -25,6 +25,15 @@ final class CashInvoiceController extends Controller
         return new JsonResponse(['data' => ['id' => $numbers->addRange($data['start'], $data['end'], $data['period'], $request->user())]], 201);
     }
 
+    public function correct(Request $request, int $id, \App\Services\Payment\InvoiceNumberAllocator $numbers): JsonResponse
+    {
+        $data = $request->validate([
+            'invoice_no' => ['required', 'string', 'size:10'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+        return new JsonResponse(['data' => ['invoice_no' => $numbers->correct($id, $data['invoice_no'], $data['reason'], $request->user())]]);
+    }
+
     public function allocate(Request $request, int $id, \App\Services\Payment\InvoiceNumberAllocator $numbers): JsonResponse
     {
         return new JsonResponse(['data' => ['invoice_no' => $numbers->allocate($id, $request->user())]]);

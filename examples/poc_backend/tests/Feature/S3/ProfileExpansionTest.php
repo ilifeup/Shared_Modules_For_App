@@ -10,6 +10,7 @@ use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
@@ -295,6 +296,36 @@ it('clears verification when an admin changes a member contact', function () {
 
     $event = AuditEvent::query()->where('event', 'member.updated_by_admin')->firstOrFail();
     expect($event->actor_id)->toBe($admin->id)->and($event->details['fields'])->toContain('phone_e164');
+});
+
+it('rolls back an admin contact edit when the required audit write fails', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $member = profileMember(['verified_status' => 2]);
+    $oldEmail = $member->email;
+    $oldVerifiedAt = $member->email_verified_at;
+
+    Notification::fake();
+    // Simulate audit storage failure without touching production data/schema.
+    Event::listen('eloquent.creating: '.AuditEvent::class, static function (): void {
+        throw new RuntimeException('simulated audit persistence failure');
+    });
+
+    try {
+        expect(fn () => Livewire::test(EditMember::class, ['record' => $member->getRouteKey()])
+            ->fillForm(['email' => 'audit-failure@example.test'])
+            ->call('save'))->toThrow(RuntimeException::class);
+    } finally {
+        Event::forget('eloquent.creating: '.AuditEvent::class);
+    }
+
+    $member->refresh();
+    expect($member->email)->toBe($oldEmail)
+        ->and($member->email_verified_at?->equalTo($oldVerifiedAt))->toBeTrue()
+        ->and((int) $member->verified_status)->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'member.updated_by_admin')->count())->toBe(0);
+    Notification::assertNothingSent();
 });
 
 it('hides member management from an admin without members.manage', function () {

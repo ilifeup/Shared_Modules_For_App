@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\S9;
 
+use App\Models\User;
+use App\Services\Course\CourseGroupReadiness;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -31,7 +34,7 @@ final class CourseGroupSchemaTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $result = app(\App\Services\Course\CourseGroupReadiness::class)->inspect($groupId);
+        $result = app(CourseGroupReadiness::class)->inspect($groupId);
 
         $this->assertFalse($result['ready']);
         $this->assertSame(12, $result['expected_event_count']);
@@ -51,7 +54,7 @@ final class CourseGroupSchemaTest extends TestCase
             'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $result = app(\App\Services\Course\CourseGroupReadiness::class)->inspect($groupId);
+        $result = app(CourseGroupReadiness::class)->inspect($groupId);
 
         $this->assertFalse($result['ready']);
         $this->assertContains('付款保留時數必須大於零。', $result['errors']);
@@ -60,7 +63,7 @@ final class CourseGroupSchemaTest extends TestCase
 
     public function test_one_member_cannot_hold_two_places_in_same_group(): void
     {
-        $member = \App\Models\User::factory()->create();
+        $member = User::factory()->create();
         $categoryId = DB::table('course_categories')->insertGetId([
             'name' => '基礎班', 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -83,7 +86,7 @@ final class CourseGroupSchemaTest extends TestCase
                 'request_key' => 'request-two', 'waitlist_sequence' => 2,
             ]));
             $this->fail('The database must reject duplicate member places.');
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+        } catch (UniqueConstraintViolationException $exception) {
             $this->assertSame(1, DB::table('course_group_members')
                 ->where('course_group_id', $groupId)->count());
         }

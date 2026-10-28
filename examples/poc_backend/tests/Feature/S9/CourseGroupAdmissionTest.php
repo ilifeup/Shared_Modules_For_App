@@ -4,6 +4,7 @@ namespace Tests\Feature\S9;
 
 use App\Models\User;
 use App\Services\Course\CourseGroupAdmission;
+use App\Support\Api\ApiException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -58,7 +59,7 @@ final class CourseGroupAdmissionTest extends TestCase
                 static function (): void {},
             );
             $this->fail('Malformed request keys must be rejected.');
-        } catch (\App\Support\Api\ApiException $exception) {
+        } catch (ApiException $exception) {
             $this->assertSame(422, $exception->status);
             $this->assertSame('INVALID_REQUEST_ID', $exception->errorCode);
         }
@@ -72,7 +73,9 @@ final class CourseGroupAdmissionTest extends TestCase
         $first = $this->member();
         $second = $this->member();
         $calls = 0;
-        $create = function () use (&$calls): void { $calls++; };
+        $create = function () use (&$calls): void {
+            $calls++;
+        };
         $service = app(CourseGroupAdmission::class);
 
         $one = $service->reserve($group, $first, $first, '00000000-0000-4000-8000-000000000001', $create);
@@ -102,7 +105,7 @@ final class CourseGroupAdmissionTest extends TestCase
                 throw new \RuntimeException('Must never invoke callback on replay.');
             });
             $this->fail('Revoked members must not replay protected enrollment details.');
-        } catch (\App\Support\Api\ApiException $exception) {
+        } catch (ApiException $exception) {
             $this->assertSame(403, $exception->status);
             $this->assertSame('MEMBER_NOT_ELIGIBLE', $exception->errorCode);
         }
@@ -127,7 +130,7 @@ final class CourseGroupAdmissionTest extends TestCase
         try {
             $service->reserve($group, $members[2], $members[2], '00000000-0000-4000-8000-000000000013', $callback);
             $this->fail('Waitlist must reject a sixth candidate once full.');
-        } catch (\App\Support\Api\ApiException $exception) {
+        } catch (ApiException $exception) {
             $this->assertSame('WAITLIST_FULL', $exception->errorCode);
         }
         $this->assertSame(2, DB::table('course_group_members')->where('course_group_id', $group)->count());
@@ -146,7 +149,7 @@ final class CourseGroupAdmissionTest extends TestCase
         try {
             $service->reserve($group, $second, $second, $key, $callback);
             $this->fail('Request keys must not be reused across members.');
-        } catch (\App\Support\Api\ApiException $exception) {
+        } catch (ApiException $exception) {
             $this->assertSame('IDEMPOTENCY_CONFLICT', $exception->errorCode);
         }
         $this->assertSame(1, DB::table('course_group_members')->where('course_group_id', $group)->count());
@@ -160,7 +163,9 @@ final class CourseGroupAdmissionTest extends TestCase
         try {
             app(CourseGroupAdmission::class)->reserve(
                 $group, $member, $member, '00000000-0000-4000-8000-000000000003',
-                static function (): void { throw new \RuntimeException('Simulated booking failure'); },
+                static function (): void {
+                    throw new \RuntimeException('Simulated booking failure');
+                },
             );
             $this->fail('A failed booking must not commit its group seat.');
         } catch (\RuntimeException $e) {

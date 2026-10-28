@@ -18,6 +18,7 @@ return new class extends Migration
             $table->timestamp('created_at');
         });
     }
+
     public function down(): void
     {
         Schema::dropIfExists('invoice_number_corrections');

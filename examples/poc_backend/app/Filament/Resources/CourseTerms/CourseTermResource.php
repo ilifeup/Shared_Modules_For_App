@@ -2,9 +2,12 @@
 
 namespace App\Filament\Resources\CourseTerms;
 
+use App\Filament\Resources\CalendarEvents\CalendarEventResource;
 use App\Filament\Resources\CourseTerms\Pages\CreateCourseTerm;
 use App\Filament\Resources\CourseTerms\Pages\EditCourseTerm;
 use App\Filament\Resources\CourseTerms\Pages\ListCourseTerms;
+use App\Filament\Resources\CourseTerms\RelationManagers\EnrollmentsRelationManager;
+use App\Filament\Resources\CourseTerms\RelationManagers\SessionsRelationManager;
 use App\Models\CourseTerm;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
@@ -18,9 +21,13 @@ use Illuminate\Database\Eloquent\Model;
 class CourseTermResource extends Resource
 {
     protected static ?string $model = CourseTerm::class;
+
     protected static ?string $modelLabel = '課程期別';
+
     protected static ?string $pluralModelLabel = '課程管理';
+
     protected static ?string $slug = 'course-terms';
+
     protected static ?int $navigationSort = 6;
 
     public static function canViewAny(): bool
@@ -28,8 +35,15 @@ class CourseTermResource extends Resource
         return auth()->user()?->can('events.manage') ?? false;
     }
 
-    public static function canCreate(): bool { return static::canViewAny(); }
-    public static function canEdit(Model $record): bool { return static::canViewAny(); }
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return static::canViewAny();
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -43,7 +57,7 @@ class CourseTermResource extends Resource
             TextInput::make('cancel_cutoff_days')->label('取消截止（開課前天數）')->integer()->minValue(0)->default(10)->required(),
             TextInput::make('price_amount')->label('整期課程金額（NT$）')->numeric()->minValue(1)->step(1)->default(1)->required(),
             TextInput::make('payment_hold_hours')->label('付款保留時數（空白採全域預設）')->integer()->minValue(1)->nullable(),
-            DateTimePicker::make('booking_closes_at')->label('報名截止時間')->seconds(false)->timezone(\App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->nullable(),
+            DateTimePicker::make('booking_closes_at')->label('報名截止時間')->seconds(false)->timezone(CalendarEventResource::displayTimezone())->nullable(),
         ]);
     }
 
@@ -57,15 +71,15 @@ class CourseTermResource extends Resource
             TextColumn::make('waitlist_capacity')->label('候補名額'),
             TextColumn::make('sessions_count')->label('堂數')->counts('sessions')->sortable(),
             TextColumn::make('enrollments_count')->label('報名總數')->counts('enrollments')->sortable(),
-            TextColumn::make('booking_closes_at')->label('報名截止')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone()),
+            TextColumn::make('booking_closes_at')->label('報名截止')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone()),
         ])->recordActions([EditAction::make()]);
     }
 
     public static function getRelations(): array
     {
         return [
-            \App\Filament\Resources\CourseTerms\RelationManagers\SessionsRelationManager::class,
-            \App\Filament\Resources\CourseTerms\RelationManagers\EnrollmentsRelationManager::class,
+            SessionsRelationManager::class,
+            EnrollmentsRelationManager::class,
         ];
     }
 

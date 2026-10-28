@@ -8,5 +8,4 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateCourseTerm extends CreateRecord
 {
     protected static string $resource = CourseTermResource::class;
-
 }

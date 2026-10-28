@@ -3,20 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CourseTerm extends Model
 {
     protected $table = 'course_terms';
+
     protected $guarded = ['id'];
 
-    public function sessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function sessions(): HasMany
     {
-        return $this->hasMany(\App\Models\CourseSession::class, 'course_term_id');
+        return $this->hasMany(CourseSession::class, 'course_term_id');
     }
 
-    public function enrollments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function enrollments(): HasMany
     {
-        return $this->hasMany(\App\Models\CourseEnrollment::class, 'course_term_id');
+        return $this->hasMany(CourseEnrollment::class, 'course_term_id');
     }
 
     protected function casts(): array

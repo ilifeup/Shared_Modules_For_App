@@ -45,6 +45,7 @@ final class CourseEnrollmentService
             ->where('booking_id', $enrollmentId)->first();
         if ($invoice !== null) {
             $result = app(CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+
             return ['id' => $enrollmentId, 'status' => 'confirmed',
                 'invoice_id' => (int) $invoice->id, 'replayed' => $result['replayed']];
         }

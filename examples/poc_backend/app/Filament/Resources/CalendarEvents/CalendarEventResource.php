@@ -16,6 +16,7 @@ use App\Services\Booking\BookingEngine;
 use App\Services\Calendar\EventSeriesService;
 use App\Services\Content\TagService;
 use App\Support\Api\ApiException;
+use App\Support\Settings;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -143,7 +144,7 @@ class CalendarEventResource extends Resource
                 ->helperText('MVP 僅線下現金收款；付費活動需設定足夠的付款保留時間。'),
             TextInput::make('payment_hold_hours')->label('付款保留時間（小時）')
                 ->numeric()->minValue(1)->maxValue(8760)
-                ->placeholder(fn (): string => (string) app(\App\Support\Settings::class)->int('payment_hold_hours'))
+                ->placeholder(fn (): string => (string) app(Settings::class)->int('payment_hold_hours'))
                 ->helperText('留空使用系統管理員設定的預設時數。付費活動的最後預約時間＋保留時間不得晚於活動開始時間。'),
             TextInput::make('booking_close_offset_minutes')->label('預約截止：活動開始前 N 分鐘（相對期限，改期自動重算）')->numeric()->minValue(0)->maxValue(525600)
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),

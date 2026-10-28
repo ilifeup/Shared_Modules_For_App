@@ -5,9 +5,11 @@ namespace Tests\Feature\S9;
 use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
+use App\Services\Payment\CashInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
 class CourseEnrollmentServiceTest extends TestCase
@@ -96,7 +98,7 @@ class CourseEnrollmentServiceTest extends TestCase
 
         $invoiceId = DB::table('invoices')->where('booking_type', '02')
             ->where('booking_id', $enrollment['id'])->value('id');
-        $paid = app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+        $paid = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
         $this->assertSame(1, $paid['status']);
         $this->assertSame('confirmed', DB::table('course_enrollments')->find($enrollment['id'])->status);
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
@@ -131,8 +133,8 @@ class CourseEnrollmentServiceTest extends TestCase
         $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
         $eventId = DB::table('course_sessions')->where('course_term_id', $term)->value('calendar_event_id');
         DB::table('event_booking_groups')
-            ->where('client_request_id', (string) \Ramsey\Uuid\Uuid::uuid5(
-                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+            ->where('client_request_id', (string) Uuid::uuid5(
+                Uuid::NAMESPACE_URL,
                 'course-enrollment:'.$enrollment['id'].':event:'.$eventId,
             ))->update(['status' => 'cancelled']);
 
@@ -142,7 +144,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('1.00', number_format((float) $invoice->invoice_amount, 2, '.', ''));
 
         try {
-            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+            app(CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
             $this->fail('Course payment cannot be confirmed without all session bookings.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('invoice', $exception->errors());
@@ -210,7 +212,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
     }
 
-
     public function test_paid_check_confirms_existing_session_bookings_without_duplicates(): void
     {
         $term = $this->term();
@@ -228,7 +229,6 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
         $this->assertNotNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
-
 
     public function test_readiness_reports_existing_session_bookings_without_mutating_payment(): void
     {
@@ -248,7 +248,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
-
     public function test_readiness_rechecks_current_database_member_qualification(): void
     {
         $term = $this->term();
@@ -257,7 +256,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $admin->assignRole(User::ADMIN_ROLE);
         $service = app(CourseEnrollmentService::class);
         $enrollment = $service->enroll($term, $member, $member);
-
 
         $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
 
@@ -323,7 +321,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('event_booking_attendees')->where('member_user_id', $member->id)->count());
     }
 
-
     public function test_active_family_manager_books_twelve_sessions_before_cash_confirmation(): void
     {
         $term = $this->term();
@@ -356,7 +353,6 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $family->id)->where('status', 'confirmed')->count());
     }
 
-
     public function test_revoked_family_delegation_blocks_fee_confirmation_and_all_session_bookings(): void
     {
         $term = $this->term();
@@ -386,7 +382,7 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('booking_id', $enrollment['id'])->value('id');
         $this->assertNotNull($invoiceId);
         try {
-            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
             $this->fail('Revoked family delegation must prevent cash confirmation.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('invoice', $exception->errors());
@@ -412,7 +408,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $member->forceFill(['verified_status' => 0])->save();
 
         try {
-            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
             $this->fail('Revoked membership must prevent cash confirmation.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('invoice', $exception->errors());
@@ -455,7 +451,6 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
     }
 
-
     public function test_non_admin_cannot_confirm_fee(): void
     {
         $term = $this->term();
@@ -482,7 +477,6 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
-
 
     public function test_readiness_reports_invalid_session_events_without_confirming_fee(): void
     {

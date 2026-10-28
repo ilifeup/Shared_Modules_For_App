@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\CourseTerms\RelationManagers;
 
+use App\Filament\Resources\CalendarEvents\CalendarEventResource;
 use Filament\Actions\Action;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
@@ -10,25 +11,26 @@ use Filament\Tables\Table;
 class SessionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'sessions';
+
     protected static ?string $title = '課堂列表';
 
     public function table(Table $table): Table
     {
         return $table->columns([
             TextColumn::make('id')->label('課堂 ID')->sortable(),
-                TextColumn::make('event.title')->label('課堂名稱')->searchable(),
-                TextColumn::make('event.status')->label('活動狀態')->formatStateUsing(fn (?string $state): string => match ($state) {
-                    'draft' => '草稿',
-                    'published' => '已發布',
-                    'cancelled' => '已取消',
-                    default => $state ?? '—',
-                }),
-                TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->sortable(),
-                TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i', timezone: \App\Filament\Resources\CalendarEvents\CalendarEventResource::displayTimezone())->sortable(),
-                TextColumn::make('makeup_capacity')->label('補課名額')->sortable(),
+            TextColumn::make('event.title')->label('課堂名稱')->searchable(),
+            TextColumn::make('event.status')->label('活動狀態')->formatStateUsing(fn (?string $state): string => match ($state) {
+                'draft' => '草稿',
+                'published' => '已發布',
+                'cancelled' => '已取消',
+                default => $state ?? '—',
+            }),
+            TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
+            TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
+            TextColumn::make('makeup_capacity')->label('補課名額')->sortable(),
         ])->recordActions([
             Action::make('editEvent')->label('編輯課堂活動')
-                ->url(fn ($record): string => \App\Filament\Resources\CalendarEvents\CalendarEventResource::getUrl('edit', ['record' => $record->calendar_event_id])),
+                ->url(fn ($record): string => CalendarEventResource::getUrl('edit', ['record' => $record->calendar_event_id])),
         ]);
     }
 }

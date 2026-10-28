@@ -15,8 +15,10 @@ use App\Models\MemberVerification;
 use App\Models\User;
 use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
+use App\Support\Settings;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid;
 
 /**
  * S9 M08 the only seat / waitlist engine (S9-L06 A).
@@ -268,8 +270,8 @@ final class BookingEngine
                         ->where('course_enrollments.status', 'pending_payment')
                         ->select('course_enrollments.id')->get();
                     $valid = $linked->contains(function ($entry) use ($locked, $request): bool {
-                        return $request->clientRequestId === (string) \Ramsey\Uuid\Uuid::uuid5(
-                            \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                        return $request->clientRequestId === (string) Uuid::uuid5(
+                            Uuid::NAMESPACE_URL,
                             'course-enrollment:'.$entry->id.':event:'.$locked->id,
                         );
                     });
@@ -418,8 +420,8 @@ final class BookingEngine
                         ->where('invoices.invoice_status', 3)
                         ->select('course_enrollments.id', 'course_enrollments.booker_user_id')->get();
                     foreach ($enrollments as $enrollment) {
-                        $expected = (string) \Ramsey\Uuid\Uuid::uuid5(
-                            \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                        $expected = (string) Uuid::uuid5(
+                            Uuid::NAMESPACE_URL,
                             'course-enrollment:'.$enrollment->id.':event:'.$locked->calendar_event_id,
                         );
                         if ($locked->client_request_id === $expected
@@ -664,7 +666,7 @@ final class BookingEngine
             }
 
             // Strict FIFO: do not skip the head if the full cash hold cannot fit.
-            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(\App\Support\Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
+            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
                 break;
             }
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();

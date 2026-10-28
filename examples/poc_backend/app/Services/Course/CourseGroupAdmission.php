@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid;
 
 /**
  * Internal admission primitive. NOT a public enrollment endpoint: the caller must
@@ -16,7 +17,7 @@ final class CourseGroupAdmission
 {
     public function reserve(int $groupId, User $booker, User $member, string $requestKey, callable $createEventBookingsAndInvoice): array
     {
-        if (! \Ramsey\Uuid\Uuid::isValid($requestKey)) {
+        if (! Uuid::isValid($requestKey)) {
             throw new ApiException(422, 'INVALID_REQUEST_ID', '請提供有效的請求識別碼。');
         }
 

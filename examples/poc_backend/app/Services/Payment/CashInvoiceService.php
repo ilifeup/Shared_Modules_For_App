@@ -6,9 +6,12 @@ use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingRequest;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Ramsey\Uuid\Uuid;
 
 /**
  * Cash-only MVP ledger. Invoke inside the caller's seat/term transaction.
@@ -38,7 +41,7 @@ final class CashInvoiceService
             return;
         }
         $id = DB::table('invoices')->insertGetId([
-            'invoice_code' => 'TMP-'.\Illuminate\Support\Str::uuid(),
+            'invoice_code' => 'TMP-'.Str::uuid(),
             'invoice_status' => 0,
             'invoice_amount' => $amount,
             'currency' => 'TWD',
@@ -113,6 +116,7 @@ final class CashInvoiceService
                     ->update(['invoice_status' => 3, 'updated_at' => now()]);
                 $this->releaseCourseBookings($entry);
                 $this->promoteCourseWaitlist((int) $entry->course_term_id);
+
                 return true;
             }, 3);
             if ($didExpire) {
@@ -135,8 +139,8 @@ final class CashInvoiceService
             ->orderBy('calendar_event_id')->pluck('calendar_event_id');
 
         foreach ($events as $eventId) {
-            $requestId = (string) \Ramsey\Uuid\Uuid::uuid5(
-                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+            $requestId = (string) Uuid::uuid5(
+                Uuid::NAMESPACE_URL,
                 'course-enrollment:'.$entry->id.':event:'.$eventId,
             );
             $group = EventBookingGroup::query()
@@ -200,14 +204,14 @@ final class CashInvoiceService
         ]);
         foreach ($eventIds as $eventId) {
             $event = CalendarEvent::query()->findOrFail($eventId);
-            $group = $engine->book($event, new \App\Services\Booking\BookingRequest(
+            $group = $engine->book($event, new BookingRequest(
                 booker: $booker,
                 contactName: $booker->name,
                 contactEmail: $booker->email,
                 contactPhone: $booker->phone_e164,
                 attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
-                clientRequestId: (string) \Ramsey\Uuid\Uuid::uuid5(
-                    \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                clientRequestId: (string) Uuid::uuid5(
+                    Uuid::NAMESPACE_URL,
                     'course-enrollment:'.$head->id.':event:'.$eventId,
                 ),
                 byAdmin: true,
@@ -233,6 +237,7 @@ final class CashInvoiceService
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => '請填寫退款原因。']);
         }
+
         return DB::transaction(function () use ($invoiceId, $admin, $reason): array {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($invoice === null || (int) $invoice->invoice_status !== 1) {
@@ -240,7 +245,7 @@ final class CashInvoiceService
             }
             DB::table('payment_transactions')->insert([
                 'invoice_id' => $invoiceId,
-                'transaction_code' => 'REFUND-'.\Illuminate\Support\Str::uuid(),
+                'transaction_code' => 'REFUND-'.Str::uuid(),
                 'transaction_amount' => '-'.ltrim((string) $invoice->invoice_amount, '+-'),
                 'currency' => $invoice->currency,
                 'payment_method' => 0, 'transaction_status' => 1,
@@ -254,6 +259,7 @@ final class CashInvoiceService
                 'invoice_id' => $invoiceId, 'staff_id' => $admin->id,
                 'reason' => $reason, 'created_at' => now(),
             ]);
+
             return ['id' => $invoiceId, 'status' => 5];
         }, 3);
     }
@@ -321,8 +327,8 @@ final class CashInvoiceService
                     throw ValidationException::withMessages(['invoice' => '本期尚未安排課堂，禁止確認收款。']);
                 }
                 foreach ($sessionIds as $eventId) {
-                    $requestId = (string) \Ramsey\Uuid\Uuid::uuid5(
-                        \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                    $requestId = (string) Uuid::uuid5(
+                        Uuid::NAMESPACE_URL,
                         'course-enrollment:'.$enrollment->id.':event:'.$eventId,
                     );
                     $booked = EventBookingGroup::query()
@@ -345,7 +351,7 @@ final class CashInvoiceService
             }
             DB::table('payment_transactions')->insert([
                 'invoice_id' => $invoiceId,
-                'transaction_code' => 'CASH-'.\Illuminate\Support\Str::uuid(),
+                'transaction_code' => 'CASH-'.Str::uuid(),
                 'transaction_amount' => $invoice->invoice_amount,
                 'currency' => 'TWD',
                 'payment_method' => 0,

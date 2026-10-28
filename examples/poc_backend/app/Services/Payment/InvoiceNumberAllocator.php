@@ -22,6 +22,7 @@ final class InvoiceNumberAllocator
             || ! preg_match('/^[0-9]{4}(0[1-9]|1[0-2])$/', $period)) {
             throw ValidationException::withMessages(['range' => '須輸入相同兩碼字軌、八碼數字及合法期別（YYYYMM）。']);
         }
+
         return DB::transaction(function () use ($start, $end, $period, $admin): int {
             // Lock the range set by serializing creation against a stable user row.
             DB::table('users')->orderBy('id')->lockForUpdate()->first();
@@ -32,6 +33,7 @@ final class InvoiceNumberAllocator
                 ->where('start_number', '<=', $to)->where('end_number', '>=', $from)->exists()) {
                 throw ValidationException::withMessages(['range' => '發票區間與既有字軌重疊。']);
             }
+
             return DB::table('invoice_number_ranges')->insertGetId([
                 'prefix' => $prefix, 'start_number' => $from, 'end_number' => $to,
                 'next_number' => $from, 'period_code' => $period, 'active' => true,
@@ -47,9 +49,10 @@ final class InvoiceNumberAllocator
             throw ValidationException::withMessages(['admin' => '僅管理員可更正發票號碼。']);
         }
         $newNumber = strtoupper(trim($newNumber));
-        if (! preg_match('/^[A-Z]{2}[0-9]{8}$/', $newNumber) ) {
+        if (! preg_match('/^[A-Z]{2}[0-9]{8}$/', $newNumber)) {
             throw ValidationException::withMessages(['invoice_no' => '發票號碼須為兩碼英文字母與八碼數字。']);
         }
+
         return DB::transaction(function () use ($invoiceId, $newNumber, $reason, $admin): string {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($invoice === null || $invoice->invoice_no === null) {
@@ -71,6 +74,7 @@ final class InvoiceNumberAllocator
                 'invoice_number_range_id' => null,
                 'updated_at' => now(),
             ]);
+
             return $newNumber;
         }, 3);
     }
@@ -80,6 +84,7 @@ final class InvoiceNumberAllocator
         if (! $admin->is_active || ! $admin->isAdmin()) {
             throw ValidationException::withMessages(['admin' => '僅管理員可配發發票號碼。']);
         }
+
         return DB::transaction(function () use ($invoiceId): string {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($invoice === null || (int) $invoice->invoice_status !== 1) {
@@ -105,6 +110,7 @@ final class InvoiceNumberAllocator
                 'invoice_no' => $number, 'invoice_number_range_id' => $range->id,
                 'tax_invoice_issued_at' => now(), 'updated_at' => now(),
             ]);
+
             return $number;
         }, 3);
     }

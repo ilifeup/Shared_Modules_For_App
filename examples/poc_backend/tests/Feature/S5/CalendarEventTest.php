@@ -5,6 +5,7 @@ use App\Filament\Resources\CalendarEvents\Pages\ListCalendarEvents;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\User;
+use App\Support\Settings;
 use Filament\Facades\Filament;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -211,7 +212,6 @@ it('rejects invalid intervals on direct model create and update but accepts over
     }
 });
 
-
 it('rejects paid events whose booking deadline violates the cash hold period', function () {
     expect(fn () => calendarEvent([
         'booking_enabled' => true,
@@ -240,9 +240,8 @@ it('rejects nonpositive cash hold hours and negative event prices', function () 
         ->toThrow(ValidationException::class);
 });
 
-
 it('uses administrator cash hold default when the event has no override', function () {
-    app(\App\Support\Settings::class)->put(['payment_hold_hours' => 24]);
+    app(Settings::class)->put(['payment_hold_hours' => 24]);
 
     $event = calendarEvent([
         'booking_enabled' => true,

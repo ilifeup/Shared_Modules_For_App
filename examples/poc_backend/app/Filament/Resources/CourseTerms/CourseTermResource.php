@@ -55,6 +55,8 @@ class CourseTermResource extends Resource
             TextColumn::make('price_amount')->label('整期金額')->sortable(),
             TextColumn::make('enrollment_capacity')->label('正式名額'),
             TextColumn::make('waitlist_capacity')->label('候補名額'),
+            TextColumn::make('sessions_count')->label('堂數')->counts('sessions'),
+            TextColumn::make('enrollments_count')->label('報名總數')->counts('enrollments'),
             TextColumn::make('booking_closes_at')->label('報名截止')->dateTime('Y-m-d H:i'),
         ])->recordActions([EditAction::make()]);
     }

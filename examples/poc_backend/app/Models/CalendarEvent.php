@@ -39,7 +39,7 @@ class CalendarEvent extends Model
 
     protected $fillable = [
         'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
-        'booking_enabled', 'booking_capacity', 'booking_opens_at', 'booking_closes_at',
+        'booking_enabled', 'booking_capacity', 'waitlist_capacity', 'booking_opens_at', 'booking_closes_at',
         // S9 (M08/M09/M11)
         'event_category_id', 'timezone', 'floor', 'studio', 'booking_max_seats', 'waitlist_enabled',
         'booking_close_offset_minutes', 'cancel_closes_at', 'cancel_offset_minutes',
@@ -55,6 +55,7 @@ class CalendarEvent extends Model
             'cancelled_at' => 'datetime',
             'booking_enabled' => 'boolean',
             'booking_capacity' => 'integer',
+            'waitlist_capacity' => 'integer',
             'booking_opens_at' => 'datetime',
             'booking_closes_at' => 'datetime',
             'series_original_start_at' => 'datetime',
@@ -86,6 +87,12 @@ class CalendarEvent extends Model
             if ($event->booking_enabled && ($event->booking_capacity === null || $event->booking_capacity < 1)) {
                 throw ValidationException::withMessages([
                     'booking_capacity' => ['開放預約時，名額至少 1 人。'],
+                ]);
+            }
+
+            if ($event->waitlist_capacity !== null && $event->waitlist_capacity < 0) {
+                throw ValidationException::withMessages([
+                    'waitlist_capacity' => ['候補名額不得小於 0。'],
                 ]);
             }
 

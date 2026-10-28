@@ -47,7 +47,7 @@ return new class extends Migration
             $table->text('reason');
             $table->timestamp('requested_at');
             $table->timestamps();
-            $table->unique(['course_enrollment_id', 'course_session_id']);
+            $table->unique(['course_enrollment_id', 'course_session_id'], 'course_leave_enrollment_session_uq');
         });
 
         Schema::create('course_makeups', function (Blueprint $table) {

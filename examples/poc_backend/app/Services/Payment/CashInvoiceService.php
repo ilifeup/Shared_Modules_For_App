@@ -301,10 +301,19 @@ final class CashInvoiceService
                 if ($enrollment === null || $enrollment->status !== 'pending_payment') {
                     throw ValidationException::withMessages(['invoice' => '整期課程名額已失效，禁止收款。']);
                 }
-                // Do not accept cash before every course session has an active
-                // booking for this exact enrollment. The existing enrollment
-                // flow does not yet create these bookings; fail closed until
-                // the atomic reservation migration is completed.
+                // Recheck persisted member and delegation eligibility at the
+                // moment cash is confirmed; earlier enrollment is not authority.
+                $member = User::query()->find($enrollment->user_id);
+                $booker = User::query()->find($enrollment->booker_user_id);
+                if ($member === null || $booker === null
+                    || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
+                    throw ValidationException::withMessages([
+                        'invoice' => '會員資格或家庭代訂權限已失效，禁止確認收款。',
+                    ]);
+                }
+
+                // The enrollment transaction already creates every derived
+                // booking; refuse cash if any required booking is missing.
                 $sessionIds = DB::table('course_sessions')
                     ->where('course_term_id', $enrollment->course_term_id)
                     ->pluck('calendar_event_id');

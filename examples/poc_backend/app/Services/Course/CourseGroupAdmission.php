@@ -16,7 +16,7 @@ final class CourseGroupAdmission
 {
     public function reserve(int $groupId, User $booker, User $member, string $requestKey, callable $createEventBookingsAndInvoice): array
     {
-        if (! preg_match('/^[a-f0-9-]{36}$/i', $requestKey)) {
+        if (! \Ramsey\Uuid\Uuid::isValid($requestKey)) {
             throw new ApiException(422, 'INVALID_REQUEST_ID', '請提供有效的請求識別碼。');
         }
 

@@ -20,9 +20,8 @@ final class CourseEnrollmentService
     ) {}
 
     /**
-     * A single administrator confirms an offline payment. Repeat calls are safe:
-     * confirmed enrollments remain confirmed without duplicate transitions.
-     * Every session booking and the fee confirmation share one DB transaction.
+     * Compatibility endpoint: only the cash-invoice service may confirm payment.
+     * No direct course state transition or session booking is allowed here.
      */
     public function confirmFee(int $enrollmentId, User $admin): array
     {
@@ -30,80 +29,9 @@ final class CourseEnrollmentService
             throw ValidationException::withMessages(['admin' => '僅管理員可確認收費。']);
         }
 
-        // Legacy entry point must not bypass the real cash invoice ledger.
-        // The integrated course booking/payment migration will replace this
-        // method after its session-booking atomicity is verified.
         throw ValidationException::withMessages([
             'invoice' => '舊版課程收費確認已停用；請使用整期帳單確認現金收款。',
         ]);
-
-        return DB::transaction(function () use ($enrollmentId): array {
-            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
-            if ($entry === null) {
-                throw ValidationException::withMessages(['enrollment' => '報名紀錄不存在。']);
-            }
-
-            DB::table('course_terms')->where('id', $entry->course_term_id)->lockForUpdate()->first();
-            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->lockForUpdate()->first();
-
-            if ($entry->status === 'confirmed') {
-                return ['id' => $enrollmentId, 'status' => 'confirmed'];
-            }
-            if ($entry->status !== 'pending_payment') {
-                throw ValidationException::withMessages(['enrollment' => '只有待收費報名可以確認。']);
-            }
-
-            $sessions = DB::table('course_sessions')
-                ->where('course_term_id', $entry->course_term_id)
-                ->orderBy('id')->pluck('calendar_event_id')->all();
-            if ($sessions === []) {
-                throw ValidationException::withMessages(['enrollment' => '本期尚未設定單堂課程。']);
-            }
-
-            $member = User::query()->findOrFail($entry->user_id);
-            $booker = User::query()->findOrFail($entry->booker_user_id);
-            if (! $member->is_active || (int) $member->verified_status !== 2
-                || ! $booker->is_active || (int) $booker->verified_status !== 2) {
-                throw ValidationException::withMessages(['member' => '會員資格已失效，無法確認整期課程。']);
-            }
-
-            // A guardian's authority may have ended after term enrollment.
-            // Recheck the current database relationship before any session seat is booked.
-            if (! $this->bookings->canManageFamily($booker, $member, true)) {
-                throw ValidationException::withMessages(['member' => '家庭代管權限已失效，無法確認整期課程。']);
-            }
-
-            foreach ($sessions as $eventId) {
-                $event = CalendarEvent::query()->findOrFail($eventId);
-                // Course confirmation must never create a waitlist place.
-                if ($this->bookings->unavailableReason($event, 1, true) !== null) {
-                    throw ValidationException::withMessages(['session' => '單堂課程無法完成正式預約。']);
-                }
-                $group = $this->bookings->book($event, new BookingRequest(
-                    booker: $booker,
-                    contactName: $booker->name,
-                    contactEmail: $booker->email,
-                    contactPhone: $booker->phone_e164,
-                    attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
-                    clientRequestId: (string) Uuid::uuid5(
-                        Uuid::NAMESPACE_URL,
-                        'course-enrollment:'.$enrollmentId.':event:'.$eventId,
-                    ),
-                    byAdmin: true,
-                ));
-                if ($group->status !== EventBookingGroup::STATUS_CONFIRMED) {
-                    throw ValidationException::withMessages(['session' => '單堂課程未取得正式名額。']);
-                }
-            }
-
-            DB::table('course_enrollments')->where('id', $enrollmentId)->update([
-                'status' => 'confirmed',
-                'fee_confirmed_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            return ['id' => $enrollmentId, 'status' => 'confirmed'];
-        }, 3);
     }
 
     /**

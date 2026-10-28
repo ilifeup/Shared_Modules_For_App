@@ -105,7 +105,10 @@ class FamilyManagement extends Page
     public function downloadEvidence(int $id)
     {
         $application = DB::table('family_member_applications')->where('id', $id)->first();
-        if ($application === null || ! \Illuminate\Support\Facades\Storage::disk('local')->exists($application->evidence_path)) {
+        if ($application === null || ! is_string($application->evidence_path)
+            || preg_match('/\Afamily-evidence\/[A-Za-z0-9._-]+\z/D', $application->evidence_path) !== 1
+            || str_contains($application->evidence_path, '..')
+            || ! \Illuminate\Support\Facades\Storage::disk('local')->exists($application->evidence_path)) {
             throw ValidationException::withMessages(['reviewNote' => '找不到證明文件。']);
         }
         return \Illuminate\Support\Facades\Storage::disk('local')

@@ -171,7 +171,10 @@ final class FamilyApplicationController extends Controller
         if ($application === null) {
             throw new ApiException(404, 'APPLICATION_NOT_FOUND', 'Application not found.');
         }
-        if (! Storage::disk('local')->exists($application->evidence_path)) {
+        if (! is_string($application->evidence_path)
+            || preg_match('/\Afamily-evidence\/[A-Za-z0-9._-]+\z/D', $application->evidence_path) !== 1
+            || str_contains($application->evidence_path, '..')
+            || ! Storage::disk('local')->exists($application->evidence_path)) {
             throw new ApiException(404, 'EVIDENCE_NOT_FOUND', 'Evidence not found.');
         }
         return Storage::disk('local')->download($application->evidence_path, 'relationship-evidence');

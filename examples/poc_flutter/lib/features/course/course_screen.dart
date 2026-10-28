@@ -48,7 +48,7 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
           .read(dioProvider)
           .post(
             '/course-terms/$termId/enrollments',
-            data: {if (memberId != null) 'member_user_id': memberId},
+            data: {'member_user_id': ?memberId},
           );
       ref.invalidate(myCourseEnrollmentsProvider);
       if (mounted) setState(() => _message = '已提交報名');

@@ -47,7 +47,7 @@ class CheckinController extends Controller
     {
         $data = $this->validateScan($request);
         $event = CalendarEvent::query()->listed()->findOrFail($id);
-        $results = $this->checkins->memberCheckIn($event, $request->user(), $data['attendee_ids'], $data['event_token'] ?? null, $data['location_token'] ?? null, [
+        $results = $this->checkins->memberCheckIn($event, $request->user(), (int) $data['attendee_ids'][0], $data['event_token'] ?? null, $data['location_token'] ?? null, [
             'lat' => $data['lat'] ?? null, 'lng' => $data['lng'] ?? null, 'accuracy' => $data['accuracy'] ?? null,
         ]);
 

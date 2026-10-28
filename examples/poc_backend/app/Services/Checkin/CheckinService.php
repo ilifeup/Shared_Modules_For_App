@@ -57,11 +57,10 @@ class CheckinService
     /**
      * Member self check-in with the event QR (D07) or a Location QR (D09, D19).
      *
-     * @param  list<int>  $attendeeIds
      * @param  array{lat?: float|null, lng?: float|null, accuracy?: float|null}  $gps
      * @return list<array{attendee_id: string, result: string, attendance: EventAttendance}>
      */
-    public function memberCheckIn(CalendarEvent $event, User $member, array $attendeeIds, ?string $eventToken, ?string $locationToken, array $gps = []): array
+    public function memberCheckIn(CalendarEvent $event, User $member, int $attendeeId, ?string $eventToken, ?string $locationToken, array $gps = []): array
     {
         if ($eventToken !== null) {
             if ($this->tokens->verify($eventToken, 'e') !== $event->id) {
@@ -79,30 +78,16 @@ class CheckinService
             throw new ApiException(422, 'VALIDATION_FAILED', '請掃描活動或地點 QR Code。');
         }
 
-        $mine = $this->attendeesOf($event, $member)->keyBy('id');
-        $ids = array_values(array_unique($attendeeIds));
-        // Validate the entire requested ownership set before changing any attendance.
-        foreach ($ids as $id) {
-            if (! $mine->has($id)) {
-                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            }
+        $attendee = $this->attendeesOf($event, $member)->firstWhere('id', $attendeeId);
+        if ($attendee === null) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
         }
 
-        // All attendee state changes and their audit entries share one transaction.
-        // Any failure rolls back the entire HTTP batch (M11-D07, #36 decision A).
-        return DB::transaction(function () use ($ids, $mine, $event, $member, $source): array {
-            // Lock existing parent rows in one stable order before inserting missing
-            // attendance rows. Reverse-order concurrent batches otherwise deadlock
-            // on MySQL gap/unique-key locks and return an unexpected HTTP 500.
-            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
-                ->lockForUpdate()->get(['id']);
-            $results = [];
-            foreach ($ids as $id) {
-                $results[] = $this->checkIn($event, $mine->get($id), $member, $source);
-            }
+        return DB::transaction(function () use ($attendeeId, $attendee, $event, $member, $source): array {
+            EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
 
-            return $results;
-        }, 3); // Retry only transaction-safe MySQL deadlocks.
+            return [$this->checkIn($event, $attendee, $member, $source)];
+        }, 3);
     }
 
     /**

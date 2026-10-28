@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\S9;
 
+use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -127,7 +128,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
 
-        $event = \App\Models\CalendarEvent::query()->create([
+        $event = CalendarEvent::query()->create([
             'title' => 'Unpublished course session',
             'starts_at' => now()->addDays(10),
             'ends_at' => now()->addDays(10)->addHours(2),

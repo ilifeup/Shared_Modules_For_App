@@ -107,7 +107,7 @@ final class FamilyMembershipController extends Controller
     public function saveProfile(Request $request, int $memberId): JsonResponse
     {
         $manager = $request->user();
-        if ((int) $manager->verified_status !== 2 || ! $manager->is_active) {
+        if ((int) $manager->verified_status !== 2 || ! $manager->is_active || $manager->FamilyUser) {
             throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證會員使用。');
         }
 
@@ -152,7 +152,7 @@ final class FamilyMembershipController extends Controller
     public function index(Request $request): JsonResponse
     {
         $manager = $request->user();
-        if ((int) $manager->verified_status !== 2 || ! $manager->is_active) {
+        if ((int) $manager->verified_status !== 2 || ! $manager->is_active || $manager->FamilyUser) {
             throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '家庭代管功能僅供已驗證會員使用。');
         }
         $rows = DB::table('family_memberships')

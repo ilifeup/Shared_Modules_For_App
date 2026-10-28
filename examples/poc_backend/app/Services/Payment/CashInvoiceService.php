@@ -77,7 +77,7 @@ final class CashInvoiceService
             }
         }
 
-        // Course holds reserve one whole-term seat, not one seat per session.
+        // Course expiration must also release its session bookings before a waitlist promotion.
         $courseDue = DB::table('invoices')->where('invoice_status', 0)
             ->where('booking_type', '02')->whereNotNull('payment_due_at')
             ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)

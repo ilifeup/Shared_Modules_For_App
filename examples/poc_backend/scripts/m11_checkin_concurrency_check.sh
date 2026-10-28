@@ -21,7 +21,7 @@ $event = App\Models\CalendarEvent::query()->create([
 "event_category_id" => $category->id,
 ]);
 $user = App\Models\User::factory()->create();
-$companion = App\Models\User::factory()->create();
+$companion = App\Models\User::factory()->create(["FamilyUser" => true, "verified_status" => 2]);
 // Integrated #43 schema is mandatory; fail rather than silently bypass delegation.
 \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
     "manager_user_id" => $user->id, "member_user_id" => $companion->id,

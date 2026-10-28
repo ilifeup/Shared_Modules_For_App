@@ -62,7 +62,7 @@ final class CourseEnrollmentController extends Controller
     /** POST /api/v1/admin/course-enrollments/{id}/confirm-fee. */
     public function confirmFee(Request $request, int $id): JsonResponse
     {
-        $result = $this->enrollments->confirmFee($id, $request->user());
+        $result = $this->enrollments->paidCheck($id, $request->user());
 
         return new JsonResponse(['data' => $result]);
     }

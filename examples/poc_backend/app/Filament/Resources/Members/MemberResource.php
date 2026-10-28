@@ -10,6 +10,7 @@ use App\Models\MembershipLevel;
 use App\Models\User;
 use App\Notifications\MemberNotification;
 use App\Services\MemberNotifier;
+use App\Services\MemberQualificationService;
 use App\Services\MembershipService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
@@ -130,7 +131,7 @@ class MemberResource extends Resource
                 TernaryFilter::make('phone_verified_at')->label('手機驗證')->nullable()
                     ->trueLabel('已驗證')->falseLabel('未驗證'),
                 SelectFilter::make('verified_status')->label('會員資格')
-                    ->options(['1' => '註冊未驗證', '2' => '已驗證會員']),
+                    ->options(['0' => '註冊未驗證（資格已撤銷）', '1' => '註冊未驗證', '2' => '已驗證會員']),
                 TernaryFilter::make('is_active')->label('帳號狀態')
                     ->trueLabel('啟用')->falseLabel('停用'),
                 Filter::make('vip')->label('有效 VIP')
@@ -142,6 +143,24 @@ class MemberResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
+                Action::make('grantMembership')
+                    ->label('核准會員資格')
+                    ->visible(fn (User $record): bool => (int) $record->verified_status !== 2 && (auth()->user()?->can('members.manage') ?? false))
+                    ->requiresConfirmation()
+                    ->action(function (User $record): void {
+                        app(MemberQualificationService::class)->setVerified($record, auth()->user(), true);
+
+                        Notification::make()->title('已核准會員資格')->success()->send();
+                    }),
+                Action::make('revokeMembership')
+                    ->label('撤銷會員資格')
+                    ->visible(fn (User $record): bool => (int) $record->verified_status === 2 && (auth()->user()?->can('members.manage') ?? false))
+                    ->requiresConfirmation()
+                    ->action(function (User $record): void {
+                        app(MemberQualificationService::class)->setVerified($record, auth()->user(), false);
+
+                        Notification::make()->title('已撤銷會員資格')->success()->send();
+                    }),
                 Action::make('assignLevel')
                     ->label('指派等級')
                     ->schema([

@@ -8,4 +8,14 @@ class CourseEnrollment extends Model
 {
     protected $table = 'course_enrollments';
     protected $guarded = ['id'];
+
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function booker(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'booker_user_id');
+    }
 }

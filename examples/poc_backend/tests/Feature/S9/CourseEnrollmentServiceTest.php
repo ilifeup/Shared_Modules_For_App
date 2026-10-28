@@ -16,7 +16,7 @@ class CourseEnrollmentServiceTest extends TestCase
 
     private function term(int $capacity = 1, int $waitlist = 5): int
     {
-        return DB::table('course_terms')->insertGetId([
+        $termId = DB::table('course_terms')->insertGetId([
             'title' => 'MVP test term',
             'price_amount' => 1,
             'enrollment_capacity' => $capacity,
@@ -24,6 +24,15 @@ class CourseEnrollmentServiceTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $event = s9Event(['booking_capacity' => max(2, $capacity + $waitlist + 1)]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $termId,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $termId;
     }
 
     private function verified(): User

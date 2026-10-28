@@ -250,18 +250,40 @@ final class BookingEngine
 
                 // Each accepted booking represents exactly one verified member.
                 $seats = 1;
-                $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
-
-                $status = match (true) {
-                    $reason === null => EventBookingGroup::STATUS_CONFIRMED,
-                    $reason === 'full' && $locked->waitlist_enabled => EventBookingGroup::STATUS_WAITLISTED,
-                    default => throw self::unavailable($reason),
-                };
-
-                // Serialized by the event row lock; never create a group past the waitlist limit.
-                if ($status === EventBookingGroup::STATUS_WAITLISTED
-                    && $this->waitingGroups($locked) >= (int) $locked->waitlist_capacity) {
-                    throw new ApiException(409, 'WAITLIST_FULL', '候補名額已滿。');
+                if ($coveredByCourseTerm) {
+                    // This is a derived seat of an already admitted whole term,
+                    // not a new independent event capacity or waitlist decision.
+                    // Authenticate the precise enrollment and deterministic key
+                    // BEFORE allowing this distinct booking path.
+                    $attendee = $request->attendees[0];
+                    $linked = DB::table('course_enrollments')
+                        ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
+                        ->where('course_sessions.calendar_event_id', $locked->id)
+                        ->where('course_enrollments.user_id', $attendee['member_user_id'])
+                        ->where('course_enrollments.booker_user_id', $request->booker->id)
+                        ->where('course_enrollments.status', 'pending_payment')
+                        ->select('course_enrollments.id')->get();
+                    $valid = $linked->contains(function ($entry) use ($locked, $request): bool {
+                        return $request->clientRequestId === (string) \Ramsey\Uuid\Uuid::uuid5(
+                            \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                            'course-enrollment:'.$entry->id.':event:'.$locked->id,
+                        );
+                    });
+                    if (! $valid) {
+                        throw new ApiException(422, 'INVALID_COURSE_BOOKING', '整期課程預約關聯無效。');
+                    }
+                    $status = EventBookingGroup::STATUS_CONFIRMED;
+                } else {
+                    $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
+                    $status = match (true) {
+                        $reason === null => EventBookingGroup::STATUS_CONFIRMED,
+                        $reason === 'full' && $locked->waitlist_enabled => EventBookingGroup::STATUS_WAITLISTED,
+                        default => throw self::unavailable($reason),
+                    };
+                    if ($status === EventBookingGroup::STATUS_WAITLISTED
+                        && $this->waitingGroups($locked) >= (int) $locked->waitlist_capacity) {
+                        throw new ApiException(409, 'WAITLIST_FULL', '候補名額已滿。');
+                    }
                 }
 
                 $group = $this->createGroup($locked, [
@@ -279,27 +301,7 @@ final class BookingEngine
                 $attendee = $request->attendees[0];
                 $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
                 if ($status === EventBookingGroup::STATUS_CONFIRMED) {
-                    if ($coveredByCourseTerm) {
-                        // A course flag must never bypass an ordinary paid-event invoice.
-                        // Only a real pending whole-term enrollment with the exact
-                        // deterministic request ID can use the single term invoice.
-                        $linked = DB::table('course_enrollments')
-                            ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
-                            ->where('course_sessions.calendar_event_id', $locked->id)
-                            ->where('course_enrollments.user_id', $attendee['member_user_id'])
-                            ->where('course_enrollments.booker_user_id', $request->booker->id)
-                            ->where('course_enrollments.status', 'pending_payment')
-                            ->select('course_enrollments.id')->get();
-                        $valid = $linked->contains(function ($entry) use ($locked, $request): bool {
-                            return $request->clientRequestId === (string) \Ramsey\Uuid\Uuid::uuid5(
-                                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
-                                'course-enrollment:'.$entry->id.':event:'.$locked->id,
-                            );
-                        });
-                        if (! $valid) {
-                            throw new ApiException(422, 'INVALID_COURSE_BOOKING', '整期課程預約關聯無效。');
-                        }
-                    } else {
+                    if (! $coveredByCourseTerm) {
                         app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
                     }
                 }

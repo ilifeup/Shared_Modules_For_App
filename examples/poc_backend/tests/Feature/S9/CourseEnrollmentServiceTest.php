@@ -412,7 +412,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $member->forceFill(['verified_status' => 0])->save();
 
         try {
-            app(\App\Services\\Payment\\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
             $this->fail('Revoked membership must prevent cash confirmation.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('invoice', $exception->errors());

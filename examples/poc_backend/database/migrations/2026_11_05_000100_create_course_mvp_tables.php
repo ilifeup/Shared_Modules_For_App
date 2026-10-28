@@ -11,7 +11,9 @@ return new class extends Migration
         Schema::create('course_terms', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->unsignedBigInteger('studio_id')->nullable();
+            $table->string('location')->nullable();
+            $table->string('floor_landmark')->nullable();
+            $table->string('studio')->nullable();
             $table->unsignedInteger('enrollment_capacity');
             $table->unsignedInteger('waitlist_capacity')->default(5);
             $table->unsignedInteger('cancel_cutoff_days')->default(10);

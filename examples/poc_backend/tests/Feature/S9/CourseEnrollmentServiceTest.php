@@ -101,6 +101,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $member);
     }
+
     public function test_admin_readiness_does_not_mutate_pending_payment(): void
     {
         $term = $this->term();
@@ -126,5 +127,4 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmationReadiness($enrollment['id'], $member);
     }
-
 }

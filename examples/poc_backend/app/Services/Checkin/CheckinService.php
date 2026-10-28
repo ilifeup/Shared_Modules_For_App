@@ -9,7 +9,7 @@ use App\Models\EventAttendance;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
-use App\Services\Family\FamilyDelegation;
+use App\Services\Booking\BookingEngine;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Database\QueryException;
@@ -58,7 +58,7 @@ class CheckinService
             ->whereIn('status', [EventBookingAttendee::STATUS_CONFIRMED, EventBookingAttendee::STATUS_WAITLISTED])
             ->orderBy('id')->get()
             ->filter(fn (EventBookingAttendee $attendee): bool => $attendee->member !== null
-                && app(FamilyDelegation::class)->canManage($member, $attendee->member))
+                && app(BookingEngine::class)->canManageFamily($member, $attendee->member))
             ->values();
     }
 
@@ -66,7 +66,7 @@ class CheckinService
     public function assertMemberMayManageAttendee(User $member, EventBookingAttendee $attendee): void
     {
         $subject = User::query()->find($attendee->member_user_id);
-        if ($subject === null || ! app(FamilyDelegation::class)->canManage($member, $subject, true)) {
+        if ($subject === null || ! app(BookingEngine::class)->canManageFamily($member, $subject, true)) {
             throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
         }
     }

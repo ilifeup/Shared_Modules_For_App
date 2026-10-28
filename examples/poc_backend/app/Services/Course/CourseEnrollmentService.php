@@ -106,6 +106,14 @@ final class CourseEnrollmentService
      */
     public function paidCheck(int $enrollmentId, User $admin): array
     {
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollmentId)->first();
+        if ($invoice !== null) {
+            $result = app(CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+            return ['id' => $enrollmentId, 'status' => 'confirmed',
+                'invoice_id' => (int) $invoice->id, 'replayed' => $result['replayed']];
+        }
+        // Legacy/free enrollment path retained until session booking migration.
         return $this->confirmFee($enrollmentId, $admin);
     }
 

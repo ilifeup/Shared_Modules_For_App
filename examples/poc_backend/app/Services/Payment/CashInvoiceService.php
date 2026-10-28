@@ -190,6 +190,11 @@ final class CashInvoiceService
             DB::table('invoices')->where('id', $invoiceId)->update([
                 'invoice_status' => 1, 'paid_at' => now(), 'staff_id' => $admin->id, 'updated_at' => now(),
             ]);
+            if ($invoice->booking_type === '02') {
+                DB::table('course_enrollments')->where('id', $invoice->booking_id)->update([
+                    'status' => 'confirmed', 'fee_confirmed_at' => now(), 'updated_at' => now(),
+                ]);
+            }
 
             return ['id' => $invoiceId, 'status' => 1, 'replayed' => false];
         }, 3);

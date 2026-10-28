@@ -133,3 +133,39 @@ it('allows a manager to edit only their own family profile without changing iden
         'address' => 'Updated family address',
     ]);
 });
+
+it('lists editable family profiles only for the currently authorized manager', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $otherManager = User::factory()->create(['verified_status' => 2]);
+    $family = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2, 'password' => null]);
+    $otherFamily = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2, 'password' => null]);
+    $now = now();
+
+    DB::table('family_memberships')->insert([
+        ['manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+            'relationship' => 'child', 'status' => 'active', 'started_at' => $now,
+            'created_at' => $now, 'updated_at' => $now],
+        ['manager_user_id' => $otherManager->id, 'member_user_id' => $otherFamily->id,
+            'relationship' => 'child', 'status' => 'active', 'started_at' => $now,
+            'created_at' => $now, 'updated_at' => $now],
+    ]);
+    DB::table('family_member_profiles')->insert([
+        ['member_user_id' => $family->id, 'birth_date' => '2015-06-01',
+            'address' => 'My family address', 'contact_phone' => '0912345678',
+            'contact_email' => 'my-family@example.test', 'created_at' => $now, 'updated_at' => $now],
+        ['member_user_id' => $otherFamily->id, 'birth_date' => '2016-01-01',
+            'address' => 'Other family address', 'contact_phone' => '0987654321',
+            'contact_email' => 'other-family@example.test', 'created_at' => $now, 'updated_at' => $now],
+    ]);
+
+    $this->actingAs($manager, 'sanctum')
+        ->getJson('/api/v1/me/family-memberships')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.member_user_id', $family->id)
+        ->assertJsonPath('data.0.birth_date', '2015-06-01')
+        ->assertJsonPath('data.0.address', 'My family address')
+        ->assertJsonPath('data.0.contact_phone', '0912345678')
+        ->assertJsonPath('data.0.contact_email', 'my-family@example.test')
+        ->assertDontSee('other-family@example.test');
+});

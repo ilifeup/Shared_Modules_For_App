@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\CourseEnrollmentController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvCatalogController;
@@ -107,6 +108,9 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     // S5 M09 calendar (public and member events).
     Route::get('/events', [CalendarEventController::class, 'index']);
     Route::get('/events/{id}', [CalendarEventController::class, 'show'])->whereNumber('id');
+
+    // Course MVP: verified member enrolls self or an authorized family member.
+    Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
 
     // S6 M08 bookings (own bookings only).
     Route::get('/events/{id}/booking', [BookingController::class, 'show'])->whereNumber('id');

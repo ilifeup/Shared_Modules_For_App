@@ -174,41 +174,11 @@ P0：永久會員制、權限、資料庫一致性、不可逆清除安全；P1�
 - 同批必查：跨模組共用會員中介層、資料庫外鍵與索引、授權錯誤碼、未登入/停權/FamilyUser 情境、重試與並發、OpenAPI/路由對齊；CI 通過後才進入人工驗收。
 - 驗證記錄必須標明實際執行的 SHA、job 結論、未測項目；不得把過期 SHA 的 CI 結果當成最新驗收。
 
+## 17. GitHub 提交間隔（所有 AI 必須遵守）
 
-## 17. GitHub Actions 提交冷卻與 CI 保護政策（2026-10-28，強制執行）
-
-> **最高優先級的 AI 操作規則**：適用 ChatGPT、Claude、Codex、Copilot、排程 Agent 及任何使用 GitHub API 的自動程式。這是本專案的提交節流政策，**不是 GitHub 官方規定的提交間隔**。使用者明確要求停止頻繁提交與反覆取消 CI。
-
-### 17.1 已確認的根因與工作流程
-
-- 目前 `.github/workflows/s1-poc-backend.yml` 與 `.github/workflows/s1-poc-mobile.yml` 都使用同分支 `concurrency.group` 及 `cancel-in-progress: true`；相同群組的新 run 會取消正在執行的舊 run。預設同群組僅保留一個 pending，更新的 run 可取代舊 pending。
-- Backend job 的 `timeout-minutes: 20`；Mobile 的 Android/E2E job 各為 `timeout-minutes: 30`。故制定 **45 分鐘最低 Push 間隔**，作為 CI 執行與排隊緩衝；不是 CI 保證在 45 分鐘內完成。
-- Runner 沒有開始、pending/queued、Actions 配額、工作流程並行限制、等待批准、服務異常等必須依實際 run/job/status 與帳戶資訊區分。**Pending 不等於程式測試失敗**，不可未查證就重跑或修程式。
-- 參考 GitHub 官方：https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency ；GitHub Runner 討論：https://github.com/actions/runner/issues/2227 ；Reddit：https://www.reddit.com/r/devops/comments/1rrvqyt/the_cicd_feedback_loop_from_hell_push_wait_8_min/ 。
-
-### 17.2 強制提交閘門（任何寫入分支的工具均須遵守）
-
-1. **每次 Push / GitHub API update_file / create_commit / update_ref / Agent 自動寫入之前**，必須先查詢該 PR **最新 HEAD commit 的 GitHub committer timestamp**，並計算距現在經過分鐘數。不能用上一次對話、PR body 的舊 SHA 或 AI 自述時間代替；查不到時間時 **FAIL CLOSED：暫不提交**。
-2. 同一工作分支的上一次 Push / Commit **未滿 45 分鐘，禁止再 Push**。45 分鐘從最近一次遠端 Commit 時間重新計算；其他 Agent 或排程推進 HEAD 也會重置計時。
-3. **滿 45 分鐘仍須查 exact-HEAD 的全部必要 CI**：Backend、Mobile、Documentation 等已觸發工作，只要有任何 `pending / queued / requested / waiting / in_progress`，**禁止 Push**。必須等到全部進入 `completed`，並讀取失敗 job logs、分組根因、集中修正，才進入下一次提交。
-4. 若 CI 已完成但尚未取得 log / 確認根因，**不得以猜測式修正反覆 Push**；先讀取失敗 job、相關程式、資料庫契約及測試。若 CI 根本未觸發，需確認 `paths` 過濾與 required checks，不得把「沒有 run」當 PASS。
-5. 一次批次完成同根因的相關 Controller、Service、Model、Migration、OpenAPI、Flutter 與測試；能用同一批次提交就**不要每改一個檔案就提交一次**。優先在 Agent 工作樹暫存/編輯，執行 PHP lint、Pint、Pest、Flutter format/analyze/test 後集中 Push。若 GitHub contents API 只能逐檔寫入，優先使用 Git tree + 單次 commit + 單次 ref 更新，並檢查 HEAD 競爭寫入。
-6. **例外**：只有經使用者明確指示的緊急安全事件、憑證外洩或阻止資料破壞的修正，才能跳過冷卻或未完成 CI 閘門；須記錄原因、風險與被取消的 run，並重新驗證最新 SHA。一般 Bug、文件更新、測試補強、排程催促、使用者說「繼續」均不構成例外。
-7. 此規則限制 **Push/Commit**，**不限制** GitHub 唯讀查詢、PR/Issue 檢查、CI log 讀取、程式碼審查、Bug 根因分析、工作樹中未提交的修改、撰寫測試方案。AI 每次遇到冷卻期須直接改做這些工作，不能空等或偷偷 Push。
-8. **排程 Agent 亦須遵守**：每 3–5 分鐘可以唯讀巡檢，但不可每次巡檢都 Commit。多人/多 Agent 共用 PR #53 時，以遠端 HEAD + 最新 CI 為共同鎖；提交前重新檢查，避免交叉覆寫。
-9. 回報格式必須包含：最新 HEAD、最近 Commit 時間（含時區）、已經過分鐘數、最早可提交時間、各 exact-SHA CI 狀態、`PUSH_ALLOWED / PUSH_BLOCKED` 與原因。無法取得任何必要資料時標記 `PUSH_BLOCKED / NOT VERIFIED`。
-10. 不可為規避此規則另開 PR、改寫歷史、跳過 CI、刪除測試或變更 `cancel-in-progress`。如需調整 Actions 的並行設定，必須先評估 runner 資源、配額與驗收風險，經使用者核准再修改。
-
-### 17.3 實際操作判定
-
-```text
-讀取最新 PR HEAD + 最後遠端 Commit 時間 + exact-HEAD CI
-  ├─ 時間未知／未滿 45 分鐘 → PUSH_BLOCKED → 唯讀檢查、整理批次修正
-  ├─ 任一必要 CI 尚未 completed → PUSH_BLOCKED → 查 queue/runner/jobs/logs
-  ├─ CI completed，但根因未分析／批次未準備 → PUSH_BLOCKED → 分析與本地測試
-  └─ 已滿 45 分鐘 + 必要 CI 完成 + 批次準備妥當
-       → 提交前再查一次 HEAD，確認未被其他 Agent 更新
-       → 集中單次 Push → 等 exact-HEAD CI → 重啟冷卻計時
-```
-
-**CI PASS 不代表功能驗收；不自動 Merge、Deploy、關閉 Issue。**
+- GitHub 官方建議：同一 Repository 每分鐘最多約 **6 次 Push**；這是頻率建議，不是 CI 完成時間。
+- **本專案統一規則：同一 Repository 兩次 Push／遠端 Commit 至少間隔 45 秒。** ChatGPT、Claude、Codex、Copilot、排程 Agent 全部適用。
+- 每次提交前先查最新遠端 Commit／Push 時間；**未滿 45 秒就暫緩提交**，不得以「繼續」或排程觸發為由跳過。其他 AI 已提交也要重新計時。
+- 等待期間**繼續工作**：查詢 PR／CI、閱讀程式、檢查 Bug、整理下一批修正、準備測試；不要空等，也不要為規避間隔改用另一個 PR。
+- **滿 45 秒才允許評估提交，不代表一定要提交。** 優先集中同類修正，避免每改一個檔案就 Push；若新 Push 會取消仍需保留的 CI 驗收，先檢查 CI 狀態再決定。
+- 提交後重新計算 45 秒；未經核准不得自動合併、部署或降低測試門檻。

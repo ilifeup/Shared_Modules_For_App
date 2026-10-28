@@ -187,3 +187,32 @@ it('never permits a managed family member to book directly even with a forged Sa
     expect(seats($event))->toBe(0);
     expect(DB::table('event_booking_groups')->count())->toBe(0);
 });
+
+
+it('creates separate single-seat bookings when one manager books for two family members', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $familyIds = [];
+    foreach (range(1, 2) as $number) {
+        $family = User::factory()->create(['verified_status' => 2, 'is_active' => true, 'FamilyUser' => true]);
+        $familyIds[] = $family->id;
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+            'relationship' => 'child', 'status' => 'active', 'started_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+            'member_user_id' => $family->id,
+        ])->assertCreated()->assertJsonPath('data.seat_count', 1)
+            ->assertJsonCount(1, 'data.attendees');
+    }
+
+    $groups = DB::table('event_booking_groups')->where('calendar_event_id', $event->id)->get();
+    expect($groups)->toHaveCount(2);
+    expect($groups->pluck('booker_user_id')->unique()->all())->toBe([$manager->id]);
+    expect($groups->pluck('seat_count')->all())->toBe([1, 1]);
+    expect(DB::table('event_booking_attendees')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('member_user_id')->all())->toBe($familyIds);
+    expect(seats($event))->toBe(2);
+});

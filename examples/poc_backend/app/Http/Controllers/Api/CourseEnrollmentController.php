@@ -28,4 +28,33 @@ final class CourseEnrollmentController extends Controller
 
         return new JsonResponse(['data' => $result], 201);
     }
+    /** GET /api/v1/me/course-enrollments: own and currently delegated family enrollments. */
+    public function mine(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $memberIds = \Illuminate\Support\Facades\DB::table('family_memberships')
+            ->where('manager_user_id', $actor->id)
+            ->where('status', 'active')
+            ->whereNull('ended_at')
+            ->pluck('member_user_id')
+            ->push($actor->id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $entries = \Illuminate\Support\Facades\DB::table('course_enrollments as e')
+            ->join('course_terms as t', 't.id', '=', 'e.course_term_id')
+            ->whereIn('e.user_id', $memberIds)
+            ->orderByDesc('e.id')
+            ->select('e.id', 'e.course_term_id', 'e.user_id', 'e.status',
+                'e.waitlist_sequence', 'e.fee_confirmed_at', 't.title as course_title')
+            ->paginate(20);
+
+        return new JsonResponse(['data' => $entries->items(), 'meta' => [
+            'current_page' => $entries->currentPage(),
+            'last_page' => $entries->lastPage(),
+            'total' => $entries->total(),
+        ]]);
+    }
+
 }

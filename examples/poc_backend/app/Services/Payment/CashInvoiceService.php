@@ -176,6 +176,39 @@ final class CashInvoiceService
             || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
             return;
         }
+        // The promoted member must receive all session seats before an invoice.
+        // If any occurrence is unavailable, keep FIFO head on the waitlist.
+        $engine = app(BookingEngine::class);
+        $eventIds = DB::table('course_sessions')
+            ->where('course_term_id', $termId)->orderBy('calendar_event_id')
+            ->pluck('calendar_event_id');
+        if ($eventIds->isEmpty()) {
+            return;
+        }
+        foreach ($eventIds as $eventId) {
+            $event = CalendarEvent::query()->findOrFail($eventId);
+            if ($engine->unavailableReason($event, 1, true) !== null) {
+                return;
+            }
+        }
+        foreach ($eventIds as $eventId) {
+            $event = CalendarEvent::query()->findOrFail($eventId);
+            $group = $engine->book($event, new \App\Services\Booking\BookingRequest(
+                booker: $booker,
+                contactName: $booker->name,
+                contactEmail: $booker->email,
+                contactPhone: $booker->phone_e164,
+                attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
+                clientRequestId: (string) \Ramsey\Uuid\Uuid::uuid5(
+                    \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                    'course-enrollment:'.$head->id.':event:'.$eventId,
+                ),
+                byAdmin: true,
+            ), coveredByCourseTerm: true);
+            if ($group->status !== EventBookingGroup::STATUS_CONFIRMED) {
+                throw ValidationException::withMessages(['session' => '候補遞補課堂預約失敗，請聯絡管理員。']);
+            }
+        }
         DB::table('course_enrollments')->where('id', $head->id)->update([
             'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
         ]);

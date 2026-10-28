@@ -51,6 +51,12 @@ class AvCatalogAccessTest extends TestCase
         $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertNotFound();
         DB::table('av_music_tracks')->where('id', $trackId)->update(['encrypted_storage_path' => 'av/']);
         $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertNotFound();
+        // A single Windows separator must not be normalized into a readable path.
+        Storage::disk('local')->put('av/one/slash.enc', 'unrelated-bytes');
+        DB::table('av_music_tracks')->where('id', $trackId)->update([
+            'encrypted_storage_path' => 'av/one\\slash.enc',
+        ]);
+        $this->get('/api/v1/av/tracks/'.$trackId.'/content')->assertNotFound();
     }
 
     public function test_verified_member_without_track_grant_cannot_read_private_bytes(): void

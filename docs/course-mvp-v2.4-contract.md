@@ -12,9 +12,10 @@ Status: APPROVED business requirements; IMPLEMENTATION NOT YET VERIFIED. Single 
 
 ## Waitlist capacity (activities and courses)
 - **Every activity independently configures its waitlist capacity**, default **5**, in the administrator backend. This is separate from its regular booking capacity. The activity waitlist cannot exceed its configured limit; a full waitlist rejects further entries. FIFO promotion remains.
-- **Every course term independently configures its whole-term waitlist capacity**, default **5**, separate from its regular term enrollment capacity and each session's makeup capacity. Waitlist entries are for the **whole term**, not per-session; a full waitlist rejects further entries. FIFO promotion remains.
+- **Every course term independently configures its whole-term waitlist capacity**, default **5**, separate from regular term enrollment capacity and each session's makeup capacity. Term waitlist entries are for the **whole term**, not per-session; a full waitlist rejects further entries. FIFO promotion remains.
+- **Every standalone course (not part of a term)** also independently configures its own waitlist capacity, default **5**, just like a standalone activity. Its waitlist belongs to that one course event, not to any term. A standalone course has its own regular capacity and FIFO waitlist; do not require creation of a course term to use it.
 - Waitlisted members do not occupy regular booking/enrollment seats or makeup seats. Only verified members with unique users.id can join; no guest waitlist. Admin can configure a nonnegative waitlist capacity per activity/term; lowering capacity must not silently delete existing waitlist entries.
-- Minimal implementation: reuse the existing M08 waitlist where possible; add an event-level waitlist capacity and term-level waitlist capacity as necessary, without creating a second waitlist engine.
+- Minimal implementation: reuse the existing M08 waitlist for standalone activities **and standalone courses**, with an event-level waitlist capacity default 5; use a term-level waitlist capacity default 5 for whole-term courses. Do not create a second waitlist engine.
 
 ## Enrollment and leave
 - Whole-term signup first creates a pending enrollment and reserves one regular seat. Single administrator manually checks “已確認收費”; then create exactly one Booking for each session atomically/idempotently. No online money, refund amounts, transactions, or refund-status database.
@@ -45,7 +46,8 @@ Status: APPROVED business requirements; IMPLEMENTATION NOT YET VERIFIED. Single 
 10. Two distinct activities default to waitlist capacity 5 independently; sixth waitlist request for either activity is rejected when its own list is full.
 11. Two distinct course terms default to whole-term waitlist capacity 5 independently; sixth request is rejected when full. No separate waitlist for each course session.
 12. Waitlist entries do not consume regular or makeup seats; FIFO promotion works when regular seats are released.
-13. Admin can change each activity/term waitlist capacity; reducing the limit does not delete existing waiting members, but prevents further admission while at/above limit.
+13. Admin can change each activity/standalone-course/term waitlist capacity; reducing the limit does not delete existing waiting members, but prevents further admission while at/above limit.
+14. A standalone course without any course term defaults to 5 waitlist places; its sixth waitlist request is rejected when full, independent of other standalone courses, activities, and terms.
 
 ## Development sequencing
 First inspect PR #53 HEAD and current Booking/M11 schemas, then implement minimal migrations and Backend service, then API/Filament, then Flutter, then tests. Work in coherent batches and keep #53 Draft. Do not claim these features are implemented merely because this contract is committed.

@@ -61,6 +61,38 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('payment_transactions')->count());
     }
 
+    public function test_term_enrollment_books_all_sessions_with_one_invoice_and_cash_confirmation(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        $events = [s9Event(['booking_capacity' => 2]), s9Event(['booking_capacity' => 2])];
+        foreach ($events as $event) {
+            DB::table('course_sessions')->insert([
+                'course_term_id' => $term,
+                'calendar_event_id' => $event->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $this->assertSame('pending_payment', $enrollment['status']);
+        $this->assertSame(2, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
+        $this->assertSame(1, DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->count());
+        $this->assertSame(0, DB::table('invoices')->where('booking_type', '01')->count());
+
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+        $paid = app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+        $this->assertSame(1, $paid['status']);
+        $this->assertSame('confirmed', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_paid_course_creates_exactly_one_term_invoice_without_session_invoices(): void
     {
         $term = $this->term();

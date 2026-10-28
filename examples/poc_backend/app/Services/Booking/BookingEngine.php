@@ -59,6 +59,7 @@ final class BookingEngine
         if ($lock) {
             $query->lockForUpdate();
         }
+
         return $query->first() !== null;
     }
 

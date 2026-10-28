@@ -68,14 +68,30 @@ final class CourseEnrollmentService
             ->pluck('calendar_event_id')
             ->all();
 
+        $events = DB::table('calendar_events')
+            ->whereIn('id', $sessionIds)
+            ->get(['id', 'status', 'booking_enabled', 'booking_capacity'])
+            ->keyBy('id');
+        $invalidSessionIds = [];
+        foreach ($sessionIds as $eventId) {
+            $event = $events->get($eventId);
+            if ($event === null || $event->status !== 'published'
+                || ! $event->booking_enabled || (int) $event->booking_capacity < 1) {
+                $invalidSessionIds[] = $eventId;
+            }
+        }
+
         return [
             'id' => $enrollmentId,
             'status' => $entry->status,
             'session_count' => count($sessionIds),
+            'invalid_session_event_ids' => $invalidSessionIds,
             'ready' => false,
             'reason' => count($sessionIds) === 0
                 ? '本期尚未設定單堂課程。'
-                : '單堂 Booking 原子性整合尚未完成，禁止確認收費。',
+                : ($invalidSessionIds !== []
+                    ? '部分單堂課程未發布或未開放預約。'
+                    : '單堂 Booking 原子性整合尚未完成，禁止確認收費。'),
         ];
     }
 

@@ -74,3 +74,11 @@
 已完成：課程期別模型、Filament 基本 CRUD、課堂與報名列表、會員名稱與報名者、整期帳單欄位、課堂活動編輯連結、無帳單與未付款區別。
 
 未完成/未驗證：P0 報名/付款/課堂 Booking 一致性、完整管理操作、測試更新、CI、實機驗收。此清單是總追蹤基線，後續應集中修正，不再用零散「繼續」造成多次微小 PR/Commit。
+
+## 六、BookingEngine 整合前必須解決的帳單副作用（已查證）
+
+- `BookingEngine::book()` 每次成功建立一般活動正式預約時，會呼叫 `CashInvoiceService::forEvent()`；不能直接對 12 堂重複呼叫 `book()`，否則可能產生 12 筆單堂活動帳單，違反「整期一張帳單」。
+- 先在既有 BookingEngine 加入明確且只限內部課程流程的「由整期帳單涵蓋，不建立單堂帳單」選項；不可讓公開 API 任意傳入此選項來免付費。驗證 event、member、term、enrollment 的一致性後才可使用。
+- 整期課程預約與唯一整期帳單須同一 DB transaction。使用固定 idempotency key `course-enrollment:{enrollmentId}:event:{eventId}`；每堂必須正式 confirmed，若任一堂不能取得名額，整批回滾，不能退化成單堂候補。
+- 當期別逾期、取消或退款時，不可直接刪除 Booking；透過 BookingEngine 既有取消及稽核流程處理，並核對同步通知、候補遞補及資料庫鎖順序。若跨服務 nested transaction 的 side effect 未完全延後至 commit，須先補回歸測試。
+- 目前 `confirmCash()` 已加上逐堂 Booking 存在檢查，會阻擋尚未整合的整期收款；此阻擋應維持至整期原子預約與逾期釋位完成，不能為了 CI 綠燈移除。

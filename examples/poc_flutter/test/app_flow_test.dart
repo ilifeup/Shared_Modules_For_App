@@ -997,6 +997,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-profile')));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('profile-change-phone')));
     await tester.tap(find.byKey(const Key('profile-change-phone')));
     await tester.pumpAndSettle();
 

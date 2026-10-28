@@ -280,3 +280,43 @@ it('replays the same member request without adding seats and rejects another mem
         ->pluck('member_user_id')->all())->toBe([$family[0]->id]);
     expect(seats($event))->toBe(1);
 });
+
+it('limits delegated family booking history to two months without hiding own bookings', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id,
+        'member_user_id' => $family->id,
+        'status' => 'active',
+        'started_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $url = "/api/v1/events/{$event->id}/booking-groups";
+    $this->actingAs($manager, 'sanctum')->postJson($url, [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+
+    $familyEvent = s9Event(['booking_capacity' => 3]);
+    $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$familyEvent->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+        'member_user_id' => $family->id,
+    ])->assertCreated();
+
+    $this->actingAs($manager, 'sanctum')->getJson('/api/v1/me/booking-groups')
+        ->assertOk()->assertJsonPath('meta.total', 2);
+
+    DB::table('event_booking_groups')->where('booker_user_id', $manager->id)
+        ->update(['booked_at' => now()->subMonths(3)]);
+
+    $this->actingAs($manager, 'sanctum')->getJson('/api/v1/me/booking-groups')
+        ->assertOk()->assertJsonPath('meta.total', 1);
+
+    DB::table('family_memberships')->where('manager_user_id', $manager->id)
+        ->update(['status' => 'ended', 'ended_at' => now()]);
+
+    $this->actingAs($manager, 'sanctum')->getJson('/api/v1/me/booking-groups')
+        ->assertOk()->assertJsonPath('meta.total', 1);
+});

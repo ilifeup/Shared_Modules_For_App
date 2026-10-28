@@ -89,9 +89,9 @@ class CalendarEvent extends Model
                 ]);
             }
 
-            if ($event->booking_max_seats !== null && ($event->booking_max_seats < 1 || $event->booking_max_seats > 50)) {
+            if ($event->booking_max_seats !== null && $event->booking_max_seats !== 1) {
                 throw ValidationException::withMessages([
-                    'booking_max_seats' => ['每筆報名人數需為 1–50 人。'],
+                    'booking_max_seats' => ['每筆預約僅限一位會員。'],
                 ]);
             }
 

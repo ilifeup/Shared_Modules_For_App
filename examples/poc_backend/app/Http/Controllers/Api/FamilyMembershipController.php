@@ -130,7 +130,7 @@ final class FamilyMembershipController extends Controller
                 ->lockForUpdate()
                 ->first();
             $eligible = DB::table('users')->where('id', $memberId)
-                ->where('is_active', true)->where('verified_status', 2)->exists();
+                ->where('is_active', true)->where('verified_status', 2)->where('FamilyUser', true)->exists();
             if ($delegation === null || ! $eligible) {
                 throw new ApiException(403, 'FAMILY_MEMBER_NOT_AUTHORIZED', '無有效代管授權或家庭成員尚未驗證。');
             }

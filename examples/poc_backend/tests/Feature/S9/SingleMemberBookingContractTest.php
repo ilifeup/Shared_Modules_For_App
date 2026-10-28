@@ -76,6 +76,24 @@ it('keeps a family booking in the original bookers history without changing the 
         ->value('member_user_id'))->toBe($member->id);
 });
 
+it('rejects a forged family delegation pointing to an ordinary member', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $ordinary = User::factory()->create(['verified_status' => 2, 'FamilyUser' => false]);
+    DB::table('family_memberships')->insert([
+        'manager_user_id' => $manager->id, 'member_user_id' => $ordinary->id,
+        'relationship' => 'child', 'status' => 'active', 'started_at' => now(),
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $this->actingAs($manager, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+        'member_user_id' => $ordinary->id,
+    ])->assertForbidden()->assertJsonPath('error.code', 'ATTENDEE_NOT_AUTHORIZED');
+
+    expect(seats($event))->toBe(0);
+});
+
 it('rejects obsolete multi-attendee payloads instead of silently booking a subset', function () {
     $event = s9Event();
     $member = User::factory()->create();

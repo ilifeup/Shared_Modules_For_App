@@ -12,11 +12,11 @@
             <h2 class="font-bold">人工確認付款（第二位起每位一筆）</h2>
             <form wire:submit="verifyPayment" class="flex flex-wrap gap-3">
                 <input type="number" wire:model="managerId" placeholder="主要會員 ID" class="rounded border p-2 text-gray-900" />
-                <input wire:model="paymentReference" placeholder="唯一付款編號" class="rounded border p-2 text-gray-900" />
+                <label class="flex items-center gap-2"><input type="checkbox" wire:model="paymentConfirmed" />已收到款項</label>
                 <x-filament::button type="submit">確認已付款</x-filament::button>
             </form>
             @error('managerId') <p class="text-red-600">{{ $message }}</p> @enderror
-            @error('paymentReference') <p class="text-red-600">{{ $message }}</p> @enderror
+            @error('paymentConfirmed') <p class="text-red-600">{{ $message }}</p> @enderror
         </section>
         <section class="rounded-xl border p-4 space-y-3">
             <h2 class="font-bold">待審核申請（最多顯示 30 筆）</h2>

@@ -7,6 +7,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class FamilyManagement extends Page
@@ -23,7 +24,7 @@ class FamilyManagement extends Page
 
     public ?int $managerId = null;
 
-    public string $paymentReference = '';
+    public bool $paymentConfirmed = false;
 
     public string $reviewNote = '';
 
@@ -57,7 +58,7 @@ class FamilyManagement extends Page
     {
         $data = $this->validate([
             'managerId' => ['required', 'integer', 'exists:users,id'],
-            'paymentReference' => ['required', 'string', 'max:120', 'unique:family_member_paid_credits,payment_reference'],
+            'paymentConfirmed' => ['accepted'],
         ]);
         $user = User::findOrFail($data['managerId']);
         if (! $user->is_active || (int) $user->verified_status !== 2 || $user->FamilyUser) {
@@ -66,10 +67,10 @@ class FamilyManagement extends Page
         DB::table('family_member_paid_credits')->insert([
             'manager_user_id' => $user->id,
             'verified_by' => auth()->id(),
-            'payment_reference' => trim($data['paymentReference']),
+            'payment_reference' => 'manual-'.Str::uuid(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->paymentReference = '';
+        $this->paymentConfirmed = false;
         Notification::make()->title('已登記一筆付費資格')->success()->send();
     }
 

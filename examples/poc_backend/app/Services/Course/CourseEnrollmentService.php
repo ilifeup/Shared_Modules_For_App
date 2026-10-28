@@ -2,20 +2,27 @@
 
 namespace App\Services\Course;
 
+use App\Models\CalendarEvent;
+use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingRequest;
+use Illuminate\Support\Str;
 use App\Services\Family\FamilyDelegation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class CourseEnrollmentService
 {
-    public function __construct(private readonly FamilyDelegation $delegation) {}
+    public function __construct(
+        private readonly FamilyDelegation $delegation,
+        private readonly BookingEngine $bookings,
+    ) {}
 
     /**
      * A single administrator confirms an offline payment. Repeat calls are safe:
      * confirmed enrollments remain confirmed without duplicate transitions.
-     * Session bookings are deliberately not created here until the shared seat
-     * ledger integration is implemented atomically.
+     * Every session booking and the fee confirmation share one DB transaction.
      */
     public function confirmFee(int $enrollmentId, User $admin): array
     {
@@ -39,11 +46,50 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['enrollment' => '只有待收費報名可以確認。']);
             }
 
-            // Do not mark paid before every session booking can be created atomically.
-            // This safeguard is temporary until the shared BookingEngine integration.
-            throw ValidationException::withMessages([
-                'enrollment' => '整期課程尚未接通單堂預約，暫不可確認收費。',
+            $sessions = DB::table('course_sessions')
+                ->where('course_term_id', $entry->course_term_id)
+                ->orderBy('id')->pluck('calendar_event_id')->all();
+            if ($sessions === []) {
+                throw ValidationException::withMessages(['enrollment' => '本期尚未設定單堂課程。']);
+            }
+
+            $member = User::query()->findOrFail($entry->user_id);
+            $booker = User::query()->findOrFail($entry->booker_user_id);
+            if (! $member->is_active || (int) $member->verified_status !== 2
+                || ! $booker->is_active || (int) $booker->verified_status !== 2) {
+                throw ValidationException::withMessages(['member' => '會員資格已失效，無法確認整期課程。']);
+            }
+
+            foreach ($sessions as $eventId) {
+                $event = CalendarEvent::query()->findOrFail($eventId);
+                // Course confirmation must never create a waitlist place.
+                if ($this->bookings->unavailableReason($event, 1, true) !== null) {
+                    throw ValidationException::withMessages(['session' => '單堂課程無法完成正式預約。']);
+                }
+                $group = $this->bookings->book($event, new BookingRequest(
+                    booker: $booker,
+                    contactName: $booker->name,
+                    contactEmail: $booker->email,
+                    contactPhone: $booker->phone_e164,
+                    attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
+                    clientRequestId: (string) Str::uuid5(
+                        Str::UUID_NAMESPACE_URL,
+                        'course-enrollment:'.$enrollmentId.':event:'.$eventId,
+                    ),
+                    byAdmin: true,
+                ));
+                if ($group->status !== EventBookingGroup::STATUS_CONFIRMED) {
+                    throw ValidationException::withMessages(['session' => '單堂課程未取得正式名額。']);
+                }
+            }
+
+            DB::table('course_enrollments')->where('id', $enrollmentId)->update([
+                'status' => 'confirmed',
+                'fee_confirmed_at' => now(),
+                'updated_at' => now(),
             ]);
+
+            return ['id' => $enrollmentId, 'status' => 'confirmed'];
         }, 3);
     }
 

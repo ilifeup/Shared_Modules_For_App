@@ -93,6 +93,59 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull($row->fee_confirmed_at);
     }
 
+    public function test_fee_confirmation_books_every_session_atomically_and_is_idempotent(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+
+        $events = [s9Event(['booking_capacity' => 2]), s9Event(['booking_capacity' => 2])];
+        foreach ($events as $event) {
+            DB::table('course_sessions')->insert([
+                'course_term_id' => $term, 'calendar_event_id' => $event->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $this->assertSame('confirmed', $service->confirmFee($enrollment['id'], $admin)['status']);
+        $this->assertSame('confirmed', $service->confirmFee($enrollment['id'], $admin)['status']);
+        $this->assertSame(2, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
+        $this->assertNotNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
+    public function test_fee_confirmation_rolls_back_all_sessions_if_one_is_unavailable(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+
+        $first = s9Event(['booking_capacity' => 2]);
+        $second = s9Event(['booking_capacity' => 2, 'booking_enabled' => false]);
+        foreach ([$first, $second] as $event) {
+            DB::table('course_sessions')->insert([
+                'course_term_id' => $term, 'calendar_event_id' => $event->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        try {
+            $service->confirmFee($enrollment['id'], $admin);
+            $this->fail('Confirmation must fail when a session is unavailable.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('session', $exception->errors());
+        }
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->count());
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+    }
+
     public function test_non_admin_cannot_confirm_fee(): void
     {
         $term = $this->term();

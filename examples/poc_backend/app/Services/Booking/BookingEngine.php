@@ -836,13 +836,22 @@ final class BookingEngine
         $this->pendingNotices = [];
         $this->pendingSync = [];
 
-        foreach ($notices as [$group, $title, $body]) {
-            $this->effects->notify($group, $title, $body);
-        }
-        foreach ($sync as $userId => $events) {
-            foreach (array_keys($events) as $eventId) {
-                $this->effects->syncBooking($userId, $eventId);
+        // A course may book many sessions inside one outer transaction.
+        // Never perform external side effects until that transaction commits.
+        $deliver = function () use ($notices, $sync): void {
+            foreach ($notices as [$group, $title, $body]) {
+                $this->effects->notify($group, $title, $body);
             }
+            foreach ($sync as $userId => $events) {
+                foreach (array_keys($events) as $eventId) {
+                    $this->effects->syncBooking($userId, $eventId);
+                }
+            }
+        };
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit($deliver);
+        } else {
+            $deliver();
         }
     }
 }

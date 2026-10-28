@@ -76,15 +76,19 @@ final class CourseEnrollmentService
             ->pluck('calendar_event_id')
             ->all();
 
-        $events = DB::table('calendar_events')
-            ->whereIn('id', $sessionIds)
-            ->get(['id', 'status', 'booking_enabled', 'booking_capacity'])
-            ->keyBy('id');
+        // Payment readiness checks existing derived bookings, not whether a
+        // member could independently book each occurrence a second time.
         $invalidSessionIds = [];
         foreach ($sessionIds as $eventId) {
-            $event = $events->get($eventId);
-            if ($event === null || $event->status !== 'published'
-                || ! $event->booking_enabled || (int) $event->booking_capacity < 1) {
+            $requestId = (string) Uuid::uuid5(
+                Uuid::NAMESPACE_URL,
+                'course-enrollment:'.$entry->id.':event:'.$eventId,
+            );
+            if (! EventBookingGroup::query()
+                ->where('client_request_id', $requestId)
+                ->where('calendar_event_id', $eventId)
+                ->where('status', EventBookingGroup::STATUS_CONFIRMED)
+                ->exists()) {
                 $invalidSessionIds[] = $eventId;
             }
         }
@@ -98,15 +102,6 @@ final class CourseEnrollmentService
 
         $ready = $entry->status === 'pending_payment' && $sessionIds !== []
             && $invalidSessionIds === [] && $eligible;
-        if ($ready) {
-            foreach ($sessionIds as $eventId) {
-                $event = CalendarEvent::query()->find($eventId);
-                if ($event === null || $this->bookings->unavailableReason($event, 1, true) !== null) {
-                    $ready = false;
-                    $invalidSessionIds[] = $eventId;
-                }
-            }
-        }
 
         return [
             'id' => $enrollmentId,
@@ -117,8 +112,8 @@ final class CourseEnrollmentService
             'reason' => count($sessionIds) === 0
                 ? '本期尚未設定單堂課程。'
                 : ($invalidSessionIds !== []
-                    ? '部分單堂課程未發布、未開放預約或名額不足。'
-                    : (! $eligible ? '會員資格或代管權限不符。' : ($ready ? '可確認線下收費並建立整期單堂預約。' : '此報名目前不可確認收費。'))),
+                    ? '部分從屬場次預約關聯不存在或尚未確認。'
+                    : (! $eligible ? '會員資格或代管權限不符。' : ($ready ? '從屬場次預約已建立，可確認實際現金收款。' : '此報名目前不可確認收費。'))),
         ];
     }
 

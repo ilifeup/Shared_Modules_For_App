@@ -15,6 +15,7 @@ import 'features/auth/verify_phone_screen.dart';
 import 'features/bookings/my_bookings_screen.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/family/family_screen.dart';
+import 'features/family/family_application_screen.dart';
 import 'features/course/course_screen.dart';
 import 'features/calendar/event_detail_screen.dart';
 import 'features/health/health_screen.dart';
@@ -120,6 +121,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/calendar',
         builder: (context, state) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: '/me/family/apply',
+        builder: (context, state) => const FamilyApplicationScreen(),
       ),
       GoRoute(
         path: '/me/family',

@@ -19,12 +19,12 @@ final class FamilyDelegation
      */
     public function canManageMemberIds(User $manager, array $memberIds): bool
     {
-        if (! $manager->is_active || $memberIds === [] || in_array(null, $memberIds, true)) {
+        if (! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser || $memberIds === [] || in_array(null, $memberIds, true)) {
             return false;
         }
 
         $ids = array_values(array_unique(array_map('intval', $memberIds)));
-        if (User::query()->whereIn('id', $ids)->where('is_active', true)->count() !== count($ids)) {
+        if (User::query()->whereIn('id', $ids)->where('is_active', true)->where('verified_status', 2)->count() !== count($ids)) {
             return false;
         }
 
@@ -36,6 +36,7 @@ final class FamilyDelegation
         return DB::table('family_memberships')
             ->where('manager_user_id', $manager->id)
             ->whereIn('member_user_id', $delegated)
+            ->whereIn('member_user_id', User::query()->where('FamilyUser', true)->select('id'))
             ->where('status', 'active')
             ->whereNull('ended_at')
             ->distinct()
@@ -44,12 +45,16 @@ final class FamilyDelegation
 
     public function canManage(User $manager, User $member, bool $lock = false): bool
     {
-        if (! $manager->is_active || ! $member->is_active) {
+        if (! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser
+            || ! $member->is_active || (int) $member->verified_status !== 2) {
             return false;
         }
 
         if ($manager->id === $member->id) {
             return true;
+        }
+        if (! $member->FamilyUser) {
+            return false;
         }
 
         $query = DB::table('family_memberships')

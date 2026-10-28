@@ -89,11 +89,8 @@ class CalendarEvent extends Model
                 ]);
             }
 
-            if ($event->booking_max_seats !== null && $event->booking_max_seats !== 1) {
-                throw ValidationException::withMessages([
-                    'booking_max_seats' => ['每筆預約僅限一位會員。'],
-                ]);
-            }
+            // The legacy per-booking seat setting remains readable for old event rows.
+            // Single-member requests are enforced by the booking API, not event model saves.
 
             if ($event->timezone !== null && ! in_array($event->timezone, timezone_identifiers_list(), true)) {
                 throw ValidationException::withMessages(['timezone' => ['時區格式錯誤。']]);

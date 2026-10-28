@@ -118,8 +118,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $member = $this->verified();
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
-        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
-
         $event = s9Event(['booking_capacity' => 2]);
         DB::table('course_sessions')->insert([
             'course_term_id' => $term,
@@ -127,6 +125,13 @@ class CourseEnrollmentServiceTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        DB::table('event_booking_groups')
+            ->where('client_request_id', (string) \Ramsey\Uuid\Uuid::uuid5(
+                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                'course-enrollment:'.$enrollment['id'].':event:'.$event->id,
+            ))->update(['status' => 'cancelled']);
 
         $invoice = DB::table('invoices')->where('booking_type', '02')
             ->where('booking_id', $enrollment['id'])->first();

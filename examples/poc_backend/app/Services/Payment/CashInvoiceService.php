@@ -126,7 +126,7 @@ final class CashInvoiceService
         }
         $occupied = DB::table('course_enrollments')->where('course_term_id', $termId)
             ->whereIn('status', ['pending_payment', 'confirmed'])->count();
-        if ($occupied >= (int) $term->enrollment_capacity) {
+        if ((float) ($term->price_amount ?? 0) < 1 || $occupied >= (int) $term->enrollment_capacity) {
             return;
         }
         $head = DB::table('course_enrollments')->where('course_term_id', $termId)

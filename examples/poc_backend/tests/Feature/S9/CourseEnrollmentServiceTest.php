@@ -18,6 +18,7 @@ class CourseEnrollmentServiceTest extends TestCase
     {
         return DB::table('course_terms')->insertGetId([
             'title' => 'MVP test term',
+            'price_amount' => 1,
             'enrollment_capacity' => $capacity,
             'waitlist_capacity' => $waitlist,
             'created_at' => now(),

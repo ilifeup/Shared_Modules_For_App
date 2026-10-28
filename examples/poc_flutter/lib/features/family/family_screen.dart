@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 
-final familyMembersProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+final familyMembersProvider = FutureProvider.autoDispose<List<dynamic>>((
+  ref,
+) async {
   final response = await ref.watch(dioProvider).get('/me/family-memberships');
   return (response.data['data'] as List<dynamic>);
 });

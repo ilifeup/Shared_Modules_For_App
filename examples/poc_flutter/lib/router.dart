@@ -121,8 +121,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/calendar',
         builder: (context, state) => const CalendarScreen(),
       ),
-      GoRoute(path: '/me/family', builder: (context, state) => const FamilyScreen()),
-      GoRoute(path: '/me/courses', builder: (context, state) => const CourseScreen()),
+      GoRoute(
+        path: '/me/family',
+        builder: (context, state) => const FamilyScreen(),
+      ),
+      GoRoute(
+        path: '/me/courses',
+        builder: (context, state) => const CourseScreen(),
+      ),
       GoRoute(
         path: '/me/bookings',
         builder: (context, state) => const MyBookingsScreen(),

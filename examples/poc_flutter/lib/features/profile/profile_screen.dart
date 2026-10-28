@@ -273,8 +273,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _avatar(),
         const SizedBox(height: 16),
         _membership(),
-        ListTile(title: const Text('家庭會員'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/me/family')),
-        ListTile(title: const Text('整期課程報名'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/me/courses')),
+        ListTile(
+          title: const Text('家庭會員'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/me/family'),
+        ),
+        ListTile(
+          title: const Text('整期課程報名'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/me/courses'),
+        ),
         if (profile != null) ...[
           ListTile(
             contentPadding: EdgeInsets.zero,

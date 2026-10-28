@@ -7,6 +7,8 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
+use App\Services\Payment\CashInvoiceService;
+use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Ramsey\Uuid\Uuid;
@@ -225,6 +227,19 @@ final class CourseEnrollmentService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            if ($status === 'pending_payment' && (float) ($term->price_amount ?? 0) > 0) {
+                $hours = (int) ($term->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'));
+                $firstStart = DB::table('course_sessions')
+                    ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
+                    ->where('course_sessions.course_term_id', $termId)
+                    ->min('calendar_events.starts_at');
+                if ($firstStart !== null && now()->copy()->addHours($hours)->gt($firstStart)) {
+                    throw ValidationException::withMessages(['payment' => '剩餘時間不足以保留完整付款期限。']);
+                }
+                app(CashInvoiceService::class)->create('02', $termId, '02', $id,
+                    $member->id, $booker->id, (string) $term->price_amount, $hours);
+            }
 
             return ['id' => $id, 'status' => $status, 'waitlist_sequence' => $sequence];
         }, 3);

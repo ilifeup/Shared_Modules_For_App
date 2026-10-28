@@ -88,7 +88,12 @@ final class CourseGroupAdmission
                 ]);
             }
 
-            // Any failure in the booking/invoice callback rolls back the seat too.\n            if ($confirmed) {\n                $createEventBookingsAndInvoice((int) $id, $groupId, $member, $booker);\n            }\n\n            return ['id' => (int) $id, 'status' => $status, 'replayed' => false];
+            // Any failure in the booking/invoice callback rolls back the seat too.
+            if ($confirmed) {
+                $createEventBookingsAndInvoice((int) $id, $groupId, $member, $booker);
+            }
+
+            return ['id' => (int) $id, 'status' => $status, 'replayed' => false];
         }, 3);
     }
 }

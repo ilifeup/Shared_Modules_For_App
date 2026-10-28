@@ -382,6 +382,16 @@ class CourseEnrollmentServiceTest extends TestCase
         $readiness = $service->confirmationReadiness($enrollment['id'], $admin);
         $this->assertFalse($readiness['ready']);
         $this->assertSame('會員資格或代管權限不符。', $readiness['reason']);
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+        $this->assertNotNull($invoiceId);
+        try {
+            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            $this->fail('Revoked family delegation must prevent cash confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoiceId)->invoice_status);
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
         $this->assertSame(1, DB::table('event_booking_attendees')
             ->where('member_user_id', $family->id)->count());

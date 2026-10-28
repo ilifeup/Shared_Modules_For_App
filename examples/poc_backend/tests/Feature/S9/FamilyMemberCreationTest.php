@@ -61,3 +61,27 @@ it('rejects managed family identities from manager-only family APIs even with a 
             'address' => 'Test address',
         ])->assertForbidden();
 });
+
+it('does not create a family member before administrator approval', function () {
+    $manager = User::factory()->create();
+    $applicationId = DB::table('family_member_applications')->insertGetId([
+        'manager_user_id' => $manager->id,
+        'member_name' => 'Pending Child',
+        'relationship' => 'child',
+        'birth_date' => '2015-06-01',
+        'address' => 'Home address',
+        'evidence_path' => 'family-evidence/pending.pdf',
+        'status' => 'pending',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $before = User::query()->count();
+
+    $this->actingAs($manager, 'sanctum')
+        ->postJson('/api/v1/me/family-memberships', [
+            'application_id' => $applicationId,
+        ])->assertForbidden()->assertJsonPath('error.code', 'FAMILY_APPROVAL_REQUIRED');
+
+    expect(User::query()->count())->toBe($before);
+    expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(0);
+});

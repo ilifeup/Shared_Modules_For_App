@@ -21,6 +21,19 @@ final class CourseEnrollmentController extends Controller
             ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')
             ->where('e.status', 'published')
             ->where('e.starts_at', '>=', now())
+            ->where('e.booking_enabled', true)
+            ->where('e.booking_capacity', '>', 0)
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('course_sessions as other_session')
+                    ->join('calendar_events as other_event', 'other_event.id', '=', 'other_session.calendar_event_id')
+                    ->whereColumn('other_session.course_term_id', 't.id')
+                    ->where(function ($invalid) {
+                        $invalid->where('other_event.status', '!=', 'published')
+                            ->orWhere('other_event.booking_enabled', false)
+                            ->orWhere('other_event.booking_capacity', '<', 1);
+                    });
+            })
             ->groupBy('t.id', 't.title', 't.location', 't.enrollment_capacity')
             ->orderBy('t.id')
             ->limit(50)

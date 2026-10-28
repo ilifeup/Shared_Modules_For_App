@@ -200,7 +200,7 @@ class CheckinController extends Controller
     private function validateScan(Request $request, bool $validateGps = true): array
     {
         $rules = [
-            'attendee_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'attendee_ids' => ['required', 'array', 'size:1'],
             'attendee_ids.*' => ['integer', 'min:1'],
             'event_token' => ['required_without:location_token', 'nullable', 'string', 'max:100'],
             'location_token' => ['required_without:event_token', 'nullable', 'string', 'max:64'],

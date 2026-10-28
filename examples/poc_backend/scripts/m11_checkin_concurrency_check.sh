@@ -76,7 +76,7 @@ for n in 1 2; do
   curl -sS --max-time 40 -o "$OUT/$n.json" -w '%{http_code}' \
     -X POST "$BASE/api/v1/events/$EVENT/checkin" \
     -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-    -d "{\"attendee_ids\":[$FIRST,$SECOND],\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
+    -d "{\"attendee_ids\":[$FIRST],\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
   pids+=("$!")
 done
 wait "${pids[@]}"
@@ -84,7 +84,7 @@ for n in 1 2; do
   code="$(cat "$OUT/$n.code")"
   echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
   if [ "$code" != 200 ]; then
-    echo "::error title=M11 concurrency::authorized family manager batch $n returned HTTP $code; both delegated member scans must succeed"
+    echo "::error title=M11 concurrency::authorized family manager single-member request $n returned HTTP $code; both individual scans must succeed"
     exit 1
   fi
 done

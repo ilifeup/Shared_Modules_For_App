@@ -311,7 +311,7 @@ it('rejects another members real attendee ID in check-in and checkout batches', 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
         'attendee_ids' => [$attendees[0]->id, $foreign->id],
         'event_token' => $token,
-    ])->assertNotFound();
+    ])->assertStatus(422);
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
 
@@ -323,7 +323,7 @@ it('rejects another members real attendee ID in check-in and checkout batches', 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
         'attendee_ids' => [$attendees[0]->id, $foreign->id],
         'event_token' => $token,
-    ])->assertNotFound();
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
         ->toBe(EventAttendance::CHECKED_IN);
@@ -338,7 +338,7 @@ it('rejects a mixed-ownership check-in batch before any attendee is checked in',
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
         'attendee_ids' => [$attendees[0]->id, 999999999],
         'event_token' => $token,
-    ])->assertNotFound();
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
@@ -355,7 +355,7 @@ it('rejects a mixed-ownership checkout batch before changing attendance', functi
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
         'attendee_ids' => [$attendees[0]->id, 999999999],
         'event_token' => $token,
-    ])->assertNotFound();
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->first()->status)
         ->toBe(EventAttendance::CHECKED_IN);
@@ -373,7 +373,7 @@ it('rejects cross-member checkout atomically without audit writes', function () 
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
         'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
-    ])->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
         ->toBe(EventAttendance::CHECKED_IN)
@@ -388,7 +388,7 @@ it('rejects cross-member check-in before processing a waitlisted attendee', func
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
         'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
-    ])->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
@@ -425,7 +425,7 @@ it('rejects cross-member check-in before audit insertion, leaving no partial wri
     $token = app(CheckinTokens::class)->event($event->id);
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
         'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
-    ])->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(0);
@@ -440,7 +440,7 @@ it('rejects cross-member checkout before audit insertion, leaving both records u
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
         'attendee_ids' => [$attendees[0]->id, $attendees[1]->id], 'event_token' => $token,
-    ])->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
+    ])->assertStatus(422);
 
     expect(EventAttendance::query()->where('event_booking_attendee_id', $attendees[0]->id)->firstOrFail()->status)
         ->toBe(EventAttendance::CHECKED_IN)

@@ -186,6 +186,12 @@ final class CourseEnrollmentService
                 // session booking if any session is unavailable.
                 foreach ($sessions as $eventId) {
                     $event = CalendarEvent::query()->findOrFail($eventId);
+                    if ($event->status !== 'published' || ! $event->booking_enabled
+                        || (int) $event->booking_capacity < 1) {
+                        throw ValidationException::withMessages([
+                            'session' => '系列活動／課程有未發布、未開放預約或名額設定無效的從屬場次。',
+                        ]);
+                    }
                     $group = $this->bookings->book($event, new BookingRequest(
                         booker: $booker,
                         contactName: $booker->name,

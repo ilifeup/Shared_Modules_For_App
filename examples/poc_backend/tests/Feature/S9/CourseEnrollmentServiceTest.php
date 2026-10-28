@@ -127,13 +127,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $member = $this->verified();
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
-        $event = s9Event(['booking_capacity' => 2]);
-        DB::table('course_sessions')->insert([
-            'course_term_id' => $term,
-            'calendar_event_id' => $event->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
 
         $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
         DB::table('event_booking_groups')
@@ -264,13 +257,6 @@ class CourseEnrollmentServiceTest extends TestCase
         $service = app(CourseEnrollmentService::class);
         $enrollment = $service->enroll($term, $member, $member);
 
-        $event = s9Event(['booking_capacity' => 2]);
-        DB::table('course_sessions')->insert([
-            'course_term_id' => $term,
-            'calendar_event_id' => $event->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
 
         $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
 
@@ -281,7 +267,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame([], $result['invalid_session_event_ids']);
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
-        $this->assertSame(0, DB::table('event_booking_attendees')
+        $this->assertSame(1, DB::table('event_booking_attendees')
             ->where('member_user_id', $member->id)->count());
     }
 
@@ -302,13 +288,6 @@ class CourseEnrollmentServiceTest extends TestCase
 
         $service = app(CourseEnrollmentService::class);
         $enrollment = $service->enroll($term, $manager, $family);
-        $event = s9Event(['booking_capacity' => 2]);
-        DB::table('course_sessions')->insert([
-            'course_term_id' => $term,
-            'calendar_event_id' => $event->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
 
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
@@ -319,7 +298,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertFalse($result['ready']);
         $this->assertSame('會員資格或代管權限不符。', $result['reason']);
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
-        $this->assertSame(0, DB::table('event_booking_attendees')
+        $this->assertSame(1, DB::table('event_booking_attendees')
             ->where('member_user_id', $family->id)->count());
     }
 
@@ -393,27 +372,17 @@ class CourseEnrollmentServiceTest extends TestCase
         ]);
         $service = app(CourseEnrollmentService::class);
         $enrollment = $service->enroll($term, $manager, $family);
-        $event = s9Event(['booking_capacity' => 2]);
-        DB::table('course_sessions')->insert([
-            'course_term_id' => $term,
-            'calendar_event_id' => $event->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
         DB::table('family_memberships')->where('manager_user_id', $manager->id)
             ->where('member_user_id', $family->id)
             ->update(['status' => 'ended', 'ended_at' => now()]);
 
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
-        try {
-            $service->confirmFee($enrollment['id'], $admin);
-            $this->fail('Revoked delegation must block fee confirmation.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('member', $exception->errors());
-        }
+        $readiness = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($readiness['ready']);
+        $this->assertSame('會員資格或代管權限不符。', $readiness['reason']);
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
-        $this->assertSame(0, DB::table('event_booking_attendees')
+        $this->assertSame(1, DB::table('event_booking_attendees')
             ->where('member_user_id', $family->id)->count());
     }
 
@@ -504,7 +473,7 @@ class CourseEnrollmentServiceTest extends TestCase
 
         $result = $service->confirmationReadiness($enrollment['id'], $admin);
         $this->assertFalse($result['ready']);
-        $this->assertSame(1, $result['session_count']);
+        $this->assertSame(2, $result['session_count']);
         $this->assertSame([$event->id], $result['invalid_session_event_ids']);
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }

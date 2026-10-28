@@ -12,12 +12,14 @@ use App\Models\User;
 use App\Models\VerificationType;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
+use App\Services\Payment\CashInvoiceService;
 use App\Services\Booking\LegacyBookingBackfill;
 use App\Services\BookingService;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 // G01 / G04 — one seat ledger for the S6 and S9 entry points (S9-L06 A).
 it('counts S6 and S9 single-member bookings in the same capacity ledger', function () {
@@ -392,8 +394,8 @@ it('confirms standalone event cash only once after validating its booking', func
         ->where('booking_id', $groupId)->value('id');
     expect($invoiceId)->not->toBeNull();
 
-    $first = app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
-    $second = app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+    $first = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+    $second = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
     expect($first['replayed'])->toBeFalse()
         ->and($second['replayed'])->toBeTrue()
         ->and((int) DB::table('invoices')->find($invoiceId)->invoice_status)->toBe(1)
@@ -421,9 +423,9 @@ it('rejects standalone event cash after family delegation is revoked', function 
         ->update(['status' => 'ended', 'ended_at' => now()]);
 
     try {
-        app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, makeAdmin());
+        app(CashInvoiceService::class)->confirmCash((int) $invoiceId, makeAdmin());
         $this->fail('Revoked delegation must prevent standalone event cash settlement.');
-    } catch (\Illuminate\Validation\ValidationException $exception) {
+    } catch (ValidationException $exception) {
         $this->assertArrayHasKey('invoice', $exception->errors());
     }
 
@@ -441,9 +443,30 @@ it('rejects standalone event cash when attendee verification is revoked', functi
     $member->forceFill(['verified_status' => 0])->save();
 
     try {
-        app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoiceId, makeAdmin());
+        app(CashInvoiceService::class)->confirmCash((int) $invoiceId, makeAdmin());
         $this->fail('Revoked member verification must prevent standalone event cash settlement.');
-    } catch (\Illuminate\Validation\ValidationException $exception) {
+    } catch (ValidationException $exception) {
+        $this->assertArrayHasKey('invoice', $exception->errors());
+    }
+
+    expect((int) DB::table('invoices')->find($invoiceId)->invoice_status)->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count())->toBe(0);
+});
+
+it('rejects standalone event cash when invoice participant no longer matches the booking', function () {
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $other = User::factory()->create(['verified_status' => 2]);
+    $groupId = groupBook($event, $member)->assertCreated()->json('data.id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')
+        ->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    DB::table('invoices')->where('id', $invoiceId)->update(['member_id' => $other->id]);
+    try {
+        app(CashInvoiceService::class)->confirmCash((int) $invoiceId, makeAdmin());
+        $this->fail('An invoice must not settle a different booking participant.');
+    } catch (ValidationException $exception) {
         $this->assertArrayHasKey('invoice', $exception->errors());
     }
 

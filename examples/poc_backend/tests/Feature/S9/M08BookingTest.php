@@ -12,9 +12,9 @@ use App\Models\User;
 use App\Models\VerificationType;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Payment\CashInvoiceService;
 use App\Services\Booking\LegacyBookingBackfill;
 use App\Services\BookingService;
+use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -386,7 +386,8 @@ it('backfills S6 bookings into the ledger once', function () {
 });
 
 it('confirms standalone event cash only once after validating its booking', function () {
-    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1]);
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1,
+        'booking_closes_at' => now()->addDays(5)]);
     $member = User::factory()->create(['verified_status' => 2]);
     $admin = makeAdmin();
     $groupId = groupBook($event, $member)->assertCreated()->json('data.id');
@@ -403,7 +404,8 @@ it('confirms standalone event cash only once after validating its booking', func
 });
 
 it('rejects standalone event cash after family delegation is revoked', function () {
-    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1]);
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1,
+        'booking_closes_at' => now()->addDays(5)]);
     $manager = User::factory()->create(['verified_status' => 2]);
     $family = User::factory()->create(['verified_status' => 2, 'FamilyUser' => true]);
     DB::table('family_memberships')->insert([
@@ -434,7 +436,8 @@ it('rejects standalone event cash after family delegation is revoked', function 
 });
 
 it('rejects standalone event cash when attendee verification is revoked', function () {
-    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1]);
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1,
+        'booking_closes_at' => now()->addDays(5)]);
     $member = User::factory()->create(['verified_status' => 2]);
     $groupId = groupBook($event, $member)->assertCreated()->json('data.id');
     $invoiceId = DB::table('invoices')->where('booking_type', '01')
@@ -454,7 +457,8 @@ it('rejects standalone event cash when attendee verification is revoked', functi
 });
 
 it('rejects standalone event cash when invoice participant no longer matches the booking', function () {
-    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1]);
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => 1,
+        'booking_closes_at' => now()->addDays(5)]);
     $member = User::factory()->create(['verified_status' => 2]);
     $other = User::factory()->create(['verified_status' => 2]);
     $groupId = groupBook($event, $member)->assertCreated()->json('data.id');

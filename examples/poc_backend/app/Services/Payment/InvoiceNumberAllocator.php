@@ -28,9 +28,6 @@ final class InvoiceNumberAllocator
             $prefix = substr($start, 0, 2);
             $from = (int) substr($start, 2);
             $to = (int) substr($end, 2);
-            if (DB::table('invoice_number_corrections')->where('old_number', '>=', $start)->where('old_number', '<=', $end)->exists()) {
-                throw ValidationException::withMessages(['range' => '區間包含已更正的舊發票號碼。']);
-            }
             if (DB::table('invoices')->where('invoice_no', '>=', $start)->where('invoice_no', '<=', $end)->exists()) {
                 throw ValidationException::withMessages(['range' => '此區間已有配發的發票號碼。']);
             }
@@ -53,8 +50,8 @@ final class InvoiceNumberAllocator
             throw ValidationException::withMessages(['admin' => '僅管理員可更正發票號碼。']);
         }
         $newNumber = strtoupper(trim($newNumber));
-        if (! preg_match('/^[A-Z]{2}[0-9]{8}$/', $newNumber) || trim($reason) === '') {
-            throw ValidationException::withMessages(['invoice_no' => '發票號碼須為兩碼英文字母與八碼數字，並填寫更正原因。']);
+        if (! preg_match('/^[A-Z]{2}[0-9]{8}$/', $newNumber) ) {
+            throw ValidationException::withMessages(['invoice_no' => '發票號碼須為兩碼英文字母與八碼數字，。']);
         }
         return DB::transaction(function () use ($invoiceId, $newNumber, $reason, $admin): string {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
@@ -64,8 +61,7 @@ final class InvoiceNumberAllocator
             if ($invoice->invoice_no === $newNumber) {
                 return $newNumber;
             }
-            if (DB::table('invoices')->where('invoice_no', $newNumber)->exists()
-                || DB::table('invoice_number_corrections')->where('old_number', $newNumber)->exists()) {
+            if (DB::table('invoices')->where('invoice_no', $newNumber)->where('id', '!=', $invoiceId)->exists()) {
                 throw ValidationException::withMessages(['invoice_no' => '發票號碼已使用或曾被更正，不得重複使用。']);
             }
             DB::table('invoice_number_corrections')->insert([
@@ -108,7 +104,7 @@ final class InvoiceNumberAllocator
                 throw ValidationException::withMessages(['range' => '目前期別沒有可用發票號碼，請管理員先設定字軌。']);
             }
             $number = $range->prefix.str_pad((string) $range->next_number, 8, '0', STR_PAD_LEFT);
-            if (DB::table('invoice_number_corrections')->where('old_number', $number)->exists() || DB::table('invoices')->where('invoice_no', $number)->exists()) {
+            if (DB::table('invoices')->where('invoice_no', $number)->exists()) {
                 throw ValidationException::withMessages(['range' => '下一個號碼曾被使用，請管理員調整號碼區間。']);
             }
             DB::table('invoice_number_ranges')->where('id', $range->id)->update([

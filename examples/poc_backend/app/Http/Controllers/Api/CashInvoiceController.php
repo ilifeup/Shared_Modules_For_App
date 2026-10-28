@@ -29,9 +29,9 @@ final class CashInvoiceController extends Controller
     {
         $data = $request->validate([
             'invoice_no' => ['required', 'string', 'size:10'],
-            'reason' => ['required', 'string', 'max:1000'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ]);
-        return new JsonResponse(['data' => ['invoice_no' => $numbers->correct($id, $data['invoice_no'], $data['reason'], $request->user())]]);
+        return new JsonResponse(['data' => ['invoice_no' => $numbers->correct($id, $data['invoice_no'], $data['reason'] ?? '', $request->user())]]);
     }
 
     public function allocate(Request $request, int $id, \App\Services\Payment\InvoiceNumberAllocator $numbers): JsonResponse

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 final class CourseEnrollmentController extends Controller
 {
@@ -28,11 +29,12 @@ final class CourseEnrollmentController extends Controller
 
         return new JsonResponse(['data' => $result], 201);
     }
+
     /** GET /api/v1/me/course-enrollments: own and currently delegated family enrollments. */
     public function mine(Request $request): JsonResponse
     {
         $actor = $request->user();
-        $memberIds = \Illuminate\Support\Facades\DB::table('family_memberships')
+        $memberIds = DB::table('family_memberships')
             ->where('manager_user_id', $actor->id)
             ->where('status', 'active')
             ->whereNull('ended_at')
@@ -42,7 +44,7 @@ final class CourseEnrollmentController extends Controller
             ->values()
             ->all();
 
-        $entries = \Illuminate\Support\Facades\DB::table('course_enrollments as e')
+        $entries = DB::table('course_enrollments as e')
             ->join('course_terms as t', 't.id', '=', 'e.course_term_id')
             ->whereIn('e.user_id', $memberIds)
             ->orderByDesc('e.id')
@@ -56,5 +58,4 @@ final class CourseEnrollmentController extends Controller
             'total' => $entries->total(),
         ]]);
     }
-
 }

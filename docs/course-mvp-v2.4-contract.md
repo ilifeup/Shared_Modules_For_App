@@ -10,6 +10,12 @@ Status: APPROVED business requirements; IMPLEMENTATION NOT YET VERIFIED. Single 
 - A roster query for one session must include both regular session Bookings and active makeup Bookings. M11 check-in/checkout must accept both, subject to the existing authorization and QR rules. On cancellation/reassignment, remove the old makeup Booking from the active roster and free its makeup slot; keep historical linkage.
 - Family members cannot log in; an authorized guardian operates on their behalf. Membership authority is `users.verified_status=2`. No guest bookings.
 
+## Waitlist capacity (activities and courses)
+- **Every activity independently configures its waitlist capacity**, default **5**, in the administrator backend. This is separate from its regular booking capacity. The activity waitlist cannot exceed its configured limit; a full waitlist rejects further entries. FIFO promotion remains.
+- **Every course term independently configures its whole-term waitlist capacity**, default **5**, separate from its regular term enrollment capacity and each session's makeup capacity. Waitlist entries are for the **whole term**, not per-session; a full waitlist rejects further entries. FIFO promotion remains.
+- Waitlisted members do not occupy regular booking/enrollment seats or makeup seats. Only verified members with unique users.id can join; no guest waitlist. Admin can configure a nonnegative waitlist capacity per activity/term; lowering capacity must not silently delete existing waitlist entries.
+- Minimal implementation: reuse the existing M08 waitlist where possible; add an event-level waitlist capacity and term-level waitlist capacity as necessary, without creating a second waitlist engine.
+
 ## Enrollment and leave
 - Whole-term signup first creates a pending enrollment and reserves one regular seat. Single administrator manually checks “已確認收費”; then create exactly one Booking for each session atomically/idempotently. No online money, refund amounts, transactions, or refund-status database.
 - Member term cancellation: “申請取消報名”, default cutoff 10 days before the FIRST session. Requires reason and administrator approval; pending request does not free the seat. Hide button after cutoff and enforce on server.
@@ -34,6 +40,12 @@ Status: APPROVED business requirements; IMPLEMENTATION NOT YET VERIFIED. Single 
 7. Original leave stays “已請假” after session end; unexcused absence becomes “缺課”.
 8. Member, guardian, admin permissions follow existing single-member Booking contract.
 9. All relevant Backend, OpenAPI, Flutter and M11 regression tests pass on exact commit SHA; CI green alone is not acceptance.
+
+## Additional waitlist acceptance
+10. Two distinct activities default to waitlist capacity 5 independently; sixth waitlist request for either activity is rejected when its own list is full.
+11. Two distinct course terms default to whole-term waitlist capacity 5 independently; sixth request is rejected when full. No separate waitlist for each course session.
+12. Waitlist entries do not consume regular or makeup seats; FIFO promotion works when regular seats are released.
+13. Admin can change each activity/term waitlist capacity; reducing the limit does not delete existing waiting members, but prevents further admission while at/above limit.
 
 ## Development sequencing
 First inspect PR #53 HEAD and current Booking/M11 schemas, then implement minimal migrations and Backend service, then API/Filament, then Flutter, then tests. Work in coherent batches and keep #53 Draft. Do not claim these features are implemented merely because this contract is committed.

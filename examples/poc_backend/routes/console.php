@@ -24,8 +24,8 @@ Artisan::command('s9:purge-link-stats', function (LinkAnalytics $analytics) {
 })->purpose('Delete raw clicks after 90 days and aggregates after 24 months (M17-D22)');
 
 Artisan::command('payments:expire-holds', function (CashInvoiceService $cash) {
-    $this->info('Expired unpaid event holds: '.$cash->expireDue());
-})->purpose('Cancel overdue unpaid event bookings and promote the FIFO waitlist');
+    $this->info('Expired unpaid event/course holds: '.$cash->expireDue());
+})->purpose('Expire overdue unpaid event and course bookings; event FIFO promotion');
 
 // Read-only: what an S9 rollback would delete (run before deciding on a rollback).
 Artisan::command('s9:data-report', function () {

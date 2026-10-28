@@ -397,6 +397,32 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $family->id)->count());
     }
 
+    public function test_revoked_member_verification_prevents_course_cash_confirmation(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+        $this->assertNotNull($invoiceId);
+
+        $member->forceFill(['verified_status' => 0])->save();
+
+        try {
+            app(\App\Services\\Payment\\CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            $this->fail('Revoked membership must prevent cash confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoiceId)->invoice_status);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
     public function test_confirm_fee_api_rejects_unauthenticated_and_non_admin_requests(): void
     {
         $term = $this->term();

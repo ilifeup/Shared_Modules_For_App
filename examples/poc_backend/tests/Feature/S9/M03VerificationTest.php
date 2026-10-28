@@ -2,6 +2,7 @@
 
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Models\VerificationEvidence;
 use App\Models\VerificationRequest;
 use App\Models\VerificationType;
 use App\Notifications\MemberNotification;
@@ -63,7 +64,7 @@ it('rejects unrelated, cross-request and separator-normalized evidence paths', f
     $member = User::factory()->create();
     $type = verificationType();
     applyFor($member, $type, [UploadedFile::fake()->image('proof.jpg')])->assertCreated();
-    $evidence = \App\Models\VerificationEvidence::query()->firstOrFail();
+    $evidence = VerificationEvidence::query()->firstOrFail();
     $url = '/api/v1/me/verification-evidence/'.$evidence->id;
     $this->actingAs($member, 'sanctum')->get($url)->assertOk();
 

@@ -102,7 +102,7 @@ class CheckinService
             }
 
             return $results;
-        });
+        }, 3); // Retry only transaction-safe MySQL deadlocks.
     }
 
     /**
@@ -146,7 +146,8 @@ class CheckinService
         [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor): array {
             // Single staff scans and member batches must lock in the same order.
             EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
-            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+            // The attendee parent lock serializes this key; avoid gap-locking a missing attendance row.
+            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
             if ($row === null || $row->status === EventAttendance::REVOKED) {
                 throw new ApiException(409, 'NOT_CHECKED_IN', '尚未簽到，無法簽退。');
             }
@@ -189,7 +190,10 @@ class CheckinService
         // reason or audit). The current row is read under the lock, so "before" and
         // the reason requirement cannot race with a parallel scan or correction.
         return DB::transaction(function () use ($event, $attendee, $status, $admin, $reason, $outsideWindow): EventAttendance {
-            $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+            // All attendance writers lock the same existing attendee parent row first.
+            // Locking an absent attendance row would take a MySQL gap lock instead.
+            EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
+            $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
             if (($outsideWindow || $existing !== null) && trim((string) $reason) === '') {
                 throw new ApiException(422, 'REASON_REQUIRED', '逾時補登、撤銷或更正必須填寫原因。', ['reason' => ['請填寫原因。']]);
             }
@@ -352,7 +356,8 @@ class CheckinService
             [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor, $source): array {
                 // Serialize concurrent first scans before the attendance row exists.
                 EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
-                $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+                // The attendee parent lock serializes this key; avoid gap-locking a missing attendance row.
+            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
                 if ($row !== null && $row->status === EventAttendance::CHECKED_IN) {
                     return [$row, 'already_checked_in'];
                 }

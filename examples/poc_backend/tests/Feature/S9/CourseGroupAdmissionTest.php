@@ -85,6 +85,50 @@ final class CourseGroupAdmissionTest extends TestCase
         $this->assertSame(1, DB::table('course_group_members')->where('course_group_id', $group)->count());
     }
 
+    public function test_waitlist_is_bounded_and_sequence_is_monotonic(): void
+    {
+        $this->ready();
+        $group = $this->group();
+        DB::table('course_groups')->where('id', $group)->update(['waitlist_capacity' => 1]);
+        $members = [$this->member(), $this->member(), $this->member()];
+        $service = app(CourseGroupAdmission::class);
+        $callback = static function (): void {};
+
+        $service->reserve($group, $members[0], $members[0], '00000000-0000-4000-8000-000000000011', $callback);
+        $waiting = $service->reserve($group, $members[1], $members[1], '00000000-0000-4000-8000-000000000012', $callback);
+        $this->assertSame('waitlisted', $waiting['status']);
+        $this->assertSame(1, (int) DB::table('course_group_members')->where('id', $waiting['id'])->value('waitlist_sequence'));
+        $this->assertSame(2, (int) DB::table('course_groups')->where('id', $group)->value('next_waitlist_sequence'));
+
+        try {
+            $service->reserve($group, $members[2], $members[2], '00000000-0000-4000-8000-000000000013', $callback);
+            $this->fail('Waitlist must reject a sixth candidate once full.');
+        } catch (\App\Support\Api\ApiException $exception) {
+            $this->assertSame('WAITLIST_FULL', $exception->errorCode);
+        }
+        $this->assertSame(2, DB::table('course_group_members')->where('course_group_id', $group)->count());
+    }
+
+    public function test_same_request_key_for_different_member_is_conflict(): void
+    {
+        $this->ready();
+        $group = $this->group();
+        $first = $this->member();
+        $second = $this->member();
+        $key = '00000000-0000-4000-8000-000000000014';
+        $service = app(CourseGroupAdmission::class);
+        $callback = static function (): void {};
+        $service->reserve($group, $first, $first, $key, $callback);
+
+        try {
+            $service->reserve($group, $second, $second, $key, $callback);
+            $this->fail('Request keys must not be reused across members.');
+        } catch (\App\Support\Api\ApiException $exception) {
+            $this->assertSame('IDEMPOTENCY_CONFLICT', $exception->errorCode);
+        }
+        $this->assertSame(1, DB::table('course_group_members')->where('course_group_id', $group)->count());
+    }
+
     public function test_failed_event_booking_rolls_back_seat_and_request_key(): void
     {
         $this->ready();

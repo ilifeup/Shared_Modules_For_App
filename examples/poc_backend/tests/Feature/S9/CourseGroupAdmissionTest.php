@@ -39,6 +39,25 @@ final class CourseGroupAdmissionTest extends TestCase
         });
     }
 
+    public function test_malformed_request_key_is_rejected_before_writing(): void
+    {
+        $group = $this->group();
+        $member = $this->member();
+
+        try {
+            app(CourseGroupAdmission::class)->reserve(
+                $group, $member, $member, '00000000-0000-0000-0000-00000000000Z',
+                static function (): void {},
+            );
+            $this->fail('Malformed request keys must be rejected.');
+        } catch (\App\Support\Api\ApiException $exception) {
+            $this->assertSame(422, $exception->status);
+            $this->assertSame('INVALID_REQUEST_ID', $exception->errorCode);
+        }
+
+        $this->assertSame(0, DB::table('course_group_members')->where('course_group_id', $group)->count());
+    }
+
     public function test_last_seat_then_waitlist_and_idempotent_replay(): void
     {
         $this->ready();

@@ -85,3 +85,51 @@ it('does not create a family member before administrator approval', function () 
     expect(User::query()->count())->toBe($before);
     expect(DB::table('family_memberships')->where('manager_user_id', $manager->id)->count())->toBe(0);
 });
+
+it('allows a manager to edit only their own family profile without changing identity or login status', function () {
+    $manager = User::factory()->create(['verified_status' => 2]);
+    $otherManager = User::factory()->create(['verified_status' => 2]);
+    $family = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    $otherFamily = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    $now = now();
+
+    DB::table('family_memberships')->insert([
+        ['manager_user_id' => $manager->id, 'member_user_id' => $family->id,
+            'status' => 'active', 'started_at' => $now, 'created_at' => $now, 'updated_at' => $now],
+        ['manager_user_id' => $otherManager->id, 'member_user_id' => $otherFamily->id,
+            'status' => 'active', 'started_at' => $now, 'created_at' => $now, 'updated_at' => $now],
+    ]);
+
+    $originalPassword = $family->password;
+    $payload = [
+        'birth_date' => '2015-06-01',
+        'address' => 'Updated family address',
+        'contact_phone' => '0912345678',
+        'contact_email' => 'family-contact@example.test',
+    ];
+
+    $this->actingAs($manager, 'sanctum')
+        ->putJson("/api/v1/me/family-members/{$family->id}/profile", $payload)
+        ->assertOk()->assertJsonPath('data.address', 'Updated family address');
+
+    $this->assertDatabaseHas('family_member_profiles', [
+        'member_user_id' => $family->id,
+        'address' => 'Updated family address',
+        'contact_email' => 'family-contact@example.test',
+    ]);
+
+    $family->refresh();
+    expect($family->id)->toBe($family->getKey())
+        ->and($family->FamilyUser)->toBeTrue()
+        ->and((int) $family->verified_status)->toBe(2)
+        ->and($family->password)->toBe($originalPassword);
+
+    $this->actingAs($manager, 'sanctum')
+        ->putJson("/api/v1/me/family-members/{$otherFamily->id}/profile", $payload)
+        ->assertForbidden()->assertJsonPath('error.code', 'FAMILY_MEMBER_NOT_AUTHORIZED');
+
+    $this->assertDatabaseMissing('family_member_profiles', [
+        'member_user_id' => $otherFamily->id,
+        'address' => 'Updated family address',
+    ]);
+});

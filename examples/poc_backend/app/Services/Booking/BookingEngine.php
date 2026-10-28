@@ -238,13 +238,17 @@ final class BookingEngine
                     && ($replayed = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first()) !== null) {
                     return null;
                 }
-                // A scheduled event owned by a course group cannot also sell
-                // standalone seats: that would bypass the group's shared
-                // capacity and FIFO queue. Legacy term bookings are NOT exempt.
+                // Series-owned occurrences are never independently bookable.
+                // Legacy term-derived bookings use the validated parent path below.
                 if (DB::table('course_group_events')
                     ->where('calendar_event_id', $locked->id)->exists()) {
-                    throw new ApiException(409, 'COURSE_GROUP_BOOKING_REQUIRED',
-                        '此課堂屬於集合課程，請由集合報名入口預約。');
+                    throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                        '此場次屬於系列活動／課程，請由整系列報名入口預約。');
+                }
+                if (! $coveredByCourseTerm && DB::table('course_sessions')
+                    ->where('calendar_event_id', $locked->id)->exists()) {
+                    throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                        '此場次屬於系列活動／課程，請由整系列報名入口預約。');
                 }
                 $this->validateRequest($locked, $request);
 

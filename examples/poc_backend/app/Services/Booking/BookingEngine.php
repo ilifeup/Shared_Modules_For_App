@@ -438,8 +438,8 @@ final class BookingEngine
     }
 
     /**
-     * Promotes waiting groups in strict FIFO order while whole groups fit (call with
-     * the occurrence locked). Stops at the first group that does not fit.
+     * Promotes one verified member booking at a time in strict FIFO order
+     * (call with the occurrence locked). Stops when no capacity remains.
      *
      * @return list<EventBookingGroup>
      */

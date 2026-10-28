@@ -101,4 +101,30 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $member);
     }
+    public function test_admin_readiness_does_not_mutate_pending_payment(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($result['ready']);
+        $this->assertSame(0, $result['session_count']);
+        $this->assertSame('pending_payment', $result['status']);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
+    public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $this->expectException(ValidationException::class);
+        app(CourseEnrollmentService::class)->confirmationReadiness($enrollment['id'], $member);
+    }
+
 }

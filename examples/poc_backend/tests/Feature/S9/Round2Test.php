@@ -67,7 +67,7 @@ it('keeps the audit log append-only, purges check-in data and leaves no way to r
     $admin = makeAdmin();
 
     // Member self check-in, staff manual registered-member check-in, staff checkout, admin correction.
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_id' => $attendees[0]->id, 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'contact' => '0912-000-111'])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'action' => 'checkout'])->assertOk();
     app(CheckinService::class)->adminSet($event, $attendees[1], EventAttendance::CHECKED_IN, $admin, '家人丁戊遲到補登 0912000111');

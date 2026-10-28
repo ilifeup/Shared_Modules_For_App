@@ -51,7 +51,7 @@ it('refuses GPS check-in when the fix is less precise than the radius', function
     $location->events()->attach($event->id);
 
     $post = fn (array $gps) => $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin",
-        ['attendee_ids' => [$attendee->id], 'location_token' => $location->token] + $gps);
+        ['attendee_id' => $attendee->id, 'location_token' => $location->token] + $gps);
 
     // 150 m away with a claimed 100 m accuracy used to pass (radius + accuracy); not any more.
     $post(['lat' => 25.03435, 'lng' => 121.5654, 'accuracy' => 100])->assertStatus(422)->assertJsonPath('error.code', 'GPS_OUT_OF_RANGE');

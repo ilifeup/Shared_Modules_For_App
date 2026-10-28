@@ -97,6 +97,11 @@ class CourseEnrollmentServiceTest extends TestCase
     {
         $term = $this->term();
         $member = $this->verified();
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term, 'calendar_event_id' => $event->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $result = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
 
         $invoices = DB::table('invoices')->where('booking_type', '02')

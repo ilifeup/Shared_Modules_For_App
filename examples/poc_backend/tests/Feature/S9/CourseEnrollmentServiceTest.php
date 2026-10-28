@@ -118,6 +118,37 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
+    public function test_readiness_reports_invalid_session_events_without_confirming_fee(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        $event = \App\Models\CalendarEvent::query()->create([
+            'title' => 'Unpublished course session',
+            'starts_at' => now()->addDays(10),
+            'ends_at' => now()->addDays(10)->addHours(2),
+            'status' => 'draft',
+            'audience' => 'members',
+            'booking_enabled' => false,
+        ]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($result['ready']);
+        $this->assertSame(1, $result['session_count']);
+        $this->assertSame([$event->id], $result['invalid_session_event_ids']);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

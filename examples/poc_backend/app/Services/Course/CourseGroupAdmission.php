@@ -14,13 +14,13 @@ use Illuminate\Support\Facades\DB;
  */
 final class CourseGroupAdmission
 {
-    public function reserve(int $groupId, User $booker, User $member, string $requestKey): array
+    public function reserve(int $groupId, User $booker, User $member, string $requestKey, callable $createEventBookingsAndInvoice): array
     {
         if (! preg_match('/^[a-f0-9-]{36}$/i', $requestKey)) {
             throw new ApiException(422, 'INVALID_REQUEST_ID', '請提供有效的請求識別碼。');
         }
 
-        return DB::transaction(function () use ($groupId, $booker, $member, $requestKey): array {
+        return DB::transaction(function () use ($groupId, $booker, $member, $requestKey, $createEventBookingsAndInvoice): array {
             // Every admission for this group locks the same parent row FIRST.
             // This serializes capacity, FIFO allocation and duplicate requests.
             $group = DB::table('course_groups')->where('id', $groupId)->lockForUpdate()->first();
@@ -88,7 +88,7 @@ final class CourseGroupAdmission
                 ]);
             }
 
-            return ['id' => (int) $id, 'status' => $status, 'replayed' => false];
+            // Any failure in the booking/invoice callback rolls back the seat too.\n            if ($confirmed) {\n                $createEventBookingsAndInvoice((int) $id, $groupId, $member, $booker);\n            }\n\n            return ['id' => (int) $id, 'status' => $status, 'replayed' => false];
         }, 3);
     }
 }

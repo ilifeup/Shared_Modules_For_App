@@ -32,6 +32,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('course_term_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained('users')->restrictOnDelete();
+            $table->foreignId('booker_user_id')->constrained('users')->restrictOnDelete();
             $table->string('status', 24); // pending_payment, confirmed, waitlisted, cancelled
             $table->unsignedBigInteger('waitlist_sequence')->nullable();
             $table->timestamp('fee_confirmed_at')->nullable();

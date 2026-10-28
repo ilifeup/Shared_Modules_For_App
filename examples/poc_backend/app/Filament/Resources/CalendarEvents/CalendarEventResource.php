@@ -138,6 +138,13 @@ class CalendarEventResource extends Resource
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             Toggle::make('waitlist_enabled')->label('額滿開放候補（依順序整組遞補）')->default(true)
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
+            TextInput::make('price_amount')->label('活動費用（TWD，0＝免費）')
+                ->numeric()->minValue(0)->default(0)->required()
+                ->helperText('MVP 僅線下現金收款；付費活動需設定足夠的付款保留時間。'),
+            TextInput::make('payment_hold_hours')->label('付款保留時間（小時）')
+                ->numeric()->minValue(1)->maxValue(8760)
+                ->placeholder('38')
+                ->helperText('留空使用預設 38 小時。付費活動的最後預約時間＋保留時間不得晚於活動開始時間。'),
             TextInput::make('booking_close_offset_minutes')->label('預約截止：活動開始前 N 分鐘（相對期限，改期自動重算）')->numeric()->minValue(0)->maxValue(525600)
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             TextInput::make('cancel_offset_minutes')->label('取消期限：活動開始前 N 分鐘（相對）')->numeric()->minValue(0)->maxValue(525600)

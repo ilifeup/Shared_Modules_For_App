@@ -15,7 +15,9 @@ class SessionsRelationManager extends RelationManager
     {
         return $table->columns([
             TextColumn::make('id')->label('課堂 ID'),
-                TextColumn::make('calendar_event_id')->label('活動 ID'),
+                TextColumn::make('event.title')->label('課堂名稱')->searchable(),
+                TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i'),
+                TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i'),
                 TextColumn::make('makeup_capacity')->label('補課名額'),
         ]);
     }

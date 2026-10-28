@@ -30,7 +30,8 @@ it('creates a verified non-login family member with an independent user id', fun
     expect($member->FamilyUser)->toBeTrue()
         ->and($member->verified_status)->toBe(2)
         ->and($member->email)->toBeNull()
-        ->and($member->phone_e164)->toBeNull();
+        ->and($member->phone_e164)->toBeNull()
+        ->and($member->password)->toBeNull();
     expect(DB::table('family_member_profiles')->where('member_user_id', $id)->value('contact_email'))->toBe($manager->email);
     expect(DB::table('family_memberships')->where('member_user_id', $id)->value('manager_user_id'))->toBe($manager->id);
 });
@@ -89,7 +90,7 @@ it('does not create a family member before administrator approval', function () 
 it('allows a manager to edit only their own family profile without changing identity or login status', function () {
     $manager = User::factory()->create(['verified_status' => 2]);
     $otherManager = User::factory()->create(['verified_status' => 2]);
-    $family = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
+    $family = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2, 'password' => null]);
     $otherFamily = User::factory()->create(['FamilyUser' => true, 'verified_status' => 2]);
     $now = now();
 
@@ -100,7 +101,6 @@ it('allows a manager to edit only their own family profile without changing iden
             'status' => 'active', 'started_at' => $now, 'created_at' => $now, 'updated_at' => $now],
     ]);
 
-    $originalPassword = $family->password;
     $payload = [
         'birth_date' => '2015-06-01',
         'address' => 'Updated family address',
@@ -122,7 +122,7 @@ it('allows a manager to edit only their own family profile without changing iden
     expect($family->id)->toBe($family->getKey())
         ->and($family->FamilyUser)->toBeTrue()
         ->and((int) $family->verified_status)->toBe(2)
-        ->and($family->password)->toBe($originalPassword);
+        ->and($family->password)->toBeNull();
 
     $this->actingAs($manager, 'sanctum')
         ->putJson("/api/v1/me/family-members/{$otherFamily->id}/profile", $payload)

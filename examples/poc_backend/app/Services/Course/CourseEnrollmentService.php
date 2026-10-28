@@ -127,17 +127,28 @@ final class CourseEnrollmentService
             }
         }
 
+        $ready = $entry->status === 'pending_payment' && $sessionIds !== [] && $invalidSessionIds === [];
+        if ($ready) {
+            foreach ($sessionIds as $eventId) {
+                $event = CalendarEvent::query()->find($eventId);
+                if ($event === null || $this->bookings->unavailableReason($event, 1, true) !== null) {
+                    $ready = false;
+                    $invalidSessionIds[] = $eventId;
+                }
+            }
+        }
+
         return [
             'id' => $enrollmentId,
             'status' => $entry->status,
             'session_count' => count($sessionIds),
-            'invalid_session_event_ids' => $invalidSessionIds,
-            'ready' => false,
+            'invalid_session_event_ids' => array_values(array_unique($invalidSessionIds)),
+            'ready' => $ready,
             'reason' => count($sessionIds) === 0
                 ? '本期尚未設定單堂課程。'
                 : ($invalidSessionIds !== []
-                    ? '部分單堂課程未發布或未開放預約。'
-                    : '單堂 Booking 原子性整合尚未完成，禁止確認收費。'),
+                    ? '部分單堂課程未發布、未開放預約或名額不足。'
+                    : ($ready ? '可確認線下收費並建立整期單堂預約。' : '此報名目前不可確認收費。')),
         ];
     }
 

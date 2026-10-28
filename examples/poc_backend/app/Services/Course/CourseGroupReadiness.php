@@ -55,11 +55,24 @@ final class CourseGroupReadiness
             ->groupBy('attendee.calendar_event_id')
             ->selectRaw('attendee.calendar_event_id, COUNT(*) as seats')
             ->pluck('seats', 'attendee.calendar_event_id');
+        // Positions must be a complete 1..N schedule. Count alone cannot
+        // detect a missing first lesson or a shifted/incorrect sequence.
+        $positions = $events->pluck('position')->map(static fn ($value): int => (int) $value)->all();
+        if ($positions !== range(1, (int) max(1, $group->expected_event_count))) {
+            $errors[] = '課堂順序必須從 1 起連續排列。';
+        }
+
+        // A member must have the entire cash-payment hold before lesson one.
+        // Never accept a seat that will expire only after a lesson begins.
+        $paymentDeadline = now()->addHours((int) $group->payment_hold_hours);
+        if ((int) $group->payment_hold_hours < 1) {
+            $errors[] = '付款保留時數必須大於零。';
+        }
         foreach ($events as $event) {
             if ($event->status !== 'published' || ! $event->booking_enabled
                 || (int) $event->booking_capacity < (int) $group->capacity
                     + (int) ($standaloneSeats[$event->calendar_event_id] ?? 0)
-                || $event->starts_at === null || $event->starts_at <= now()) {
+                || $event->starts_at === null || $event->starts_at <= $paymentDeadline) {
                 $errors[] = '課堂 '.$event->position.' 未發布、已開始或名額不足。';
             }
         }

@@ -20,7 +20,7 @@ $event = App\Models\CalendarEvent::query()->create([
 "checkin_enabled" => true, "checkout_enabled" => true, "checkin_gps_required" => false,
 "event_category_id" => $category->id,
 ]);
-$user = App\Models\User::factory()->create();
+$user = App\Models\User::factory()->create(["verified_status" => 2, "is_active" => true]);
 $companion = App\Models\User::factory()->create(["FamilyUser" => true, "verified_status" => 2]);
 // Integrated #43 schema is mandatory; fail rather than silently bypass delegation.
 \Illuminate\Support\Facades\DB::table("family_memberships")->insert([

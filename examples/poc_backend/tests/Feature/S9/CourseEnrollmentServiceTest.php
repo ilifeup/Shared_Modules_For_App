@@ -171,6 +171,48 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
     }
 
+    public function test_active_family_manager_can_confirm_twelve_sessions_without_duplicate_seats(): void
+    {
+        $term = $this->term();
+        $manager = $this->verified();
+        $family = $this->verified();
+        $family->forceFill(['FamilyUser' => true])->save();
+        DB::table('family_memberships')->insert([
+            'manager_user_id' => $manager->id,
+            'member_user_id' => $family->id,
+            'status' => 'active',
+            'started_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $manager, $family);
+        for ($i = 0; $i < 12; $i++) {
+            $event = s9Event(['booking_capacity' => 2]);
+            DB::table('course_sessions')->insert([
+                'course_term_id' => $term,
+                'calendar_event_id' => $event->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $this->assertSame('confirmed', $service->confirmFee($enrollment['id'], $admin)['status']);
+        $this->assertSame('confirmed', $service->confirmFee($enrollment['id'], $admin)['status']);
+
+        $attendees = DB::table('event_booking_attendees')
+            ->where('member_user_id', $family->id)
+            ->where('status', 'confirmed');
+        $this->assertSame(12, $attendees->count());
+        $this->assertSame(12, DB::table('event_booking_groups')
+            ->where('booker_user_id', $manager->id)
+            ->where('status', 'confirmed')->count());
+        $this->assertNotNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
     public function test_revoked_family_delegation_blocks_fee_confirmation_and_all_session_bookings(): void
     {
         $term = $this->term();

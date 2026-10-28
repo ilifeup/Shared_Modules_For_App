@@ -98,6 +98,16 @@ final class CourseEnrollmentService
     }
 
     /**
+     * Business-facing name: administrator checks that cash has been received.
+     * Keep confirmFee() as a compatibility entry point until booking and payment
+     * responsibilities are separated in the next migration.
+     */
+    public function paidCheck(int $enrollmentId, User $admin): array
+    {
+        return $this->confirmFee($enrollmentId, $admin);
+    }
+
+    /**
      * Read-only fee confirmation readiness. Never records a payment or books seats.
      * The administrator can correct missing sessions before confirming a term.
      */

@@ -30,6 +30,14 @@ final class CourseEnrollmentController extends Controller
         return new JsonResponse(['data' => $result], 201);
     }
 
+    /** POST /api/v1/admin/course-enrollments/{id}/confirm-fee. */
+    public function confirmFee(Request $request, int $id): JsonResponse
+    {
+        $result = $this->enrollments->confirmFee($id, $request->user());
+
+        return new JsonResponse(['data' => $result]);
+    }
+
     /** GET /api/v1/me/course-enrollments: own and currently delegated family enrollments. */
     public function mine(Request $request): JsonResponse
     {

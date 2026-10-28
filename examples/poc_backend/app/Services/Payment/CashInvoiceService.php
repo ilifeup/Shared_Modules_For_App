@@ -153,11 +153,9 @@ final class CashInvoiceService
         DB::table('course_enrollments')->where('id', $head->id)->update([
             'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
         ]);
-        if ((float) $term->price_amount > 0) {
-            $this->create('02', $termId, '02', (int) $head->id,
-                (int) $head->user_id, (int) $head->booker_user_id,
-                (string) $term->price_amount, $hours);
-        }
+        $this->create('02', $termId, '02', (int) $head->id,
+            (int) $head->user_id, (int) $head->booker_user_id,
+            (string) $term->price_amount, $hours);
     }
 
     /**

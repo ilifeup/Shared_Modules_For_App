@@ -90,6 +90,7 @@ paths:
       tags: [courses]
       operationId: adminConfirmCourseEnrollmentFee
       summary: Administrator confirms offline term fee and atomically books all sessions
+      x-verification: required
       description: Only an active administrator may confirm a pending_payment enrollment. Repeated confirmation is idempotent. If any session is unavailable, all session bookings and the enrollment update roll back.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
@@ -110,6 +111,7 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Enrollment not found }
         '422': { description: 'Enrollment is not pending payment or a course session is unavailable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /course-terms/{id}/enrollments:
     post:
       tags: [courses]

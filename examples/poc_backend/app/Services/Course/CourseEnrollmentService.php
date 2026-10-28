@@ -41,17 +41,9 @@ final class CourseEnrollmentService
 
             // Do not mark paid before every session booking can be created atomically.
             // This safeguard is temporary until the shared BookingEngine integration.
-            if (DB::table('course_sessions')->where('course_term_id', $entry->course_term_id)->exists()) {
-                throw ValidationException::withMessages(['enrollment' => '整期課程尚未接通單堂預約，暫不可確認收費。']);
-            }
-
-            DB::table('course_enrollments')->where('id', $enrollmentId)->update([
-                'status' => 'confirmed',
-                'fee_confirmed_at' => now(),
-                'updated_at' => now(),
+            throw ValidationException::withMessages([
+                'enrollment' => '整期課程尚未接通單堂預約，暫不可確認收費。',
             ]);
-
-            return ['id' => $enrollmentId, 'status' => 'confirmed'];
         }, 3);
     }
 

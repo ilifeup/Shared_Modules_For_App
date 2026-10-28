@@ -48,28 +48,38 @@ paths:
       tags: [courses]
       operationId: createInvoiceNumberRange
       summary: Administrator creates a manual invoice number range
+      x-verification: required
       responses:
-        '200': { description: Number range created }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
+        '200': { description: Number range created }
         '422': { description: Invalid number range }
   /admin/invoices/{id}/allocate-number:
     post:
       tags: [courses]
       operationId: allocateInvoiceNumber
       summary: Administrator allocates an invoice number
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
         '200': { description: Invoice number allocated }
   /admin/invoices/{id}/confirm-cash:
     post:
       tags: [courses]
       operationId: confirmInvoiceCash
       summary: Administrator confirms actual cash payment
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
         '200': { description: Cash payment confirmed }
         '422': { description: Invoice expired or bookings incomplete }
   /admin/invoices/{id}/correct-number:
@@ -77,18 +87,26 @@ paths:
       tags: [courses]
       operationId: correctInvoiceNumber
       summary: Administrator corrects an invoice number
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
         '200': { description: Invoice number corrected }
   /admin/invoices/{id}/record-refund:
     post:
       tags: [courses]
       operationId: recordInvoiceRefund
       summary: Administrator records an actual manual cash refund
+      x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
         '200': { description: Refund recorded }
 
   /me/course-enrollments:

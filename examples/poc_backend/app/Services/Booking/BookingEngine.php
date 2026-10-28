@@ -702,15 +702,17 @@ final class BookingEngine
             && ($request->booker !== null || ($existing->contact_name === $request->contactName
                 && $existing->contact_email === $request->contactEmail
                 && $existing->contact_phone === $request->contactPhone));
-        // Member IDs (and order), not mutable display names, identify the original
-        // attendees. A profile rename must not turn a legitimate retry into 409.
+        // The attendee's immutable users.id, not their mutable display name,
+        // identifies an idempotent retry. Legacy multi-attendee records are rejected.
         $storedMemberIds = $existing->attendees()->orderBy('id')->pluck('member_user_id')
             ->map(static fn ($id): ?int => $id === null ? null : (int) $id)->all();
-        $incomingMemberIds = array_map(
-            static fn (array $attendee): ?int => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
-            $request->attendees,
-        );
-        if (! $same || $existing->seat_count !== count($incomingMemberIds) || $storedMemberIds !== $incomingMemberIds) {
+        $incomingMemberId = count($request->attendees) === 1
+            ? ($request->attendees[0]['member_user_id'] ?? null)
+            : null;
+        if (! $same || count($request->attendees) !== 1 || $existing->seat_count !== 1
+            || count($storedMemberIds) !== 1 || $storedMemberIds[0] === null
+            || $incomingMemberId === null || ! is_numeric($incomingMemberId)
+            || $storedMemberIds[0] !== (int) $incomingMemberId) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
@@ -720,11 +722,6 @@ final class BookingEngine
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約。');
         }
         $this->assertActiveVerifiedMember($request->booker);
-        if (count($incomingMemberIds) !== 1 || $incomingMemberIds[0] === null
-            || $existing->seat_count !== 1 || count($storedMemberIds) !== 1 || $storedMemberIds[0] === null) {
-            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', '每筆預約只能對應一名正式會員。');
-        }
-
         // An idempotent replay is still a read of protected booking details.
         // Admin callers must not bypass attendee validity; family delegation is
         // rechecked for members to prevent access after authorization revocation.

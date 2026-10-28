@@ -42,6 +42,29 @@ tags:
 security:
   - bearer: []
 paths:
+  /course-terms/{id}/enrollments:
+    post:
+      tags: [courses]
+      operationId: courseTermEnroll
+      summary: Enroll a verified member or authorized family member in a term
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                member_user_id: { type: integer, description: Omit for self enrollment; family delegation required for another member }
+      responses:
+        '201': { description: Enrollment created as pending_payment or waitlisted }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Term or member not found }
+        '422': { description: Enrollment ineligible, duplicate, or capacity exceeded }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /av/tracks/{id}/access:
     get:
       tags: [av]

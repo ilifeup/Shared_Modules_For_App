@@ -179,6 +179,38 @@ final class CourseEnrollmentService
             ]);
 
             if ($status === 'pending_payment') {
+                $sessions = DB::table('course_sessions')
+                    ->where('course_term_id', $termId)->orderBy('calendar_event_id')
+                    ->pluck('calendar_event_id')->all();
+                if ($sessions === []) {
+                    throw ValidationException::withMessages(['session' => '本期尚未安排課堂，無法報名。']);
+                }
+
+                // Existing BookingEngine retains all seat and member validation.
+                // One outer transaction rolls back the enrollment and every
+                // session booking if any session is unavailable.
+                foreach ($sessions as $eventId) {
+                    $event = CalendarEvent::query()->findOrFail($eventId);
+                    if ($this->bookings->unavailableReason($event, 1, true) !== null) {
+                        throw ValidationException::withMessages(['session' => '課程預約未完成，請聯絡管理員。']);
+                    }
+                    $group = $this->bookings->book($event, new BookingRequest(
+                        booker: $booker,
+                        contactName: $booker->name,
+                        contactEmail: $booker->email,
+                        contactPhone: $booker->phone_e164,
+                        attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
+                        clientRequestId: (string) Uuid::uuid5(
+                            Uuid::NAMESPACE_URL,
+                            'course-enrollment:'.$id.':event:'.$eventId,
+                        ),
+                        byAdmin: true,
+                    ), coveredByCourseTerm: true);
+                    if ($group->status !== EventBookingGroup::STATUS_CONFIRMED) {
+                        throw ValidationException::withMessages(['session' => '課程預約未完成，請聯絡管理員。']);
+                    }
+                }
+
                 $hours = (int) ($term->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'));
                 $firstStart = DB::table('course_sessions')
                     ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')

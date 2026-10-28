@@ -117,6 +117,31 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertNotNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
 
+    public function test_readiness_reports_available_session_bookings_without_mutating_payment(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertTrue($result['ready']);
+        $this->assertSame([], $result['invalid_session_event_ids']);
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->count());
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
     public function test_fee_confirmation_rolls_back_all_sessions_if_one_is_unavailable(): void
     {
         $term = $this->term();

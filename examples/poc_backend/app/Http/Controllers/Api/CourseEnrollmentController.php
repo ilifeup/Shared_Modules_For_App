@@ -19,6 +19,7 @@ final class CourseEnrollmentController extends Controller
         $terms = DB::table('course_terms as t')
             ->join('course_sessions as s', 's.course_term_id', '=', 't.id')
             ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')
+            ->where('e.status', 'published')
             ->where('e.starts_at', '>=', now())
             ->groupBy('t.id', 't.title', 't.location', 't.enrollment_capacity')
             ->orderBy('t.id')

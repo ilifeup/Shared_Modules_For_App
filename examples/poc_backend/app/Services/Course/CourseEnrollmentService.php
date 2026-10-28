@@ -73,7 +73,7 @@ final class CourseEnrollmentService
                     contactPhone: $booker->phone_e164,
                     attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
                     clientRequestId: (string) Str::uuid5(
-                        Str::UUID_NAMESPACE_URL,
+                        \Ramsey\Uuid\Uuid::NAMESPACE_URL,
                         'course-enrollment:'.$enrollmentId.':event:'.$eventId,
                     ),
                     byAdmin: true,

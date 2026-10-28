@@ -43,6 +43,54 @@ tags:
 security:
   - bearer: []
 paths:
+  /admin/invoice-number-ranges:
+    post:
+      tags: [courses]
+      operationId: createInvoiceNumberRange
+      summary: Administrator creates a manual invoice number range
+      responses:
+        '200': { description: Number range created }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: Invalid number range }
+  /admin/invoices/{id}/allocate-number:
+    post:
+      tags: [courses]
+      operationId: allocateInvoiceNumber
+      summary: Administrator allocates an invoice number
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Invoice number allocated }
+  /admin/invoices/{id}/confirm-cash:
+    post:
+      tags: [courses]
+      operationId: confirmInvoiceCash
+      summary: Administrator confirms actual cash payment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Cash payment confirmed }
+        '422': { description: Invoice expired or bookings incomplete }
+  /admin/invoices/{id}/correct-number:
+    post:
+      tags: [courses]
+      operationId: correctInvoiceNumber
+      summary: Administrator corrects an invoice number
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Invoice number corrected }
+  /admin/invoices/{id}/record-refund:
+    post:
+      tags: [courses]
+      operationId: recordInvoiceRefund
+      summary: Administrator records an actual manual cash refund
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Refund recorded }
+
   /me/course-enrollments:
     get:
       tags: [courses]

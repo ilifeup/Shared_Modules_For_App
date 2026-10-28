@@ -98,7 +98,7 @@ it('refuses check-in outside the window and for waitlisted attendees', function 
     $waiting = User::factory()->create();
     groupBook($full, $waiting)->assertJsonPath('data.status', 'waitlisted');
     $attendee = EventBookingAttendee::query()->where('member_user_id', $waiting->id)->sole();
-    $this->actingAs($waiting, 'sanctum')->postJson("/api/v1/events/{$full->id}/checkin", ['attendee_ids' => [$attendee->id], 'event_token' => app(CheckinTokens::class)->event($full->id)])
+    $this->actingAs($waiting, 'sanctum')->postJson("/api/v1/events/{$full->id}/checkin", ['attendee_id' => $attendee->id, 'event_token' => app(CheckinTokens::class)->event($full->id)])
         ->assertStatus(409)->assertJsonPath('error.code', 'WAITLISTED');
 });
 
@@ -304,7 +304,7 @@ it('keeps attendance per occurrence', function () {
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
     // A token of one occurrence does not work for another.
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$second->id}/checkin", ['attendee_ids' => [$secondAttendee->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$second->id}/checkin", ['attendee_id' => $secondAttendee->id, 'event_token' => app(CheckinTokens::class)->event($event->id)])
         ->assertStatus(422);
 
     expect(EventAttendance::query()->where('calendar_event_id', $second->id)->count())->toBe(0)
@@ -408,23 +408,23 @@ it('rejects cross-member check-in before processing a waitlisted attendee', func
 it('keeps individual member check-in and checkout retries idempotent', function () {
     [$event, $member, $attendees] = checkinEvent();
     $token = app(CheckinTokens::class)->event($event->id);
-    $ids = [$attendees[0]->id];
+    $attendeeId = $attendees[0]->id;
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
-        'attendee_ids' => $ids, 'event_token' => $token,
+        'attendee_id' => $attendeeId, 'event_token' => $token,
     ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
-        'attendee_ids' => $ids, 'event_token' => $token,
+        'attendee_id' => $attendeeId, 'event_token' => $token,
     ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_in');
 
     expect(EventAttendance::query()->where('calendar_event_id', $event->id)->count())->toBe(1)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_in')->count())->toBe(1);
 
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
-        'attendee_ids' => $ids, 'event_token' => $token,
+        'attendee_id' => $attendeeId, 'event_token' => $token,
     ])->assertOk()->assertJsonPath('data.0.result', 'checked_out');
     $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkout", [
-        'attendee_ids' => $ids, 'event_token' => $token,
+        'attendee_id' => $attendeeId, 'event_token' => $token,
     ])->assertOk()->assertJsonPath('data.0.result', 'already_checked_out');
 
     expect(EventAttendance::query()->where('status', EventAttendance::CHECKED_OUT)->count())->toBe(1)

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\EventBookingGroup;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -242,7 +243,7 @@ it('resolves the new single-attendee relation for a member booking', function ()
         'client_request_id' => (string) Str::uuid(),
     ])->assertCreated();
 
-    $booking = \App\Models\EventBookingGroup::query()->findOrFail($response->json('data.id'));
+    $booking = EventBookingGroup::query()->findOrFail($response->json('data.id'));
     expect($booking->attendee)->not->toBeNull();
     expect((int) $booking->attendee->member_user_id)->toBe($member->id);
     expect($booking->attendees()->count())->toBe(1);

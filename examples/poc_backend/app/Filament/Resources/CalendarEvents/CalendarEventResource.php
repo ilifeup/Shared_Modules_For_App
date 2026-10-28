@@ -131,6 +131,9 @@ class CalendarEventResource extends Resource
                 // Existing bookings: change through 「調整名額」 so overbooking is impossible (M08-D20).
                 ->disabled(fn (?CalendarEvent $record): bool => $record?->booking_capacity !== null)
                 ->helperText(fn (?CalendarEvent $record): ?string => $record?->booking_capacity !== null ? '已建立的活動請使用清單的「調整名額」。' : null),
+            TextInput::make('waitlist_capacity')->label('候補名額上限')->numeric()->minValue(0)->maxValue(100000)->default(5)
+                ->required()
+                ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             TextInput::make('booking_max_seats')->label('每筆報名最多人數（含本人）')->numeric()->minValue(1)->maxValue(50)->default(1)
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             Toggle::make('waitlist_enabled')->label('額滿開放候補（依順序整組遞補）')->default(true)

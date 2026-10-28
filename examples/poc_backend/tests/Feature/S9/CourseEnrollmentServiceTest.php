@@ -198,26 +198,24 @@ class CourseEnrollmentServiceTest extends TestCase
         app(CourseEnrollmentService::class)->enroll($term, $member, $member);
     }
 
-    public function test_fee_confirmation_is_blocked_until_atomic_session_booking_exists(): void
+    public function test_legacy_confirm_fee_is_disabled_even_when_session_bookings_exist(): void
     {
         $term = $this->term();
         $member = $this->verified();
-        $service = app(CourseEnrollmentService::class);
-        $enrollment = $service->enroll($term, $member, $member);
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
-
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $this->assertSame(1, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
         try {
-            $service->confirmFee($enrollment['id'], $admin);
-            $this->fail('Premature fee confirmation must be blocked.');
+            app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $admin);
+            $this->fail('Legacy confirmation must remain disabled.');
         } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('enrollment', $exception->errors());
+            $this->assertArrayHasKey('invoice', $exception->errors());
         }
-
-        $row = DB::table('course_enrollments')->find($enrollment['id']);
-        $this->assertSame('pending_payment', $row->status);
-        $this->assertNull($row->fee_confirmed_at);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
     }
+
 
     public function test_paid_check_confirms_existing_session_bookings_without_duplicates(): void
     {
@@ -238,7 +236,7 @@ class CourseEnrollmentServiceTest extends TestCase
     }
 
 
-    public function test_readiness_reports_available_session_bookings_without_mutating_payment(): void
+    public function test_readiness_reports_existing_session_bookings_without_mutating_payment(): void
     {
         $term = $this->term();
         $member = $this->verified();
@@ -246,22 +244,16 @@ class CourseEnrollmentServiceTest extends TestCase
         $admin->assignRole(User::ADMIN_ROLE);
         $service = app(CourseEnrollmentService::class);
         $enrollment = $service->enroll($term, $member, $member);
-
-        $event = s9Event(['booking_capacity' => 2]);
-        DB::table('course_sessions')->insert([
-            'course_term_id' => $term,
-            'calendar_event_id' => $event->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
+        $before = DB::table('event_booking_attendees')->where('member_user_id', $member->id)->count();
         $result = $service->confirmationReadiness($enrollment['id'], $admin);
         $this->assertTrue($result['ready']);
+        $this->assertSame(1, $result['session_count']);
         $this->assertSame([], $result['invalid_session_event_ids']);
-        $this->assertSame(0, DB::table('event_booking_attendees')
+        $this->assertSame($before, DB::table('event_booking_attendees')
             ->where('member_user_id', $member->id)->count());
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
+
 
     public function test_readiness_rechecks_current_database_member_qualification(): void
     {
@@ -468,21 +460,23 @@ class CourseEnrollmentServiceTest extends TestCase
         app(CourseEnrollmentService::class)->confirmFee($enrollment['id'], $member);
     }
 
-    public function test_admin_readiness_does_not_mutate_pending_payment(): void
+    public function test_admin_readiness_preserves_pending_payment_and_existing_bookings(): void
     {
         $term = $this->term();
         $member = $this->verified();
-        $service = app(CourseEnrollmentService::class);
-        $enrollment = $service->enroll($term, $member, $member);
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);
-
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
         $result = $service->confirmationReadiness($enrollment['id'], $admin);
-        $this->assertFalse($result['ready']);
-        $this->assertSame(0, $result['session_count']);
+        $this->assertTrue($result['ready']);
+        $this->assertSame(1, $result['session_count']);
         $this->assertSame('pending_payment', $result['status']);
+        $this->assertSame(1, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }
+
 
     public function test_readiness_reports_invalid_session_events_without_confirming_fee(): void
     {

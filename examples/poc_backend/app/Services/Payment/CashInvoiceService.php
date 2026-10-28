@@ -89,6 +89,11 @@ final class CashInvoiceService
                     || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
                     return false;
                 }
+                $termId = DB::table('course_enrollments')->where('id', $invoice->booking_id)
+                    ->value('course_term_id');
+                if ($termId !== null) {
+                    DB::table('course_terms')->where('id', $termId)->lockForUpdate()->first();
+                }
                 $entry = DB::table('course_enrollments')->where('id', $invoice->booking_id)
                     ->lockForUpdate()->first();
                 if ($entry === null || $entry->status !== 'pending_payment') {
@@ -98,6 +103,7 @@ final class CashInvoiceService
                     ->update(['status' => 'cancelled', 'updated_at' => now()]);
                 DB::table('invoices')->where('id', $invoice->id)
                     ->update(['invoice_status' => 3, 'updated_at' => now()]);
+                $this->promoteCourseWaitlist((int) $entry->course_term_id);
                 return true;
             }, 3);
             if ($didExpire) {
@@ -106,6 +112,47 @@ final class CashInvoiceService
         }
 
         return $expired;
+    }
+
+    /**
+     * Promote only the first waiting course member; never bypass an ineligible head.
+     * Caller must hold the course-term lock.
+     */
+    private function promoteCourseWaitlist(int $termId): void
+    {
+        $term = DB::table('course_terms')->where('id', $termId)->first();
+        if ($term === null) {
+            return;
+        }
+        $head = DB::table('course_enrollments')->where('course_term_id', $termId)
+            ->where('status', 'waitlisted')->orderBy('waitlist_sequence')->orderBy('id')
+            ->lockForUpdate()->first();
+        if ($head === null) {
+            return;
+        }
+        $hours = (int) ($term->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'));
+        $firstStart = DB::table('course_sessions')
+            ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
+            ->where('course_sessions.course_term_id', $termId)
+            ->min('calendar_events.starts_at');
+        if ($firstStart === null || now()->copy()->addHours($hours)->gt($firstStart)) {
+            return;
+        }
+        $member = User::query()->find($head->user_id);
+        $booker = User::query()->find($head->booker_user_id);
+        if ($member === null || $booker === null || ! $member->is_active
+            || ! $member->isVerifiedMember()
+            || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
+            return;
+        }
+        DB::table('course_enrollments')->where('id', $head->id)->update([
+            'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
+        ]);
+        if ((float) $term->price_amount > 0) {
+            $this->create('02', $termId, '02', (int) $head->id,
+                (int) $head->user_id, (int) $head->booker_user_id,
+                (string) $term->price_amount, $hours);
+        }
     }
 
     /**

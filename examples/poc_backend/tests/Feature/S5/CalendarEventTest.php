@@ -58,6 +58,15 @@ it('returns published and cancelled events in the range, never drafts', function
     expect(CalendarEvent::query()->find($cancelled->id)?->cancelled_at)->not->toBeNull();
 });
 
+it('exposes configured waitlist limit in the event API', function () {
+    $event = calendarEvent(['waitlist_capacity' => 3, 'waitlist_enabled' => true]);
+    $this->actingAs(User::factory()->create(), 'sanctum')
+        ->getJson("/api/v1/events/{$event->id}")
+        ->assertOk()
+        ->assertJsonPath('data.waitlist_capacity', 3)
+        ->assertJsonPath('data.waitlist_enabled', true);
+});
+
 it('keeps member events away from the public and from unverified members', function () {
     calendarEvent(['title' => '會員活動']);
     $public = calendarEvent(['title' => '公開活動', 'audience' => CalendarEvent::AUDIENCE_PUBLIC]);

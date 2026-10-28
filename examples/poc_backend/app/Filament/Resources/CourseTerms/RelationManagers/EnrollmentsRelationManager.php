@@ -25,6 +25,18 @@ class EnrollmentsRelationManager extends RelationManager
                     'cancelled' => '已取消',
                     default => $state,
                 }),
+                TextColumn::make('invoice.invoice_code')->label('整期帳單編號')->placeholder('—'),
+                TextColumn::make('invoice.invoice_amount')->label('應收金額')->placeholder('—'),
+                TextColumn::make('invoice.invoice_status')->label('帳單狀態')
+                    ->formatStateUsing(fn ($state): string => match ((int) $state) {
+                        0 => '未付款',
+                        1 => '已付款',
+                        2 => '已取消',
+                        3 => '已逾期',
+                        4 => '退款中',
+                        5 => '已退款',
+                        default => '—',
+                    })->placeholder('—'),
                 TextColumn::make('waitlist_sequence')->label('候補順位')->placeholder('—'),
                 TextColumn::make('fee_confirmed_at')->label('收款確認時間')->dateTime('Y-m-d H:i')->placeholder('—'),
         ]);

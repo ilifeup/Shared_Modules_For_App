@@ -38,6 +38,17 @@ function staffMember(): User
     return $staff;
 }
 
+it('accepts scalar attendee_id for member check-in and rejects another member', function () {
+    [$event, $member, $attendees] = checkinEvent();
+    $token = app(CheckinTokens::class)->event($event->id);
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_id' => $attendees[0]->id, 'event_token' => $token,
+    ])->assertOk()->assertJsonPath('data.0.result', 'checked_in');
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", [
+        'attendee_id' => $attendees[1]->id, 'event_token' => $token,
+    ])->assertNotFound();
+});
+
 // G10 — 60-second rotation with a 10-second grace for the previous window, server time.
 it('accepts the current event token and the previous one only within 10 seconds', function () {
     $tokens = app(CheckinTokens::class);

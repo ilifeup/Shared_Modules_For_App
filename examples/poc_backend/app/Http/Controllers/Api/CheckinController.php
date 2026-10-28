@@ -41,13 +41,13 @@ class CheckinController extends Controller
     }
 
     /**
-     * POST /api/v1/events/{id}/checkin {attendee_ids, event_token | location_token, lat?, lng?, accuracy?}
+     * POST /api/v1/events/{id}/checkin {attendee_id, event_token | location_token, lat?, lng?, accuracy?}
      */
     public function checkIn(Request $request, int $id): JsonResponse
     {
         $data = $this->validateScan($request);
         $event = CalendarEvent::query()->listed()->findOrFail($id);
-        $results = $this->checkins->memberCheckIn($event, $request->user(), (int) $data['attendee_ids'][0], $data['event_token'] ?? null, $data['location_token'] ?? null, [
+        $results = $this->checkins->memberCheckIn($event, $request->user(), (int) ($data['attendee_id'] ?? $data['attendee_ids'][0]), $data['event_token'] ?? null, $data['location_token'] ?? null, [
             'lat' => $data['lat'] ?? null, 'lng' => $data['lng'] ?? null, 'accuracy' => $data['accuracy'] ?? null,
         ]);
 
@@ -55,7 +55,7 @@ class CheckinController extends Controller
     }
 
     /**
-     * POST /api/v1/events/{id}/checkout {attendee_ids, event_token | location_token} — same QR entry (D23).
+     * POST /api/v1/events/{id}/checkout {attendee_id, event_token | location_token} — same QR entry (D23).
      */
     public function checkOut(Request $request, int $id): JsonResponse
     {
@@ -64,7 +64,7 @@ class CheckinController extends Controller
         $this->assertScanToken($event, $data);
 
         // Member checkout is strictly one attendee per request.
-        $attendeeId = (int) $data['attendee_ids'][0];
+        $attendeeId = (int) ($data['attendee_id'] ?? $data['attendee_ids'][0]);
         $attendee = $this->checkins->attendeesOf($event, $request->user())->firstWhere('id', $attendeeId);
         if ($attendee === null) {
             throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
@@ -191,7 +191,9 @@ class CheckinController extends Controller
     private function validateScan(Request $request, bool $validateGps = true): array
     {
         $rules = [
-            'attendee_ids' => ['required', 'array', 'size:1'],
+            'attendee_id' => ['required_without:attendee_ids', 'nullable', 'integer', 'min:1'],
+            // Temporary compatibility for existing Flutter clients and M11 fixtures.
+            'attendee_ids' => ['required_without:attendee_id', 'nullable', 'array', 'size:1'],
             'attendee_ids.*' => ['integer', 'min:1'],
             'event_token' => ['required_without:location_token', 'nullable', 'string', 'max:100'],
             'location_token' => ['required_without:event_token', 'nullable', 'string', 'max:64'],

@@ -265,9 +265,29 @@ final class CashInvoiceService
         }
 
         return DB::transaction(function () use ($invoiceId, $admin): array {
-            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
-            if ($invoice === null) {
+            // Resolve parent first, then lock in term -> enrollment -> invoice order.
+            // The hint is revalidated after all locks are acquired.
+            $hint = DB::table('invoices')->where('id', $invoiceId)->first();
+            if ($hint === null) {
                 throw ValidationException::withMessages(['invoice' => '帳單不存在。']);
+            }
+            if ($hint->booking_type === '02') {
+                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
+                    ->value('course_term_id');
+                if ($termId === null || DB::table('course_terms')->where('id', $termId)
+                    ->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '整期報名不存在。']);
+                }
+                $lockedEnrollment = DB::table('course_enrollments')
+                    ->where('id', $hint->booking_id)->lockForUpdate()->first();
+                if ($lockedEnrollment === null || (int) $lockedEnrollment->course_term_id !== (int) $termId) {
+                    throw ValidationException::withMessages(['invoice' => '整期報名資料已變更。']);
+                }
+            }
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($invoice === null || $invoice->booking_type !== $hint->booking_type
+                || (int) $invoice->booking_id !== (int) $hint->booking_id) {
+                throw ValidationException::withMessages(['invoice' => '帳單資料已變更，請重新操作。']);
             }
             if ((int) $invoice->invoice_status === 1) {
                 return ['id' => $invoiceId, 'status' => 1, 'replayed' => true];

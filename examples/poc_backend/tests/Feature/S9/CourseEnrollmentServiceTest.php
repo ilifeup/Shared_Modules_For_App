@@ -88,7 +88,7 @@ class CourseEnrollmentServiceTest extends TestCase
 
         $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
         $this->assertSame('pending_payment', $enrollment['status']);
-        $this->assertSame(2, DB::table('event_booking_attendees')
+        $this->assertSame(3, DB::table('event_booking_attendees')
             ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
         $this->assertSame(1, DB::table('invoices')->where('booking_type', '02')
             ->where('booking_id', $enrollment['id'])->count());

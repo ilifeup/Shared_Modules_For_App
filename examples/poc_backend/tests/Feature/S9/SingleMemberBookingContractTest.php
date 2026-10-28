@@ -189,7 +189,6 @@ it('never permits a managed family member to book directly even with a forged Sa
     expect(DB::table('event_booking_groups')->count())->toBe(0);
 });
 
-
 it('creates separate single-seat bookings when one manager books for two family members', function () {
     $event = s9Event(['booking_capacity' => 3]);
     $manager = User::factory()->create(['verified_status' => 2]);
@@ -217,7 +216,6 @@ it('creates separate single-seat bookings when one manager books for two family 
         ->orderBy('id')->pluck('member_user_id')->all())->toBe($familyIds);
     expect(seats($event))->toBe(2);
 });
-
 
 it('rejects a second active booking for the same member even with a new request key', function () {
     $event = s9Event(['booking_capacity' => 3]);

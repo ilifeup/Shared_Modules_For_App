@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class CourseEnrollmentServiceTest extends TestCase
@@ -46,7 +47,7 @@ class CourseEnrollmentServiceTest extends TestCase
         }
 
         $extra = $this->verified();
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectException(ValidationException::class);
         $service->enroll($term, $extra, $extra);
     }
 
@@ -57,7 +58,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $member = $this->verified();
         $service->enroll($term, $member, $member);
         $second = $this->verified();
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectException(ValidationException::class);
         $service->enroll($term, $second, $second);
     }
 
@@ -66,7 +67,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $term = $this->term();
         $member = $this->verified();
         $member->forceFill(['verified_status' => 1])->save();
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->enroll($term, $member, $member);
     }
 }

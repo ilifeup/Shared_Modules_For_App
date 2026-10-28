@@ -998,6 +998,8 @@ void main() {
     await tester.tap(find.byKey(const Key('open-profile')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('profile-change-phone')));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -120));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-change-phone')));
     await tester.pumpAndSettle();
 

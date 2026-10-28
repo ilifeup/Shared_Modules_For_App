@@ -62,6 +62,29 @@ final class CourseGroupAdmissionTest extends TestCase
         $this->assertSame(1, DB::table('course_group_members')->where('status', 'waitlisted')->count());
     }
 
+    public function test_replay_is_forbidden_after_member_verification_revoked(): void
+    {
+        $this->ready();
+        $group = $this->group();
+        $member = $this->member();
+        $requestId = '00000000-0000-4000-8000-000000000004';
+        $service = app(CourseGroupAdmission::class);
+        $service->reserve($group, $member, $member, $requestId, static function (): void {});
+        $member->update(['verified_status' => 0]);
+
+        try {
+            $service->reserve($group, $member, $member, $requestId, static function (): void {
+                throw new \RuntimeException('Must never invoke callback on replay.');
+            });
+            $this->fail('Revoked members must not replay protected enrollment details.');
+        } catch (\App\Support\Api\ApiException $exception) {
+            $this->assertSame(403, $exception->status);
+            $this->assertSame('MEMBER_NOT_ELIGIBLE', $exception->errorCode);
+        }
+
+        $this->assertSame(1, DB::table('course_group_members')->where('course_group_id', $group)->count());
+    }
+
     public function test_failed_event_booking_rolls_back_seat_and_request_key(): void
     {
         $this->ready();

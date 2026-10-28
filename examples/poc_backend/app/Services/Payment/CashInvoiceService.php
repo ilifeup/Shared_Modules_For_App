@@ -5,6 +5,7 @@ namespace App\Services\Payment;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -57,6 +58,26 @@ final class CashInvoiceService
         DB::table('invoices')->where('id', $id)->update([
             'invoice_code' => $type.now()->format('Ymd').'-'.str_pad((string) $id, 9, '0', STR_PAD_LEFT),
         ]);
+    }
+
+    /**
+     * A bounded scan; every row is rechecked under the event and invoice locks.
+     * The scheduler can safely retry interrupted batches.
+     */
+    public function expireDue(int $limit = 100): int
+    {
+        $due = DB::table('invoices')->where('invoice_status', 0)
+            ->where('booking_type', '01')->whereNotNull('payment_due_at')
+            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
+            ->get(['id', 'booking_id']);
+        $expired = 0;
+        foreach ($due as $invoice) {
+            if (app(BookingEngine::class)->expireCashHold((int) $invoice->booking_id, (int) $invoice->id)) {
+                $expired++;
+            }
+        }
+
+        return $expired;
     }
 
     public function confirmCash(int $invoiceId, User $admin): array

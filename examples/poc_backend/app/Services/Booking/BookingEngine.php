@@ -311,6 +311,42 @@ final class BookingEngine
     }
 
     /**
+     * Expire a cash hold while serialising with seat changes. A paid invoice is
+     * never cancelled by this job; repeat calls are safe.
+     */
+    public function expireCashHold(int $groupId, int $invoiceId): bool
+    {
+        $expired = $this->transaction(function () use ($groupId, $invoiceId): bool {
+            $candidate = EventBookingGroup::query()->find($groupId);
+            if ($candidate === null) {
+                return false;
+            }
+            $event = $this->lock($candidate->event);
+            $group = EventBookingGroup::query()->whereKey($groupId)->lockForUpdate()->first();
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($group === null || $invoice === null
+                || $invoice->booking_type !== '01' || (int) $invoice->booking_id !== $groupId
+                || (int) $invoice->invoice_status !== 0 || $invoice->payment_due_at === null
+                || now()->lt($invoice->payment_due_at)) {
+                return false;
+            }
+            DB::table('invoices')->where('id', $invoiceId)->update([
+                'invoice_status' => 3, 'updated_at' => now(),
+            ]);
+            if ($group->status === EventBookingGroup::STATUS_CONFIRMED) {
+                $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, 'payment_expired');
+                $this->promote($event);
+            }
+            AuditEvent::record('booking.payment_expired', null, $group, ['invoice_id' => $invoiceId]);
+
+            return true;
+        });
+        $this->flush();
+
+        return $expired;
+    }
+
+    /**
      * Cancels a confirmed or waitlisted group (member before the cancel deadline, or an
      * admin at any time) and promotes waiting groups at once (D15, D16).
      */

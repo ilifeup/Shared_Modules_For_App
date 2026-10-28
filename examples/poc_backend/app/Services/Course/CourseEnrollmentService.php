@@ -16,6 +16,44 @@ final class CourseEnrollmentService
      * enrollments so concurrent requests cannot exceed either capacity.
      * Guardian delegation is verified inside the same transaction.
      */
+    /**
+     * A single administrator confirms an offline payment. Repeat calls are safe:
+     * confirmed enrollments remain confirmed without duplicate transitions.
+     * Session bookings are deliberately not created here until the shared seat
+     * ledger integration is implemented atomically.
+     */
+    public function confirmFee(int $enrollmentId, User $admin): array
+    {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw ValidationException::withMessages(['admin' => '僅管理員可確認收費。']);
+        }
+
+        return DB::transaction(function () use ($enrollmentId): array {
+            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
+            if ($entry === null) {
+                throw ValidationException::withMessages(['enrollment' => '報名紀錄不存在。']);
+            }
+
+            DB::table('course_terms')->where('id', $entry->course_term_id)->lockForUpdate()->first();
+            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->lockForUpdate()->first();
+
+            if ($entry->status === 'confirmed') {
+                return ['id' => $enrollmentId, 'status' => 'confirmed'];
+            }
+            if ($entry->status !== 'pending_payment') {
+                throw ValidationException::withMessages(['enrollment' => '只有待收費報名可以確認。']);
+            }
+
+            DB::table('course_enrollments')->where('id', $enrollmentId)->update([
+                'status' => 'confirmed',
+                'fee_confirmed_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return ['id' => $enrollmentId, 'status' => 'confirmed'];
+        }, 3);
+    }
+
     public function enroll(int $termId, User $booker, User $member): array
     {
         if (! $member->is_active || ! $member->isVerifiedMember()) {

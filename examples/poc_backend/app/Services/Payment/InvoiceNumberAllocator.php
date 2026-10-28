@@ -24,10 +24,13 @@ final class InvoiceNumberAllocator
         }
         return DB::transaction(function () use ($start, $end, $period, $admin): int {
             // Lock the range set by serializing creation against a stable user row.
-            DB::table('users')->where('id', $admin->id)->lockForUpdate()->first();
+            DB::table('users')->orderBy('id')->lockForUpdate()->first();
             $prefix = substr($start, 0, 2);
             $from = (int) substr($start, 2);
             $to = (int) substr($end, 2);
+            if (DB::table('invoices')->where('invoice_no', '>=', $start)->where('invoice_no', '<=', $end)->exists()) {
+                throw ValidationException::withMessages(['range' => '此區間已有配發的發票號碼。']);
+            }
             if (DB::table('invoice_number_ranges')->where('prefix', $prefix)
                 ->where('start_number', '<=', $to)->where('end_number', '>=', $from)->exists()) {
                 throw ValidationException::withMessages(['range' => '發票區間與既有字軌重疊。']);
@@ -53,6 +56,8 @@ final class InvoiceNumberAllocator
             if ($invoice->invoice_no !== null) {
                 return $invoice->invoice_no;
             }
+            // A shared lock serializes allocation across different invoice rows.
+            DB::table('users')->orderBy('id')->lockForUpdate()->first();
             $range = DB::table('invoice_number_ranges')->where('active', true)
                 ->where('period_code', now()->format('Ym'))
                 ->whereColumn('next_number', '<=', 'end_number')

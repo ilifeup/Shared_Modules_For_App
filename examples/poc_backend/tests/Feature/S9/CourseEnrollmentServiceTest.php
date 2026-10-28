@@ -500,6 +500,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmationReadiness($enrollment['id'], $member);
     }
+
     public function test_course_catalog_excludes_terms_with_incomplete_sessions(): void
     {
         $visibleTerm = $this->term();
@@ -510,13 +511,9 @@ class CourseEnrollmentServiceTest extends TestCase
         $ready->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
         $unavailable->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
 
-        foreach ([[$visibleTerm, $ready->id], [$hiddenTerm, $ready->id]] as $item) {
-            // Each event can belong to only one course session.
-            if ($item[0] === $hiddenTerm) {
-                $otherReady = s9Event(['booking_enabled' => true, 'booking_capacity' => 2]);
-                $otherReady->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
-                $item[1] = $otherReady->id;
-            }
+        $otherReady = s9Event(['booking_enabled' => true, 'booking_capacity' => 2]);
+        $otherReady->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
+        foreach ([[$visibleTerm, $ready->id], [$hiddenTerm, $otherReady->id]] as $item) {
             DB::table('course_sessions')->insert(['course_term_id' => $item[0], 'calendar_event_id' => $item[1], 'created_at' => now(), 'updated_at' => now()]);
         }
         DB::table('course_sessions')->insert(['course_term_id' => $hiddenTerm, 'calendar_event_id' => $unavailable->id, 'created_at' => now(), 'updated_at' => now()]);
@@ -527,5 +524,4 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertContains($visibleTerm, $ids);
         $this->assertNotContains($hiddenTerm, $ids);
     }
-
 }

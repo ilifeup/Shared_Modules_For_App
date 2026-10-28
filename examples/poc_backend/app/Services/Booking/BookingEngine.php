@@ -224,13 +224,6 @@ final class BookingEngine
                     default => throw self::unavailable($reason),
                 };
 
-                // The event lock serializes waitlist admission for this occurrence.
-                // Standalone activities and standalone courses share this limit.
-                if ($status === EventBookingGroup::STATUS_WAITLISTED
-                    && $this->waitingGroups($locked) >= (int) $locked->waitlist_capacity) {
-                    throw new ApiException(409, 'WAITLIST_FULL', '候補名額已滿。');
-                }
-
                 $group = $this->createGroup($locked, [
                     'booker_user_id' => $request->booker?->id,
                     'contact_name' => $request->contactName,

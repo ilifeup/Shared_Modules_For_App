@@ -234,13 +234,52 @@ https://www.reddit.com/r/flutterhelp/comments/1joue8z/
 
 **禁止：** `warnIfMissed: false` 掩蓋點擊錯誤、刪除失敗測試、跳過導航斷言、為單一測試盲目大改 UI。
 
-## 20. 全模組 MVP 現金付款與先預約原則（2026-10-28 使用者最新決策）
+## 20. Shared Modules｜統一交易資料庫與預約付款規格（核准基線，2026-10-28）
 
-**適用：Shared Modules 所有現有與未來模組**（課程、活動、家庭會員、預約及後續共用模組）；此決策優先於舊有 pending_payment／先付款後預約流程。
+> **最高業務規則，適用所有 Shared Modules 模組。** 本節取代先前「只記錄現金、不限時保留名額」及「收費確認後才建立預約」的舊理解；不代表已完成程式實作。MVP 僅收線下現金；預約先成立並暫時保留名額，逾期未付須取消及釋位。後續金流擴充不得破壞既有資料契約。
 
-1. MVP 唯一付款方式為 **現金**，全部於線下收付；軟體 **不串接任何線上金流**。後台涉及付款方式的選單只有「現金」，日後接入金流才新增其他選項。
-2. **有效且已驗證會員先完成系統預約，不驗證是否已付款**；不得因尚未收現金而拒絕預約、占位或建立正式預約。仍須遵守會員資格、家庭代管、名額及候補等非付款規則。
-3. 現金由管理員在線下收取、人工確認；收款記錄是後續管理，不得觸發才建立預約。不得使用付款額度、線上交易、支付回呼或預付憑證當作一般預約的先決條件。
-4. **家庭會員特殊規則**：第一位免費但需管理員核准；第二位起需線下現金付費且經管理員核准。這是家庭會員建立資格的獨立審核規則，不得套用成課程／活動預約先付款限制。保留管理員可調整家庭會員人數上限（預設 2）。
-5. 開發時檢查 Controller → Service → BookingEngine → DB → Flutter UI／測試：任何舊流程把 `pending_payment` 或 `fee_confirmed_at` 當成建立課程／活動預約的前置條件，均列為 **MVP 待修缺陷**。修改需同批涵蓋資料庫狀態、API 契約與測試；不得僅改 UI 或新增金流機制。
-6. 不自動合併 PR；集中修正並以實際測試驗收，避免零碎提交和反覆觸發 CI。
+### 20.1 付款與預約狀態：兩條獨立狀態軸
+1. 已驗證且有效會員（資料庫 `users.verified_status = 2`）符合資格、名額及代管規則即可預約；**不以付款作為建立預約的前提**。禁止訪客預約；家庭會員不可自行登入，只能由合法代管者操作。
+2. 付費且有正式名額：建立預約（狀態如 confirmed / reserved）與未付帳單（`invoice_status=0`），立即占用名額；顯示「未付」及明確付款截止時間。**未付不等於候補，也不等於尚未預約。**
+3. 管理員於期限內收現金，人工確認並原子更新帳單與交易紀錄（`invoice_status=1`）；顯示「已付」，預約不需重新建立，不得重複占位。
+4. 期限屆滿仍未付：後端排程以資料庫交易重新檢查付款狀態，標記逾期並取消對應預約、釋出名額，再依原有候補 FIFO 規則處理；必須防止排程與收款同時執行時的競態及重複取消／遞補。**已付款者不得被逾期作業取消。**
+5. 候補不占正式名額；候補轉正才建立其付款期限與應付帳單（若已收款，按實際帳務處理），不能因未付款跳過較早的合法候補。不得保證「已付款候補」可插隊；FIFO 仍為最高排序規則。免費（應付 0）預約視為無待收款義務，不因付款期限被取消。
+6. 家庭會員第一位免費、需管理員核准；第二位起需線下現金及管理員核准；後台家庭會員上限預設 2、可調整。這是家庭會員資格審核，不得錯用為一般活動／課程預約的先付費門檻。
+
+### 20.2 管理員可設定的保留時間與活動建立驗證
+1. 系統管理員設定全域 `payment_hold_hours` 預設 **38**（正整數）；各活動／課程可覆寫，未覆寫則繼承系統預設。應於後台清楚顯示實際生效值。
+2. 活動必須有 `starts_at` 與 `booking_closes_at`；整期課程以**第一堂開始時間**為基準。建立、發布及修改時，後端必須驗證：`booking_closes_at + payment_hold_hours hours <= first_start_at`。不合規回傳欄位驗證錯誤，**禁止新增／發布不合規活動**；前端同步提示但不得取代後端檢查。變更全域預設不應無預警破壞既有已發布活動的有效設定。
+3. 有效預約的 `payment_due_at = booked_at + effective_payment_hold_hours`，以預約當下設定快照儲存，不因日後修改設定而追溯更改。建立預約時再次檢查尚未超過 `booking_closes_at` 且期限不晚於開始時間；以伺服器時鐘為準。
+4. 候補轉正亦須符合相同完整保留期限及活動開始時間限制；若已無足夠時間，**不可自動建立不合規的付款期限或暗中跳過 FIFO**，交由管理員依核准例外流程處理。付款截止日後的簽到不得代替收款確認。
+5. **資料庫與 API 必須同時驗證**；原子更新活動時間與保留設定。資料庫保存 UTC 時間、前端以 Asia/Taipei 顯示；計算時間須使用真正的時區時間值，不依賴瀏覽器時鐘。
+
+### 20.3 最小可擴充資料模型（MySQL/MariaDB；保留既有預約表）
+
+**A. `invoices`：應收帳單／預約訂單（名稱不代表已開立法定統一發票）**
+- `id BIGINT UNSIGNED PK`；`invoice_code VARCHAR(40) UNIQUE NOT NULL`，以交易類別＋日期＋原子流水號產生（例 `02_20261028_000001`，並發下不可重號）；`invoice_no VARCHAR(30) NULL` 僅供真正開立的法定發票號碼，不能拿 `invoice_code` 冒充。
+- `invoice_status TINYINT NOT NULL`：**0 未付、1 已付、2 已取消、3 已逾期、4 退款中、5 已退款**。金額為 0 的免費訂單不得留在需逾期催款的狀態，可標記已結清但**不可虛構實際收款交易**。
+- `invoice_amount DECIMAL(12,2) NOT NULL`、`currency CHAR(3) NOT NULL DEFAULT 'TWD'`。使用有號 DECIMAL 支援折讓／沖銷資料，但一般新預約應付金額 **>= 0**；退款／調整以獨立交易保留原始應收，不直接覆寫歷史金額。若日後支援部分付款，應付、已收與退款須由交易明細核對，不能僅憑狀態判斷。
+- `member_id BIGINT UNSIGNED FK -> users.id`（實際參加者）、`booker_user_id BIGINT UNSIGNED FK -> users.id`（代訂人）；`transaction_type CHAR(2)`（`01` 活動、`02` 整期課程、未來 `03` 商品）、`product_id BIGINT UNSIGNED`（模組內實體 ID），兩欄必須共同解讀，不能假裝 `product_id` 可直接跨多種表建立單一 FK。
+- **必備 `booking_id` / `booking_type` 的可驗證關聯**：活動使用原有 BookingEngine 正式預約 ID；整期課程使用 `course_enrollments.id`。建議 `booking_type CHAR(2)` + `booking_id BIGINT UNSIGNED`，兩者成對、服務層檢查存在性，並建立 `UNIQUE(booking_type, booking_id)` 防止同一正式預約重複開立帳單；不得以不唯一的 `product_id` 代替預約 ID。多名參加者是否各自收費，須與原有單會員預約契約一致。
+- `app_stage TINYINT NOT NULL DEFAULT 0`（0 MVP、1 進階營運，**只是建立時版本標記，不是付款驗證條件**）；`payment_method TINYINT NOT NULL DEFAULT 0`（0 現金，未來新增其他代碼）；`invoice_datetime DATETIME`、`payment_due_at DATETIME NULL`、`paid_at DATETIME NULL`、`staff_id BIGINT UNSIGNED NULL FK -> users.id`、`created_at`、`updated_at`。正式收款員工 ID 不得由會員 App 自填。
+- 索引：`UNIQUE(invoice_code)`、`UNIQUE(booking_type,booking_id)`、`INDEX(invoice_status,payment_due_at)`、`INDEX(member_id,created_at)`；必要 FK 索引與刪除限制，避免刪除會員／預約時造成帳務孤兒。正式發票號碼的唯一性應按實際發票制度、賣方與期別定義，不可草率假定單欄永遠唯一。
+
+**B. `payment_transactions`：實際收款／退款／失敗嘗試紀錄**
+- `id BIGINT UNSIGNED PK`、`invoice_id BIGINT UNSIGNED NOT NULL FK -> invoices.id`、`transaction_code VARCHAR(50) UNIQUE NOT NULL`、`transaction_amount DECIMAL(12,2) NOT NULL`（收款正數、退款負數）、`currency CHAR(3)`、`payment_method TINYINT`（MVP 僅 0 現金）、`transaction_status TINYINT`（0 待確認、1 成功、2 失敗、3 撤銷）。
+- `external_transaction_id VARCHAR(120) NULL` 預留金流；未來應以「金流商代碼＋外部交易編號」組合唯一鍵，而非全平台假定外部編號唯一。MVP 不建立假金流回呼。
+- `staff_id BIGINT UNSIGNED NULL FK -> users.id`、`processed_at DATETIME NULL`、`created_at`、`updated_at`；建議 `idempotency_key VARCHAR(100) NULL` 搭配唯一索引，防止重試／連點重複入帳；另設 `INDEX(invoice_id,transaction_status)`。
+- 管理員「確認收現金」必須於同一 DB transaction 鎖定帳單、檢查尚未付／未取消／未逾期、建立**唯一成功收款交易**、更新 `invoice_status=1`、`paid_at`、`staff_id`；重複請求回傳既有結果，不得重複收款。若截止瞬間競態，依交易鎖及實際提交先後決定；不可讓帳單已付但預約已取消。
+- 退款與撤銷**不能直接改掉原始成功收款紀錄**；追加可稽核的反向交易及對應狀態。MVP 不必實作線上退款服務。
+
+**C. 活動／課程設定**：全域 `payment_hold_hours` 預設 38；活動與整期課程各自可覆寫 `payment_hold_hours`、`booking_closes_at`、`price_amount DECIMAL(12,2)`；整期課程**一筆整期帳單**，不得按 12 堂重複收費。單堂活動一筆預約對應一筆帳單。若原資料庫已存在等價欄位，先盤點再沿用，不可盲目新增重複欄位。
+
+### 20.4 流程／API／驗收規則
+1. **預約：** Controller → Service → BookingEngine → DB，於一個原子交易建立正式預約與帳單；金額從**後端**讀取活動／課程定價並快照，不接受 App 任意提交金額、`invoice_status`、`app_stage`、`staff_id`。課程多堂預約必須全部成功或全部回滾；名額不足按既有候補規則處理。
+2. **顯示：** 後台與 App 使用同一帳單來源顯示「未付／已付／逾期／取消」及截止時間；App 僅可查自己或目前合法代管且符合歷史期間限制的家庭會員帳單；不因畫面隱藏就省略後端權限檢查。
+3. **現金確認：** 僅管理員 API 可操作；核對付款金額、對應預約有效性與期限，交易完成後同步更新 App 顯示。**付款狀態不應再觸發首次 BookingEngine 正式預約**。
+4. **逾期作業：** 簡單排程、可重跑、按索引找 `invoice_status=0 AND payment_due_at <= now()`；鎖定並二次檢查，取消預約、釋位及候補遞補須避免重複執行。不得用僅前端倒數計時替代伺服器排程。
+5. **未來金流：** 新增金流商 API、伺服器驗簽／主動查詢、冪等回呼與對帳；**不能**以 App 回傳 `invoice_status=1` 或 `app_stage=1` 當付款成功。MVP 不預先實作金流 SDK、支付憑證、付款額度鎖定或複雜帳務平台。
+6. **法定發票：** `invoice_code` 是系統帳單編號；`invoice_no` 是依法實際開立的發票號碼，`invoice_datetime` 在此規格為帳單建立時間。若需法定發票開立時間，應另設 `tax_invoice_issued_at`，並於日後依法規接合開立、作廢、折讓；不得宣稱建立帳單即已開立統一發票。
+7. **必測：** 38 小時與自訂值；建立／修改活動時間驗證；預約前後價格快照；免費活動；課程 12 堂原子預約；重複預約／收款；付款與逾期競態；逾期釋位及 FIFO；候補轉正時不足完整保留時間；家庭會員代管與 2 個月可見限制；無權限 API；既有資料 migration 與 rollback。CI 綠燈不等於完整驗收。
+
+**執行要求：** 先比對現有 migration、BookingEngine、活動／課程模型、API 與 Flutter，再集中一次完成程式／契約／測試修正；PR #53 保持 Draft，**不自動合併**。未完成的程式不可宣稱已實作。

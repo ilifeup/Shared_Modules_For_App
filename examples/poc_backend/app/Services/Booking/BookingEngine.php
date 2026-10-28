@@ -271,7 +271,27 @@ final class BookingEngine
                 $attendee = $request->attendees[0];
                 $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
                 if ($status === EventBookingGroup::STATUS_CONFIRMED) {
-                    if (! $coveredByCourseTerm) {
+                    if ($coveredByCourseTerm) {
+                        // A course flag must never bypass an ordinary paid-event invoice.
+                        // Only a real pending whole-term enrollment with the exact
+                        // deterministic request ID can use the single term invoice.
+                        $linked = DB::table('course_enrollments')
+                            ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
+                            ->where('course_sessions.calendar_event_id', $locked->id)
+                            ->where('course_enrollments.user_id', $attendee['member_user_id'])
+                            ->where('course_enrollments.booker_user_id', $request->booker->id)
+                            ->where('course_enrollments.status', 'pending_payment')
+                            ->select('course_enrollments.id')->get();
+                        $valid = $linked->contains(function ($entry) use ($locked, $request): bool {
+                            return $request->clientRequestId === (string) \Ramsey\Uuid\Uuid::uuid5(
+                                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                                'course-enrollment:'.$entry->id.':event:'.$locked->id,
+                            );
+                        });
+                        if (! $valid) {
+                            throw new ApiException(422, 'INVALID_COURSE_BOOKING', '整期課程預約關聯無效。');
+                        }
+                    } else {
                         app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
                     }
                 }

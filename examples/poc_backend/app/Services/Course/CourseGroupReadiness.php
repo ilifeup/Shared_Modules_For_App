@@ -36,25 +36,6 @@ final class CourseGroupReadiness
         if ((int) $group->capacity < 1 || (float) $group->price_amount < 1) {
             $errors[] = '集合名額或收費設定無效。';
         }
-        // Legacy standalone seats may predate group ownership. A group's
-        // capacity is not safe unless each event has enough remaining seats
-        // for the entire group. Do not silently overbook those events.
-        $eventIds = $events->pluck('calendar_event_id')->all();
-        $standaloneSeats = DB::table('event_booking_attendees as attendee')
-            ->join('event_booking_groups as booking', 'booking.id', '=', 'attendee.event_booking_group_id')
-            ->whereIn('attendee.calendar_event_id', $eventIds)
-            ->where('attendee.active', 1)
-            ->where('attendee.status', 'confirmed')
-            ->where('booking.status', 'confirmed')
-            // Coordinated group bookings are already accounted for by the
-            // shared group capacity; only outside bookings consume extra seats.
-            ->whereNotExists(function ($query): void {
-                $query->selectRaw('1')->from('invoice_booking_items as item')
-                    ->whereColumn('item.event_booking_group_id', 'booking.id');
-            })
-            ->groupBy('attendee.calendar_event_id')
-            ->selectRaw('attendee.calendar_event_id, COUNT(*) as seats')
-            ->pluck('seats', 'attendee.calendar_event_id');
         // Positions must be a complete 1..N schedule. Count alone cannot
         // detect a missing first lesson or a shifted/incorrect sequence.
         $positions = $events->pluck('position')->map(static fn ($value): int => (int) $value)->all();
@@ -71,7 +52,6 @@ final class CourseGroupReadiness
         foreach ($events as $event) {
             if ($event->status !== 'published' || ! $event->booking_enabled
                 || (int) $event->booking_capacity < (int) $group->capacity
-                    + (int) ($standaloneSeats[$event->calendar_event_id] ?? 0)
                 || $event->starts_at === null || $event->starts_at <= $paymentDeadline) {
                 $errors[] = '課堂 '.$event->position.' 未發布、已開始或名額不足。';
             }

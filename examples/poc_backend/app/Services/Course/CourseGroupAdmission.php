@@ -28,6 +28,17 @@ final class CourseGroupAdmission
                 throw new ApiException(404, 'COURSE_GROUP_NOT_FOUND', '課程集合不存在。');
             }
 
+            // Check current DB authority even for idempotent replays. A revoked
+            // guardian must not recover protected enrollment details by key.
+            $currentBooker = User::query()->find($booker->id);
+            $currentMember = User::query()->find($member->id);
+            if ($currentBooker === null || $currentMember === null
+                || ! $currentBooker->is_active || (int) $currentBooker->verified_status !== 2
+                || ! $currentMember->is_active || (int) $currentMember->verified_status !== 2
+                || ! app(BookingEngine::class)->canManageFamily($currentBooker, $currentMember, true)) {
+                throw new ApiException(403, 'MEMBER_NOT_ELIGIBLE', '會員資格或家庭代訂授權無效。');
+            }
+
             $existingKey = DB::table('course_group_members')
                 ->where('course_group_id', $groupId)->where('request_key', $requestKey)->first();
             if ($existingKey !== null) {
@@ -37,12 +48,6 @@ final class CourseGroupAdmission
                 }
 
                 return ['id' => (int) $existingKey->id, 'status' => $existingKey->status, 'replayed' => true];
-            }
-
-            if (! $booker->is_active || (int) $booker->verified_status !== 2
-                || ! $member->is_active || (int) $member->verified_status !== 2
-                || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
-                throw new ApiException(403, 'MEMBER_NOT_ELIGIBLE', '會員資格或家庭代訂授權無效。');
             }
 
             if (DB::table('course_group_members')->where('course_group_id', $groupId)

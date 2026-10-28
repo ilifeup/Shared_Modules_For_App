@@ -39,6 +39,25 @@ final class CourseGroupSchemaTest extends TestCase
         $this->assertContains('尚未完成預定全部課堂。', $result['errors']);
     }
 
+    public function test_group_rejects_nonpositive_payment_hold_and_missing_lesson_positions(): void
+    {
+        $categoryId = DB::table('course_categories')->insertGetId([
+            'name' => '付款期限測試', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $groupId = DB::table('course_groups')->insertGetId([
+            'course_category_id' => $categoryId, 'name' => '基礎班測試',
+            'capacity' => 5, 'waitlist_capacity' => 5, 'expected_event_count' => 12,
+            'price_amount' => '1200.00', 'payment_hold_hours' => 0,
+            'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $result = app(\App\Services\Course\CourseGroupReadiness::class)->inspect($groupId);
+
+        $this->assertFalse($result['ready']);
+        $this->assertContains('付款保留時數必須大於零。', $result['errors']);
+        $this->assertContains('課堂順序必須從 1 起連續排列。', $result['errors']);
+    }
+
     public function test_one_member_cannot_hold_two_places_in_same_group(): void
     {
         $member = \App\Models\User::factory()->create();

@@ -334,6 +334,15 @@ final class CashInvoiceService
                     ]);
                 }
 
+                // Validate the invoice's immutable business identity before cash settlement.
+                if ((int) $invoice->product_id !== (int) $enrollment->course_term_id
+                    || (int) $invoice->member_id !== (int) $enrollment->user_id
+                    || (int) $invoice->booker_user_id !== (int) $enrollment->booker_user_id) {
+                    throw ValidationException::withMessages([
+                        'invoice' => '整期帳單與報名會員或課程關聯不符，禁止收款。',
+                    ]);
+                }
+
                 // The enrollment transaction already creates every derived
                 // booking; refuse cash if any required booking is missing.
                 $sessionIds = DB::table('course_sessions')
@@ -347,14 +356,18 @@ final class CashInvoiceService
                         Uuid::NAMESPACE_URL,
                         'course-enrollment:'.$enrollment->id.':event:'.$eventId,
                     );
-                    $booked = EventBookingGroup::query()
+                    $group = EventBookingGroup::query()
                         ->where('client_request_id', $requestId)
                         ->where('calendar_event_id', $eventId)
                         ->where('status', EventBookingGroup::STATUS_CONFIRMED)
-                        ->exists();
-                    if (! $booked) {
+                        ->first();
+                    $attendees = $group?->attendees()->where('active', true)->get();
+                    if ($group === null || (int) $group->booker_user_id !== (int) $enrollment->booker_user_id
+                        || (int) $group->seat_count !== 1 || $attendees->count() !== 1
+                        || $attendees->first()->status !== 'confirmed'
+                        || (int) $attendees->first()->member_user_id !== (int) $enrollment->user_id) {
                         throw ValidationException::withMessages([
-                            'invoice' => '整期課堂預約尚未全部建立，禁止確認現金收款。',
+                            'invoice' => '整期課堂預約或參加者關聯不符，禁止確認現金收款。',
                         ]);
                     }
                 }

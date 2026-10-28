@@ -85,11 +85,16 @@ final class CourseEnrollmentService
                 Uuid::NAMESPACE_URL,
                 'course-enrollment:'.$entry->id.':event:'.$eventId,
             );
-            if (! EventBookingGroup::query()
+            $group = EventBookingGroup::query()
                 ->where('client_request_id', $requestId)
                 ->where('calendar_event_id', $eventId)
                 ->where('status', EventBookingGroup::STATUS_CONFIRMED)
-                ->exists()) {
+                ->first();
+            $attendees = $group?->attendees()->where('active', true)->get();
+            if ($group === null || (int) $group->booker_user_id !== (int) $entry->booker_user_id
+                || (int) $group->seat_count !== 1 || $attendees->count() !== 1
+                || $attendees->first()->status !== 'confirmed'
+                || (int) $attendees->first()->member_user_id !== (int) $entry->user_id) {
                 $invalidSessionIds[] = $eventId;
             }
         }

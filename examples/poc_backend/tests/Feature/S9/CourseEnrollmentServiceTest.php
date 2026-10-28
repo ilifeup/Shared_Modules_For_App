@@ -155,6 +155,64 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoice->id)->count());
     }
 
+    public function test_course_cash_rejects_derived_booking_for_wrong_attendee(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $other = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $service = app(CourseEnrollmentService::class);
+        $enrollment = $service->enroll($term, $member, $member);
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)->value('calendar_event_id');
+        $requestId = (string) Uuid::uuid5(
+            Uuid::NAMESPACE_URL,
+            'course-enrollment:'.$enrollment['id'].':event:'.$eventId,
+        );
+        $groupId = DB::table('event_booking_groups')->where('client_request_id', $requestId)->value('id');
+        $this->assertNotNull($groupId);
+        DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)
+            ->update(['member_user_id' => $other->id]);
+
+        $readiness = $service->confirmationReadiness($enrollment['id'], $admin);
+        $this->assertFalse($readiness['ready']);
+        $this->assertSame([(int) $eventId], array_map('intval', $readiness['invalid_session_event_ids']));
+
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+        try {
+            app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            $this->fail('Derived booking for another member must not be paid.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoiceId)->invoice_status);
+        $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
+    public function test_course_cash_rejects_invoice_for_wrong_member(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $other = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+        DB::table('invoices')->where('id', $invoiceId)->update(['member_id' => $other->id]);
+
+        try {
+            app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
+            $this->fail('Invoice for another member must not be paid.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoiceId)->invoice_status);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_term_capacity_and_fifo_waitlist_are_independent(): void
     {
         $term = $this->term();

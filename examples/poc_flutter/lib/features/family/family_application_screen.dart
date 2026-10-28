@@ -54,17 +54,15 @@ class _FamilyApplicationScreenState
         'relationship': _relationship.text.trim(),
         'birth_date': date,
         'address': _address.text.trim(),
-        if (_phone.text.trim().isNotEmpty)
-          'contact_phone': _phone.text.trim(),
+        if (_phone.text.trim().isNotEmpty) 'contact_phone': _phone.text.trim(),
         'relationship_evidence': MultipartFile.fromBytes(
           await _evidence!.readAsBytes(),
           filename: _evidence!.name,
         ),
       });
-      await ref.read(dioProvider).post(
-        '/api/v1/me/family-applications',
-        data: form,
-      );
+      await ref
+          .read(dioProvider)
+          .post('/api/v1/me/family-applications', data: form);
       ref.invalidate(familyApplicationsProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {

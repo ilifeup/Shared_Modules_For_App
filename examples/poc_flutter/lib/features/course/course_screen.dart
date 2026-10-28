@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import '../family/family_screen.dart';
 
-final courseTermsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+final courseTermsProvider = FutureProvider.autoDispose<List<dynamic>>((
+  ref,
+) async {
   final response = await ref.watch(dioProvider).get('/api/v1/course-terms');
   return response.data['data'] as List<dynamic>;
 });
@@ -11,7 +13,9 @@ final courseTermsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) asyn
 final myCourseEnrollmentsProvider = FutureProvider.autoDispose<List<dynamic>>((
   ref,
 ) async {
-  final response = await ref.watch(dioProvider).get('/api/v1/me/course-enrollments');
+  final response = await ref
+      .watch(dioProvider)
+      .get('/api/v1/me/course-enrollments');
   return response.data['data'] as List<dynamic>;
 });
 
@@ -68,43 +72,52 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ref.watch(courseTermsProvider).when(
-            loading: () => const LinearProgressIndicator(),
-            error: (error, _) => Text('課程讀取失敗：$error'),
-            data: (terms) => DropdownButtonFormField<int>(
-              initialValue: terms.any((item) => item['id'] == _selectedTermId)
-                  ? _selectedTermId
-                  : null,
-              decoration: const InputDecoration(labelText: '選擇整期課程'),
-              items: [
-                for (final term in terms)
-                  DropdownMenuItem<int>(
-                    value: term['id'] as int,
-                    child: Text(term['title']?.toString() ?? '課程'),
-                  ),
-              ],
-              onChanged: (value) => setState(() => _selectedTermId = value),
-            ),
-          ),
-          ref.watch(familyMembersProvider).when(
-            loading: () => const LinearProgressIndicator(),
-            error: (error, _) => Text('家庭會員讀取失敗：$error'),
-            data: (members) => DropdownButtonFormField<int>(
-              initialValue: members.any((item) => item['member_user_id'] == _selectedMemberId)
-                  ? _selectedMemberId
-                  : null,
-              decoration: const InputDecoration(labelText: '報名對象'),
-              items: [
-                const DropdownMenuItem<int>(value: null, child: Text('本人')),
-                for (final member in members)
-                  DropdownMenuItem<int>(
-                    value: member['member_user_id'] as int,
-                    child: Text(member['name']?.toString() ?? '家庭會員'),
-                  ),
-              ],
-              onChanged: (value) => setState(() => _selectedMemberId = value),
-            ),
-          ),
+          ref
+              .watch(courseTermsProvider)
+              .when(
+                loading: () => const LinearProgressIndicator(),
+                error: (error, _) => Text('課程讀取失敗：$error'),
+                data: (terms) => DropdownButtonFormField<int>(
+                  initialValue:
+                      terms.any((item) => item['id'] == _selectedTermId)
+                      ? _selectedTermId
+                      : null,
+                  decoration: const InputDecoration(labelText: '選擇整期課程'),
+                  items: [
+                    for (final term in terms)
+                      DropdownMenuItem<int>(
+                        value: term['id'] as int,
+                        child: Text(term['title']?.toString() ?? '課程'),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _selectedTermId = value),
+                ),
+              ),
+          ref
+              .watch(familyMembersProvider)
+              .when(
+                loading: () => const LinearProgressIndicator(),
+                error: (error, _) => Text('家庭會員讀取失敗：$error'),
+                data: (members) => DropdownButtonFormField<int>(
+                  initialValue:
+                      members.any(
+                        (item) => item['member_user_id'] == _selectedMemberId,
+                      )
+                      ? _selectedMemberId
+                      : null,
+                  decoration: const InputDecoration(labelText: '報名對象'),
+                  items: [
+                    const DropdownMenuItem<int>(value: null, child: Text('本人')),
+                    for (final member in members)
+                      DropdownMenuItem<int>(
+                        value: member['member_user_id'] as int,
+                        child: Text(member['name']?.toString() ?? '家庭會員'),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _selectedMemberId = value),
+                ),
+              ),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: _saving ? null : _enroll,

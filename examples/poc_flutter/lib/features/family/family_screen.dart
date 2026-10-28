@@ -6,7 +6,9 @@ import '../../core/providers.dart';
 final familyMembersProvider = FutureProvider.autoDispose<List<dynamic>>((
   ref,
 ) async {
-  final response = await ref.watch(dioProvider).get('/api/v1/me/family-memberships');
+  final response = await ref
+      .watch(dioProvider)
+      .get('/api/v1/me/family-memberships');
   return (response.data['data'] as List<dynamic>);
 });
 
@@ -51,7 +53,9 @@ class FamilyScreen extends ConsumerWidget {
                   children: [
                     for (final item in rows)
                       ListTile(
-                        title: Text(item['member_name']?.toString() ?? '家庭會員申請'),
+                        title: Text(
+                          item['member_name']?.toString() ?? '家庭會員申請',
+                        ),
                         subtitle: Text('審核狀態：${item['status']}'),
                       ),
                   ],

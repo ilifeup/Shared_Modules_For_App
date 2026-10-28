@@ -95,7 +95,7 @@ final class CourseGroupAdmissionTest extends TestCase
         $requestId = '00000000-0000-4000-8000-000000000004';
         $service = app(CourseGroupAdmission::class);
         $service->reserve($group, $member, $member, $requestId, static function (): void {});
-        $member->update(['verified_status' => 0]);
+        $member->forceFill(['verified_status' => 0])->save();
 
         try {
             $service->reserve($group, $member, $member, $requestId, static function (): void {

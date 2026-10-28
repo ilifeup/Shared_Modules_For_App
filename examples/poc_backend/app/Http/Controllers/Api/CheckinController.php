@@ -189,7 +189,6 @@ class CheckinController extends Controller
                 'contact_name' => $a->group->contact_name,
                 'contact_email' => $a->group->contact_email !== null ? self::maskEmail($a->group->contact_email) : null,
                 'contact_phone' => $a->group->contact_phone !== null ? Phone::mask($a->group->contact_phone) : null,
-                'is_guest' => $a->group->is_guest && $a->group->booker_user_id === null, // unclaimed guest: contact check (D11)
             ])->values()->all(),
         ]]);
     }

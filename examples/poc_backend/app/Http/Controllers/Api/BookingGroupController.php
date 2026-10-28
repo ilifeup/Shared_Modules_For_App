@@ -72,7 +72,27 @@ class BookingGroupController extends Controller
             'status' => ['sometimes', 'in:active,confirmed,waitlisted,cancelled'],
         ]);
         $status = $request->input('status');
-        $page = EventBookingGroup::query()->where('booker_user_id', $request->user()->id)
+        $actorId = $request->user()->id;
+        $page = EventBookingGroup::query()->where('booker_user_id', $actorId)
+            ->whereHas('attendees', function ($query) use ($actorId) {
+                $query->where('member_user_id', $actorId)
+                    ->orWhere(function ($family) use ($actorId) {
+                        $family->where('event_booking_groups.booked_at', '>=', now()->subMonths(2))
+                            ->whereHas('member', function ($member) use ($actorId) {
+                                $member->where('FamilyUser', true)
+                                    ->where('is_active', true)
+                                    ->where('verified_status', 2)
+                                    ->whereExists(function ($delegation) use ($actorId) {
+                                        $delegation->selectRaw('1')
+                                            ->from('family_memberships')
+                                            ->whereColumn('family_memberships.member_user_id', 'users.id')
+                                            ->where('family_memberships.manager_user_id', $actorId)
+                                            ->where('family_memberships.status', 'active')
+                                            ->whereNull('family_memberships.ended_at');
+                                    });
+                            });
+                    });
+            })
             ->when($status === 'active', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED]))
             ->when($status === 'cancelled', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CANCELLED, EventBookingGroup::STATUS_EVENT_CANCELLED]))
             ->when(in_array($status, ['confirmed', 'waitlisted'], true), fn ($q) => $q->where('status', $status))

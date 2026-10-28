@@ -21,7 +21,7 @@ return new class extends Migration
             $table->index(['active', 'period_code']);
         });
         Schema::table('invoices', function (Blueprint $table) {
-            $table->unique('invoice_no');
+            $table->index('invoice_no');
             $table->foreignId('invoice_number_range_id')->nullable()->constrained('invoice_number_ranges')->restrictOnDelete();
         });
     }
@@ -31,7 +31,7 @@ return new class extends Migration
         Schema::table('invoices', function (Blueprint $table) {
             $table->dropForeign(['invoice_number_range_id']);
             $table->dropColumn('invoice_number_range_id');
-            $table->dropUnique(['invoice_no']);
+            $table->dropIndex(['invoice_no']);
         });
         Schema::dropIfExists('invoice_number_ranges');
     }

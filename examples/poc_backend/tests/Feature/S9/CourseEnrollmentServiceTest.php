@@ -500,4 +500,32 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CourseEnrollmentService::class)->confirmationReadiness($enrollment['id'], $member);
     }
+    public function test_course_catalog_excludes_terms_with_incomplete_sessions(): void
+    {
+        $visibleTerm = $this->term();
+        $hiddenTerm = $this->term();
+        $future = now()->addDays(10);
+        $ready = s9Event(['booking_enabled' => true, 'booking_capacity' => 2]);
+        $unavailable = s9Event(['booking_enabled' => false, 'booking_capacity' => 2]);
+        $ready->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
+        $unavailable->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
+
+        foreach ([[$visibleTerm, $ready->id], [$hiddenTerm, $ready->id]] as $item) {
+            // Each event can belong to only one course session.
+            if ($item[0] === $hiddenTerm) {
+                $otherReady = s9Event(['booking_enabled' => true, 'booking_capacity' => 2]);
+                $otherReady->forceFill(['starts_at' => $future, 'ends_at' => $future->copy()->addHour(), 'status' => 'published'])->save();
+                $item[1] = $otherReady->id;
+            }
+            DB::table('course_sessions')->insert(['course_term_id' => $item[0], 'calendar_event_id' => $item[1], 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('course_sessions')->insert(['course_term_id' => $hiddenTerm, 'calendar_event_id' => $unavailable->id, 'created_at' => now(), 'updated_at' => now()]);
+
+        $member = $this->verified();
+        $response = $this->actingAs($member, 'sanctum')->getJson('/api/v1/course-terms')->assertOk();
+        $ids = array_column($response->json('data'), 'id');
+        $this->assertContains($visibleTerm, $ids);
+        $this->assertNotContains($hiddenTerm, $ids);
+    }
+
 }

@@ -1,0 +1,52 @@
+<?php
+
+namespace Tests\Feature\S9;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Tests\TestCase;
+
+final class CourseGroupSchemaTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_group_booking_schema_has_all_required_tables(): void
+    {
+        foreach (['course_categories', 'course_groups', 'course_group_events',
+            'course_group_members', 'invoice_booking_items'] as $table) {
+            $this->assertTrue(Schema::hasTable($table), $table);
+        }
+    }
+
+    public function test_one_member_cannot_hold_two_places_in_same_group(): void
+    {
+        $member = \App\Models\User::factory()->create();
+        $categoryId = DB::table('course_categories')->insertGetId([
+            'name' => '基礎班', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $groupId = DB::table('course_groups')->insertGetId([
+            'course_category_id' => $categoryId, 'name' => '基礎班第一梯',
+            'capacity' => 5, 'waitlist_capacity' => 5, 'expected_event_count' => 12,
+            'price_amount' => '1200.00', 'status' => 'draft',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $entry = [
+            'course_group_id' => $groupId, 'member_user_id' => $member->id,
+            'booker_user_id' => $member->id, 'status' => 'waitlisted',
+            'request_key' => 'request-one', 'waitlist_sequence' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ];
+        DB::table('course_group_members')->insert($entry);
+
+        try {
+            DB::table('course_group_members')->insert(array_merge($entry, [
+                'request_key' => 'request-two', 'waitlist_sequence' => 2,
+            ]));
+            $this->fail('The database must reject duplicate member places.');
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+            $this->assertSame(1, DB::table('course_group_members')
+                ->where('course_group_id', $groupId)->count());
+        }
+    }
+}

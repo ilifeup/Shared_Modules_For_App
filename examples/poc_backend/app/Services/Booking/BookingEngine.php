@@ -436,6 +436,7 @@ final class BookingEngine
     {
         $count = $this->transaction(function () use ($event, $reason, $actor): int {
             $locked = $this->lock($event);
+            $this->assertNotCourseOwned($locked);
             $locked->cancel($reason);
 
             $groups = EventBookingGroup::query()->where('calendar_event_id', $locked->id)
@@ -460,6 +461,22 @@ final class BookingEngine
     }
 
     /**
+     * A course-owned occurrence cannot be changed through independent event
+     * actions: the course-term/group transaction owns its enrolled members.
+     */
+    private function assertNotCourseOwned(CalendarEvent $event): void
+    {
+        $termOwned = DB::table('course_sessions')
+            ->where('calendar_event_id', $event->id)->exists();
+        $groupOwned = DB::table('course_group_events')
+            ->where('calendar_event_id', $event->id)->exists();
+        if ($termOwned || $groupOwned) {
+            throw new ApiException(409, 'COURSE_EVENT_MANAGED_BY_TERM',
+                '此課堂屬於系列課程，請由系列課程管理介面處理名額、取消及報名異動。');
+        }
+    }
+
+    /**
      * Admin capacity change (D20): the admin chooses which confirmed groups to cancel
      * when the new capacity is below the confirmed seats; never leaves overbooking.
      *
@@ -474,6 +491,7 @@ final class BookingEngine
         $before = 0;
         $this->transaction(function () use ($event, $capacity, $cancelGroupIds, $actor, $reason, &$before): void {
             $locked = $this->lock($event);
+            $this->assertNotCourseOwned($locked);
             $before = (int) $locked->booking_capacity;
 
             $groups = EventBookingGroup::query()->where('calendar_event_id', $locked->id)->whereIn('id', $cancelGroupIds)

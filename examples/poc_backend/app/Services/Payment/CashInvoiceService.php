@@ -277,6 +277,22 @@ final class CashInvoiceService
             if ($hint === null) {
                 throw ValidationException::withMessages(['invoice' => '帳單不存在。']);
             }
+            // Single-event payments follow the same lock order as expiry:
+            // event -> booking group -> invoice. Never pay a stale booking.
+            $lockedEventGroup = null;
+            if ($hint->booking_type === '01') {
+                $groupHint = EventBookingGroup::query()->find($hint->booking_id);
+                if ($groupHint === null || CalendarEvent::query()
+                    ->whereKey($groupHint->calendar_event_id)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '預約或活動不存在。']);
+                }
+                $lockedEventGroup = EventBookingGroup::query()
+                    ->whereKey($hint->booking_id)->lockForUpdate()->first();
+                if ($lockedEventGroup === null
+                    || (int) $lockedEventGroup->calendar_event_id !== (int) $groupHint->calendar_event_id) {
+                    throw ValidationException::withMessages(['invoice' => '預約資料已變更。']);
+                }
+            }
             if ($hint->booking_type === '02') {
                 $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
                     ->value('course_term_id');
@@ -344,9 +360,24 @@ final class CashInvoiceService
                 }
             }
             if ($invoice->booking_type === '01') {
-                $group = EventBookingGroup::query()->whereKey($invoice->booking_id)->first();
-                if ($group === null || $group->status !== EventBookingGroup::STATUS_CONFIRMED) {
-                    throw ValidationException::withMessages(['invoice' => '預約已失效，禁止收款。']);
+                $group = $lockedEventGroup;
+                if ($group === null || $group->status !== EventBookingGroup::STATUS_CONFIRMED
+                    || (int) $group->booker_user_id !== (int) $invoice->booker_user_id
+                    || (int) $group->calendar_event_id !== (int) $invoice->product_id) {
+                    throw ValidationException::withMessages(['invoice' => '預約已失效或帳單關聯不符，禁止收款。']);
+                }
+                $attendeeIds = DB::table('event_booking_attendees')
+                    ->where('event_booking_group_id', $group->id)
+                    ->where('status', 'confirmed')->where('active', 1)
+                    ->pluck('member_user_id');
+                if ($attendeeIds->count() !== 1 || (int) $attendeeIds->first() !== (int) $invoice->member_id) {
+                    throw ValidationException::withMessages(['invoice' => '預約參加者與帳單不符，禁止收款。']);
+                }
+                $booker = User::query()->find($group->booker_user_id);
+                $member = User::query()->find($invoice->member_id);
+                if ($booker === null || $member === null
+                    || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
+                    throw ValidationException::withMessages(['invoice' => '會員資格或家庭代訂權限已失效，禁止收款。']);
                 }
             }
             DB::table('payment_transactions')->insert([

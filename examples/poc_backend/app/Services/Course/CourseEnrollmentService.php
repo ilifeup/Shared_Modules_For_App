@@ -7,7 +7,6 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Family\FamilyDelegation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Ramsey\Uuid\Uuid;
@@ -15,7 +14,6 @@ use Ramsey\Uuid\Uuid;
 final class CourseEnrollmentService
 {
     public function __construct(
-        private readonly FamilyDelegation $delegation,
         private readonly BookingEngine $bookings,
     ) {}
 
@@ -62,7 +60,7 @@ final class CourseEnrollmentService
 
             // A guardian's authority may have ended after term enrollment.
             // Recheck the current database relationship before any session seat is booked.
-            if (! $this->delegation->canManage($booker, $member, true)) {
+            if (! $this->bookings->canManageFamily($booker, $member, true)) {
                 throw ValidationException::withMessages(['member' => '家庭代管權限已失效，無法確認整期課程。']);
             }
 
@@ -174,7 +172,7 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['term' => '課程期別不存在。']);
             }
 
-            if (! $this->delegation->canManage($booker, $member, true)) {
+            if (! $this->bookings->canManageFamily($booker, $member, true)) {
                 throw ValidationException::withMessages(['member' => '會員資格或代管權限不符。']);
             }
 

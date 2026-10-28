@@ -10,7 +10,8 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 
 /**
- * S9 M08 one booking for exactly one registered member. The legacy group table\n * name remains until the coordinated schema migration is verified.
+ * S9 M08 one booking for exactly one registered member. The legacy group table
+ * name remains until the coordinated schema migration is verified.
  *
  * @property Carbon $booked_at
  * @property Carbon|null $confirmed_at

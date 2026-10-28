@@ -13,6 +13,21 @@ final class CourseEnrollmentController extends Controller
 {
     public function __construct(private readonly CourseEnrollmentService $enrollments) {}
 
+    /** GET /api/v1/course-terms: upcoming terms with configured sessions. */
+    public function index(): JsonResponse
+    {
+        $terms = DB::table('course_terms as t')
+            ->join('course_sessions as s', 's.course_term_id', '=', 't.id')
+            ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')
+            ->where('e.starts_at', '>=', now())
+            ->groupBy('t.id', 't.title', 't.location', 't.enrollment_capacity')
+            ->orderBy('t.id')
+            ->limit(50)
+            ->get(['t.id', 't.title', 't.location', 't.enrollment_capacity']);
+
+        return new JsonResponse(['data' => $terms]);
+    }
+
     /** POST /api/v1/course-terms/{id}/enrollments (verified member or guardian). */
     public function store(Request $request, int $id): JsonResponse
     {

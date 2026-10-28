@@ -110,6 +110,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/events/{id}', [CalendarEventController::class, 'show'])->whereNumber('id');
 
     // Course MVP: verified member enrolls self or an authorized family member.
+    Route::get('/course-terms', [CourseEnrollmentController::class, 'index']);
     Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/course-enrollments', [CourseEnrollmentController::class, 'mine']);
     Route::post('/admin/course-enrollments/{id}/confirm-fee', [CourseEnrollmentController::class, 'confirmFee'])->whereNumber('id')->middleware('throttle:auth-10');

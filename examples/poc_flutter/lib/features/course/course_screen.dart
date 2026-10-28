@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import '../family/family_screen.dart';
 
+final courseTermsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  final response = await ref.watch(dioProvider).get('/api/v1/course-terms');
+  return response.data['data'] as List<dynamic>;
+});
+
 final myCourseEnrollmentsProvider = FutureProvider.autoDispose<List<dynamic>>((
   ref,
 ) async {
@@ -18,22 +23,21 @@ class CourseScreen extends ConsumerStatefulWidget {
 }
 
 class _CourseScreenState extends ConsumerState<CourseScreen> {
-  final _term = TextEditingController();
+  int? _selectedTermId;
   int? _selectedMemberId;
   bool _saving = false;
   String? _message;
 
   @override
   void dispose() {
-    _term.dispose();
     super.dispose();
   }
 
   Future<void> _enroll() async {
-    final termId = int.tryParse(_term.text.trim());
+    final termId = _selectedTermId;
     final memberId = _selectedMemberId;
     if (termId == null || termId <= 0) {
-      setState(() => _message = '請輸入有效的課程 ID');
+      setState(() => _message = '請選擇課程');
       return;
     }
     setState(() {
@@ -64,10 +68,23 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          TextField(
-            controller: _term,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '課程 ID'),
+          ref.watch(courseTermsProvider).when(
+            loading: () => const LinearProgressIndicator(),
+            error: (error, _) => Text('課程讀取失敗：$error'),
+            data: (terms) => DropdownButtonFormField<int>(
+              initialValue: terms.any((item) => item['id'] == _selectedTermId)
+                  ? _selectedTermId
+                  : null,
+              decoration: const InputDecoration(labelText: '選擇整期課程'),
+              items: [
+                for (final term in terms)
+                  DropdownMenuItem<int>(
+                    value: term['id'] as int,
+                    child: Text(term['title']?.toString() ?? '課程'),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _selectedTermId = value),
+            ),
           ),
           ref.watch(familyMembersProvider).when(
             loading: () => const LinearProgressIndicator(),

@@ -162,10 +162,11 @@ final class FamilyMembershipController extends Controller
             ->where('status', 'active')
             ->whereNull('ended_at')
             ->join('users as family_member', 'family_member.id', '=', 'family_memberships.member_user_id')
+            ->leftJoin('family_member_profiles as profile', 'profile.member_user_id', '=', 'family_memberships.member_user_id')
             ->where('family_member.is_active', true)
             ->where('family_member.verified_status', 2)
             ->orderBy('family_memberships.id')
-            ->get(['family_memberships.id', 'family_memberships.member_user_id', 'family_memberships.relationship', 'family_memberships.started_at', 'family_member.name']);
+            ->get(['family_memberships.id', 'family_memberships.member_user_id', 'family_memberships.relationship', 'family_memberships.started_at', 'family_member.name', 'profile.birth_date', 'profile.address', 'profile.contact_phone', 'profile.contact_email']);
 
         return new JsonResponse(['data' => $rows]);
     }

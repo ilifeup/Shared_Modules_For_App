@@ -34,6 +34,33 @@ class CourseEnrollmentServiceTest extends TestCase
         return $user;
     }
 
+    public function test_paid_check_rejects_missing_invoice_without_recording_payment(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+
+        $enrollmentId = DB::table('course_enrollments')->insertGetId([
+            'course_term_id' => $term,
+            'user_id' => $member->id,
+            'booker_user_id' => $member->id,
+            'status' => 'pending_payment',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            app(CourseEnrollmentService::class)->paidCheck($enrollmentId, $admin);
+            $this->fail('A course cannot be marked paid without an invoice.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollmentId)->status);
+        $this->assertSame(0, DB::table('payment_transactions')->count());
+    }
+
     public function test_term_capacity_and_fifo_waitlist_are_independent(): void
     {
         $term = $this->term();

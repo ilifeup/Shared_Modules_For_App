@@ -247,6 +247,37 @@ it('lists, searches and filters members in Filament', function () {
         ->assertCanNotSeeTableRecords([$incomplete]);
 });
 
+it('filters members by database qualification rather than verified email or phone', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $this->actingAs(makeAdmin());
+
+    $verified = profileMember([
+        'email' => 'persisted-verified@example.com',
+        'phone_e164' => '+886977001111',
+        'verified_status' => 2,
+        'email_verified_at' => null,
+        'phone_verified_at' => null,
+    ]);
+    $pending = profileMember([
+        'email' => 'contact-only@example.com',
+        'phone_e164' => '+886977002222',
+        'verified_status' => 1,
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+
+    Livewire::test(ListMembers::class)
+        ->assertCanSeeTableRecords([$verified, $pending])
+        ->filterTable('verified_status', '2')
+        ->assertCanSeeTableRecords([$verified])
+        ->assertCanNotSeeTableRecords([$pending]);
+
+    Livewire::test(ListMembers::class)
+        ->filterTable('verified_status', '1')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$verified]);
+});
+
 it('clears verification when an admin changes a member contact', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     $admin = makeAdmin();

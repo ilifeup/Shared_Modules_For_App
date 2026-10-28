@@ -24,6 +24,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -112,6 +113,10 @@ class MemberResource extends Resource
                     ->state(fn (User $record): string => $record->email === null ? '— 未填' : ($record->email_verified_at ? '✔ 已驗證' : '✖ 未驗證')),
                 TextColumn::make('phone_verified_at')->label('手機驗證')
                     ->state(fn (User $record): string => $record->phone_e164 === null ? '— 未填' : ($record->phone_verified_at ? '✔ 已驗證' : '✖ 未驗證')),
+                // Contact verification is a process, not membership qualification.
+                // Only the persisted users.verified_status is authoritative.
+                TextColumn::make('verified_status')->label('會員資格')
+                    ->state(fn (User $record): string => (int) $record->verified_status === 2 ? '已驗證會員' : '註冊未驗證'),
                 TextColumn::make('level')->label('會員等級')
                     ->state(fn (User $record): string => static::currentLevel($record)),
                 TextColumn::make('is_active')->label('狀態')
@@ -124,6 +129,8 @@ class MemberResource extends Resource
                     ->trueLabel('已驗證')->falseLabel('未驗證'),
                 TernaryFilter::make('phone_verified_at')->label('手機驗證')->nullable()
                     ->trueLabel('已驗證')->falseLabel('未驗證'),
+                SelectFilter::make('verified_status')->label('會員資格')
+                    ->options(['1' => '註冊未驗證', '2' => '已驗證會員']),
                 TernaryFilter::make('is_active')->label('帳號狀態')
                     ->trueLabel('啟用')->falseLabel('停用'),
                 Filter::make('vip')->label('有效 VIP')

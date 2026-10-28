@@ -61,6 +61,39 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('payment_transactions')->count());
     }
 
+    public function test_cash_confirmation_rejects_course_without_session_bookings(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame('1.00', number_format((float) $invoice->invoice_amount, 2, '.', ''));
+
+        try {
+            app(\App\Services\Payment\CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+            $this->fail('Course payment cannot be confirmed without all session bookings.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+
+        $this->assertSame(0, (int) DB::table('invoices')->find($invoice->id)->invoice_status);
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertSame(0, DB::table('payment_transactions')->where('invoice_id', $invoice->id)->count());
+    }
+
     public function test_term_capacity_and_fifo_waitlist_are_independent(): void
     {
         $term = $this->term();

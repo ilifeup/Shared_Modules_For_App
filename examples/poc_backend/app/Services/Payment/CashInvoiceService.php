@@ -176,8 +176,10 @@ final class CashInvoiceService
             || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
             return;
         }
-        // The promoted member must receive all session seats before an invoice.
-        // If any occurrence is unavailable, keep FIFO head on the waitlist.
+        // The term row is already locked by the caller. Reserve the FIFO
+        // head as pending before creating derived session bookings; the booking
+        // engine validates this exact pending enrollment and request ID.
+        // Any failure rolls this transition back with the surrounding transaction.
         $engine = app(BookingEngine::class);
         $eventIds = DB::table('course_sessions')
             ->where('course_term_id', $termId)->orderBy('calendar_event_id')
@@ -185,12 +187,9 @@ final class CashInvoiceService
         if ($eventIds->isEmpty()) {
             return;
         }
-        foreach ($eventIds as $eventId) {
-            $event = CalendarEvent::query()->findOrFail($eventId);
-            if ($engine->unavailableReason($event, 1, true) !== null) {
-                return;
-            }
-        }
+        DB::table('course_enrollments')->where('id', $head->id)->update([
+            'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
+        ]);
         foreach ($eventIds as $eventId) {
             $event = CalendarEvent::query()->findOrFail($eventId);
             $group = $engine->book($event, new \App\Services\Booking\BookingRequest(
@@ -209,9 +208,6 @@ final class CashInvoiceService
                 throw ValidationException::withMessages(['session' => '候補遞補課堂預約失敗，請聯絡管理員。']);
             }
         }
-        DB::table('course_enrollments')->where('id', $head->id)->update([
-            'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
-        ]);
         $this->create('02', $termId, '02', (int) $head->id,
             (int) $head->user_id, (int) $head->booker_user_id,
             (string) $term->price_amount, $hours);

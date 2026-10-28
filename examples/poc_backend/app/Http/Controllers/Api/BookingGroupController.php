@@ -9,7 +9,6 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,7 +41,7 @@ class BookingGroupController extends Controller
         $member = $request->user();
         $attendeeId = (int) ($data['member_user_id'] ?? $member->id);
         $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->first();
-        if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
+        if ($attendee === null || ! $this->engine->canManageFamily($member, $attendee)) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者不是有效的已驗證家庭會員，或沒有代管授權。');
         }
         $attendees = [['name' => $attendee->name, 'member_user_id' => $attendee->id]];

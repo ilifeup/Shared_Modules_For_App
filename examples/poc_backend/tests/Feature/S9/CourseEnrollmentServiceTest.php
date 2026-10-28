@@ -253,6 +253,45 @@ class CourseEnrollmentServiceTest extends TestCase
             ->where('member_user_id', $family->id)->count());
     }
 
+    public function test_confirm_fee_api_rejects_unauthenticated_and_non_admin_requests(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $url = '/api/v1/admin/course-enrollments/'.$enrollment['id'].'/confirm-fee';
+
+        $this->postJson($url)->assertUnauthorized();
+        $this->actingAs($member, 'sanctum')->postJson($url)->assertUnprocessable();
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
+        $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
+    }
+
+    public function test_confirm_fee_api_books_session_and_replay_is_idempotent(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $event = s9Event(['booking_capacity' => 2]);
+        DB::table('course_sessions')->insert([
+            'course_term_id' => $term,
+            'calendar_event_id' => $event->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $url = '/api/v1/admin/course-enrollments/'.$enrollment['id'].'/confirm-fee';
+
+        $this->actingAs($admin, 'sanctum')->postJson($url)
+            ->assertOk()->assertJsonPath('data.status', 'confirmed');
+        $this->actingAs($admin, 'sanctum')->postJson($url)
+            ->assertOk()->assertJsonPath('data.status', 'confirmed');
+        $this->assertSame(1, DB::table('event_booking_attendees')
+            ->where('calendar_event_id', $event->id)
+            ->where('member_user_id', $member->id)
+            ->where('status', 'confirmed')->count());
+    }
+
     public function test_non_admin_cannot_confirm_fee(): void
     {
         $term = $this->term();

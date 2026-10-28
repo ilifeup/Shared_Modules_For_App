@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
+use App\Support\Settings;
 
 /**
  * S5 M09 calendar event. Stored in UTC; Apps display local time.
@@ -117,7 +118,7 @@ class CalendarEvent extends Model
             // A paid bookable event must allow the last booker their entire
             // configured payment hold period before the event starts.
             if ($event->booking_enabled && (float) $event->price_amount > 0) {
-                $hours = $event->payment_hold_hours ?? 38;
+                $hours = $event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours');
                 $closes = $event->bookingClosesAt();
                 if ($closes->copy()->addHours($hours)->greaterThan($event->starts_at)) {
                     throw ValidationException::withMessages([

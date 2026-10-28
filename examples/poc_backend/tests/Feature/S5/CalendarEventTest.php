@@ -239,3 +239,19 @@ it('rejects nonpositive cash hold hours and negative event prices', function () 
     expect(fn () => calendarEvent(['price_amount' => -1]))
         ->toThrow(ValidationException::class);
 });
+
+
+it('uses administrator cash hold default when the event has no override', function () {
+    app(\App\Support\Settings::class)->put(['payment_hold_hours' => 24]);
+
+    $event = calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 200,
+        'booking_closes_at' => '2026-11-09 02:00:00',
+    ]);
+    expect($event->exists)->toBeTrue();
+
+    expect(fn () => $event->update(['booking_closes_at' => '2026-11-09 03:00:00']))
+        ->toThrow(ValidationException::class);
+});

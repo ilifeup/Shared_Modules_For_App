@@ -46,6 +46,12 @@ final class CourseGroupReadiness
             ->where('attendee.active', 1)
             ->where('attendee.status', 'confirmed')
             ->where('booking.status', 'confirmed')
+            // Coordinated group bookings are already accounted for by the
+            // shared group capacity; only outside bookings consume extra seats.
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')->from('invoice_booking_items as item')
+                    ->whereColumn('item.event_booking_group_id', 'booking.id');
+            })
             ->groupBy('attendee.calendar_event_id')
             ->selectRaw('attendee.calendar_event_id, COUNT(*) as seats')
             ->pluck('seats', 'attendee.calendar_event_id');

@@ -14,6 +14,7 @@ use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class InvoiceResource extends Resource
 {
@@ -60,7 +61,8 @@ class InvoiceResource extends Resource
                 ->visible(fn (Invoice $record) => $record->invoice_no !== null)
                 ->schema([
                     TextInput::make('invoice_no')->label('新發票號碼')->required()->maxLength(10)
-                        ->default(fn (Invoice $record) => $record->invoice_no),
+                        ->default(fn (Invoice $record) => $record->invoice_no)
+                        ->helperText('發票號碼允許重複；若與其他帳單相同，請確認後儲存。'),
                     Textarea::make('reason')->label('原因（選填）')->maxLength(1000),
                 ])
                 ->action(function (Invoice $record, array $data): void {

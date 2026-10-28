@@ -61,6 +61,20 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('payment_transactions')->count());
     }
 
+    public function test_paid_course_creates_exactly_one_term_invoice_without_session_invoices(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $result = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $invoices = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $result['id'])->get();
+        $this->assertCount(1, $invoices);
+        $this->assertSame('1.00', number_format((float) $invoices[0]->invoice_amount, 2, '.', ''));
+        $this->assertSame(0, DB::table('invoices')->where('booking_type', '01')->count());
+        $this->assertSame('pending_payment', $result['status']);
+    }
+
     public function test_cash_confirmation_rejects_course_without_session_bookings(): void
     {
         $term = $this->term();

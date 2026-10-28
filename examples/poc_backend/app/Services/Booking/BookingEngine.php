@@ -214,7 +214,8 @@ final class BookingEngine
                 }
                 $this->validateRequest($locked, $request);
 
-                $seats = count($request->attendees);
+                // Each accepted booking represents exactly one verified member.
+                $seats = 1;
                 $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
 
                 $status = match (true) {

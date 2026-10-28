@@ -131,7 +131,15 @@ final class CourseEnrollmentService
             }
         }
 
-        $ready = $entry->status === 'pending_payment' && $sessionIds !== [] && $invalidSessionIds === [];
+        // Advisory preflight must reflect the same database membership rules as confirmFee().
+        // The transactional confirmFee() remains the final authority.
+        $member = User::query()->find($entry->user_id);
+        $booker = User::query()->find($entry->booker_user_id);
+        $eligible = $member !== null && $booker !== null
+            && $this->bookings->canManageFamily($booker, $member);
+
+        $ready = $entry->status === 'pending_payment' && $sessionIds !== []
+            && $invalidSessionIds === [] && $eligible;
         if ($ready) {
             foreach ($sessionIds as $eventId) {
                 $event = CalendarEvent::query()->find($eventId);
@@ -152,7 +160,7 @@ final class CourseEnrollmentService
                 ? '本期尚未設定單堂課程。'
                 : ($invalidSessionIds !== []
                     ? '部分單堂課程未發布、未開放預約或名額不足。'
-                    : ($ready ? '可確認線下收費並建立整期單堂預約。' : '此報名目前不可確認收費。')),
+                    : (! $eligible ? '會員資格或代管權限不符。' : ($ready ? '可確認線下收費並建立整期單堂預約。' : '此報名目前不可確認收費。'))),
         ];
     }
 

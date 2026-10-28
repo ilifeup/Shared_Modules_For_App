@@ -100,7 +100,7 @@ final class CashInvoiceService
             DB::table('payment_transactions')->insert([
                 'invoice_id' => $invoiceId,
                 'transaction_code' => 'REFUND-'.\Illuminate\Support\Str::uuid(),
-                'transaction_amount' => bcmul((string) $invoice->invoice_amount, '-1', 2),
+                'transaction_amount' => '-'.ltrim((string) $invoice->invoice_amount, '+-'),
                 'currency' => $invoice->currency,
                 'payment_method' => 0, 'transaction_status' => 1,
                 'staff_id' => $admin->id, 'processed_at' => now(),

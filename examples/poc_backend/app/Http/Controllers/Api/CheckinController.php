@@ -63,28 +63,20 @@ class CheckinController extends Controller
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $this->assertScanToken($event, $data);
 
-        $mine = $this->checkins->attendeesOf($event, $request->user())->keyBy('id');
-        $ids = array_values(array_unique($data['attendee_ids']));
-        // Reject mixed-ownership batches before committing any individual checkout.
-        foreach ($ids as $attendeeId) {
-            if (! $mine->has($attendeeId)) {
-                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            }
+        // Member checkout is strictly one attendee per request.
+        $attendeeId = (int) $data['attendee_ids'][0];
+        $attendee = $this->checkins->attendeesOf($event, $request->user())->firstWhere('id', $attendeeId);
+        if ($attendee === null) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
         }
-        // Batch atomicity: a later 409/error rolls back earlier attendance + audits.
-        $results = DB::transaction(function () use ($ids, $mine, $event, $request): array {
-            // Match check-in's deterministic lock order for reversed batches.
-            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
-                ->lockForUpdate()->get(['id']);
-            $results = [];
-            foreach ($ids as $attendeeId) {
-                $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
-            }
 
-            return $results;
+        $result = DB::transaction(function () use ($attendeeId, $attendee, $event, $request): array {
+            EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
+
+            return $this->result($this->checkins->checkOut($event, $attendee, $request->user()));
         });
 
-        return new JsonResponse(['data' => $results]);
+        return new JsonResponse(['data' => [$result]]);
     }
 
     /**

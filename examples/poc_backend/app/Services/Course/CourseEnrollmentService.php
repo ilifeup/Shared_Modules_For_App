@@ -7,10 +7,10 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use Illuminate\Support\Str;
 use App\Services\Family\FamilyDelegation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Ramsey\Uuid\Uuid;
 
 final class CourseEnrollmentService
 {
@@ -72,8 +72,8 @@ final class CourseEnrollmentService
                     contactEmail: $booker->email,
                     contactPhone: $booker->phone_e164,
                     attendees: [['name' => $member->name, 'member_user_id' => $member->id]],
-                    clientRequestId: (string) Str::uuid5(
-                        \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                    clientRequestId: (string) Uuid::uuid5(
+                        Uuid::NAMESPACE_URL,
                         'course-enrollment:'.$enrollmentId.':event:'.$eventId,
                     ),
                     byAdmin: true,

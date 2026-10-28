@@ -390,6 +390,19 @@ final class BookingEngine
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
 
+            // A derived series occurrence must not be cancelled separately.
+            // The payment-expiry workflow owns the parent term lock and is
+            // the only authorized per-occurrence release in this MVP.
+            $courseSession = DB::table('course_sessions')
+                ->where('calendar_event_id', $locked->calendar_event_id)->exists();
+            $courseGroupSession = DB::table('course_group_events')
+                ->where('calendar_event_id', $locked->calendar_event_id)->exists();
+            if (($courseSession || $courseGroupSession)
+                && (! $byAdmin || $reason !== 'course_payment_expired' || ! $courseSession)) {
+                throw new ApiException(409, 'SERIES_BOOKING_MANAGED_BY_PARENT',
+                    '系列活動／課程的從屬場次不可單獨取消，請由整系列管理流程處理。');
+            }
+
             if (! $byAdmin) {
                 if ((int) $locked->booker_user_id !== (int) $actor->id) {
                     throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約者可以取消此預約。');

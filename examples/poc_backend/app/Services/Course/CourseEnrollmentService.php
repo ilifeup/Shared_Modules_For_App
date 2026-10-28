@@ -12,11 +12,6 @@ final class CourseEnrollmentService
     public function __construct(private readonly FamilyDelegation $delegation) {}
 
     /**
-     * One term seat per verified member. Lock the parent term before counting
-     * enrollments so concurrent requests cannot exceed either capacity.
-     * Guardian delegation is verified inside the same transaction.
-     */
-    /**
      * A single administrator confirms an offline payment. Repeat calls are safe:
      * confirmed enrollments remain confirmed without duplicate transitions.
      * Session bookings are deliberately not created here until the shared seat
@@ -44,6 +39,12 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['enrollment' => '只有待收費報名可以確認。']);
             }
 
+            // Do not mark paid before every session booking can be created atomically.
+            // This safeguard is temporary until the shared BookingEngine integration.
+            if (DB::table('course_sessions')->where('course_term_id', $entry->course_term_id)->exists()) {
+                throw ValidationException::withMessages(['enrollment' => '整期課程尚未接通單堂預約，暫不可確認收費。']);
+            }
+
             DB::table('course_enrollments')->where('id', $enrollmentId)->update([
                 'status' => 'confirmed',
                 'fee_confirmed_at' => now(),
@@ -54,6 +55,10 @@ final class CourseEnrollmentService
         }, 3);
     }
 
+    /**
+     * One term seat per verified member. Lock the term before capacity checks.
+     * Guardian delegation is verified inside the same transaction.
+     */
     public function enroll(int $termId, User $booker, User $member): array
     {
         if (! $member->is_active || ! $member->isVerifiedMember()) {

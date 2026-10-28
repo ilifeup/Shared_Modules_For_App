@@ -19,7 +19,7 @@ final class InvoiceNumberAllocator
             || ! preg_match('/^[A-Z]{2}[0-9]{8}$/', $end)
             || substr($start, 0, 2) !== substr($end, 0, 2)
             || (int) substr($start, 2) > (int) substr($end, 2)
-            || ! preg_match('/^[0-9]{3}(0[1-9]|1[0-2])$/', $period)) {
+            || ! preg_match('/^[0-9]{4}(0[1-9]|1[0-2])$/', $period)) {
             throw ValidationException::withMessages(['range' => '須輸入相同兩碼字軌、八碼數字及合法期別（YYYYMM）。']);
         }
         return DB::transaction(function () use ($start, $end, $period, $admin): int {

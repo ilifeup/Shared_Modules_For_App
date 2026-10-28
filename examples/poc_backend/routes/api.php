@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
 use App\Http\Controllers\Api\CourseEnrollmentController;
+use App\Http\Controllers\Api\CashInvoiceController;
 use App\Http\Controllers\Api\FamilyApplicationController;
 use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\HealthController;
@@ -113,6 +114,7 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/course-terms', [CourseEnrollmentController::class, 'index']);
     Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/course-enrollments', [CourseEnrollmentController::class, 'mine']);
+    Route::post('/admin/invoices/{id}/confirm-cash', [CashInvoiceController::class, 'confirm'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/admin/course-enrollments/{id}/confirm-fee', [CourseEnrollmentController::class, 'confirmFee'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S6 M08 bookings (own bookings only).

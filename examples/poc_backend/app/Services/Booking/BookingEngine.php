@@ -13,6 +13,7 @@ use App\Models\EventWaitlistEntry;
 use App\Models\GoogleCalendarConnection;
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -147,6 +148,7 @@ final class BookingEngine
                     'seat_count' => 1,
                 ]);
                 $this->createAttendee($group, $member->name, $member->id, EventBookingAttendee::STATUS_CONFIRMED);
+                app(CashInvoiceService::class)->forEvent($locked, $group, $member->id);
                 $this->queueSync($member->id, $locked->id);
 
                 AuditEvent::record('booking.confirmed', $member->id, $booking, ['event_id' => $event->id]);
@@ -268,6 +270,9 @@ final class BookingEngine
                 // validateRequest() guarantees exactly one verified users.id.
                 $attendee = $request->attendees[0];
                 $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
+                if ($status === EventBookingGroup::STATUS_CONFIRMED) {
+                    app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
+                }
 
                 if ($status === EventBookingGroup::STATUS_WAITLISTED) {
                     $next = (int) EventWaitlistEntry::query()->where('calendar_event_id', $locked->id)->max('sequence') + 1;
@@ -527,7 +532,12 @@ final class BookingEngine
                 break; // Strict FIFO: the next single-member booking must wait for one free seat.
             }
 
+            // Strict FIFO: do not skip the head if the full cash hold cannot fit.
+            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(\\App\\Support\\Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
+                break;
+            }
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
+            app(CashInvoiceService::class)->forEvent($event, $group, (int) $attendees->first()->member_user_id);
             EventBookingAttendee::query()->where('event_booking_group_id', $group->id)->where('status', EventBookingAttendee::STATUS_WAITLISTED)
                 ->update(['status' => EventBookingAttendee::STATUS_CONFIRMED, 'updated_at' => now()]);
             $head->forceFill(['status' => EventWaitlistEntry::PROMOTED, 'resolved_at' => now()])->save();
@@ -665,6 +675,8 @@ final class BookingEngine
 
     private function endGroup(EventBookingGroup $group, string $status, ?User $actor, ?string $reason): void
     {
+        DB::table('invoices')->where('booking_type', '01')->where('booking_id', $group->id)
+            ->where('invoice_status', 0)->update(['invoice_status' => 2, 'updated_at' => now()]);
         $group->forceFill([
             'status' => $status,
             'cancelled_at' => now(),

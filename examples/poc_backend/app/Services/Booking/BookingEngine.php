@@ -401,10 +401,38 @@ final class BookingEngine
                 ->where('calendar_event_id', $locked->calendar_event_id)->exists();
             $courseGroupSession = DB::table('course_group_events')
                 ->where('calendar_event_id', $locked->calendar_event_id)->exists();
-            if (($courseSession || $courseGroupSession)
-                && (! $byAdmin || $reason !== 'course_payment_expired' || ! $courseSession)) {
-                throw new ApiException(409, 'SERIES_BOOKING_MANAGED_BY_PARENT',
-                    '系列活動／課程的從屬場次不可單獨取消，請由整系列管理流程處理。');
+            if ($courseSession || $courseGroupSession) {
+                $releaseAllowed = false;
+                if ($courseSession && $byAdmin && $reason === 'course_payment_expired') {
+                    // A caller-supplied reason is not authorization. The parent
+                    // enrollment must already be cancelled and its cash invoice
+                    // expired within the owning transaction.
+                    $enrollments = DB::table('course_enrollments')
+                        ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
+                        ->join('invoices', function ($join) {
+                            $join->on('invoices.booking_id', '=', 'course_enrollments.id')
+                                ->where('invoices.booking_type', '=', '02');
+                        })
+                        ->where('course_sessions.calendar_event_id', $locked->calendar_event_id)
+                        ->where('course_enrollments.status', 'cancelled')
+                        ->where('invoices.invoice_status', 3)
+                        ->select('course_enrollments.id', 'course_enrollments.booker_user_id')->get();
+                    foreach ($enrollments as $enrollment) {
+                        $expected = (string) \Ramsey\Uuid\Uuid::uuid5(
+                            \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                            'course-enrollment:'.$enrollment->id.':event:'.$locked->calendar_event_id,
+                        );
+                        if ($locked->client_request_id === $expected
+                            && (int) $enrollment->booker_user_id === (int) $actor->id) {
+                            $releaseAllowed = true;
+                            break;
+                        }
+                    }
+                }
+                if (! $releaseAllowed) {
+                    throw new ApiException(409, 'SERIES_BOOKING_MANAGED_BY_PARENT',
+                        '系列活動／課程的從屬場次不可單獨取消，請由整系列管理流程處理。');
+                }
             }
 
             if (! $byAdmin) {

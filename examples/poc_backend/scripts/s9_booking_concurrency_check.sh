@@ -25,7 +25,7 @@ $category = App\Models\EventCategory::query()->firstOrCreate(["name" => "CI ä½µç
 $event = App\Models\CalendarEvent::query()->create([
     "title" => "S9 concurrency", "starts_at" => now()->addDays(3), "ends_at" => now()->addDays(3)->addHour(),
     "status" => "published", "audience" => "members", "booking_enabled" => true, "booking_capacity" => (int) getenv("CAPACITY"),
-    "booking_max_seats" => 5, "waitlist_enabled" => true, "event_category_id" => $category->id,
+    "booking_max_seats" => 5, "waitlist_enabled" => true, "waitlist_capacity" => 40, "event_category_id" => $category->id,
 ]);
 file_put_contents(getenv("OUT")."/event", $event->id);
 $make = fn () => App\Models\User::factory()->create()->createToken("ci")->plainTextToken;

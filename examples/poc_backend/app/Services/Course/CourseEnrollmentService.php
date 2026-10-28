@@ -113,8 +113,11 @@ final class CourseEnrollmentService
             return ['id' => $enrollmentId, 'status' => 'confirmed',
                 'invoice_id' => (int) $invoice->id, 'replayed' => $result['replayed']];
         }
-        // Legacy/free enrollment path retained until session booking migration.
-        return $this->confirmFee($enrollmentId, $admin);
+        // Paid course terms require a real invoice. Never fall back to the
+        // legacy fee-confirmation path, which could confirm without cash.
+        throw ValidationException::withMessages([
+            'invoice' => '整期課程尚未建立帳單，禁止確認收款；請由管理員檢查資料。',
+        ]);
     }
 
     /**

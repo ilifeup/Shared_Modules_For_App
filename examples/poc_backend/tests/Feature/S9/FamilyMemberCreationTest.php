@@ -47,3 +47,17 @@ it('does not create a family member for an unverified manager', function () {
 
     expect(User::query()->count())->toBe($before);
 });
+
+it('rejects managed family identities from manager-only family APIs even with a forged authenticated session', function () {
+    $familyUser = User::factory()->create();
+    $familyUser->forceFill(['FamilyUser' => true, 'verified_status' => 2])->save();
+
+    $this->actingAs($familyUser, 'sanctum')
+        ->getJson('/api/v1/me/family-memberships')->assertForbidden();
+
+    $this->actingAs($familyUser, 'sanctum')
+        ->putJson('/api/v1/me/family-members/'.$familyUser->id.'/profile', [
+            'birth_date' => '2015-06-01',
+            'address' => 'Test address',
+        ])->assertForbidden();
+});

@@ -153,25 +153,48 @@ final class CashInvoiceService
     }
 
     /**
+     * Fill newly opened whole-term seats in strict FIFO order. The term lock
+     * serializes administrator capacity changes and member enrollments.
+     * An ineligible head blocks promotion; never skip their position.
+     * Any booking failure rolls back capacity and derived bookings together.
+     */
+    public function fillCourseWaitlistAfterCapacityChange(int $termId): int
+    {
+        return DB::transaction(function () use ($termId): int {
+            $term = DB::table('course_terms')->where('id', $termId)->lockForUpdate()->first();
+            if ($term === null) {
+                return 0;
+            }
+
+            $promoted = 0;
+            while ($this->promoteCourseWaitlist($termId)) {
+                $promoted++;
+            }
+
+            return $promoted;
+        }, 3);
+    }
+
+    /**
      * Promote only the first waiting course member; never bypass an ineligible head.
      * Caller must hold the course-term lock.
      */
-    private function promoteCourseWaitlist(int $termId): void
+    private function promoteCourseWaitlist(int $termId): bool
     {
         $term = DB::table('course_terms')->where('id', $termId)->first();
         if ($term === null) {
-            return;
+            return false;
         }
         $occupied = DB::table('course_enrollments')->where('course_term_id', $termId)
             ->whereIn('status', ['pending_payment', 'confirmed'])->count();
         if ((float) ($term->price_amount ?? 0) < 1 || $occupied >= (int) $term->enrollment_capacity) {
-            return;
+            return false;
         }
         $head = DB::table('course_enrollments')->where('course_term_id', $termId)
             ->where('status', 'waitlisted')->orderBy('waitlist_sequence')->orderBy('id')
             ->lockForUpdate()->first();
         if ($head === null) {
-            return;
+            return false;
         }
         $hours = (int) ($term->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'));
         $firstStart = DB::table('course_sessions')
@@ -179,14 +202,14 @@ final class CashInvoiceService
             ->where('course_sessions.course_term_id', $termId)
             ->min('calendar_events.starts_at');
         if ($firstStart === null || now()->copy()->addHours($hours)->gt($firstStart)) {
-            return;
+            return false;
         }
         $member = User::query()->find($head->user_id);
         $booker = User::query()->find($head->booker_user_id);
         if ($member === null || $booker === null || ! $member->is_active
             || ! $member->isVerifiedMember()
             || ! app(BookingEngine::class)->canManageFamily($booker, $member, true)) {
-            return;
+            return false;
         }
         // The term row is already locked by the caller. Reserve the FIFO
         // head as pending before creating derived session bookings; the booking
@@ -197,7 +220,7 @@ final class CashInvoiceService
             ->where('course_term_id', $termId)->orderBy('calendar_event_id')
             ->pluck('calendar_event_id');
         if ($eventIds->isEmpty()) {
-            return;
+            return false;
         }
         DB::table('course_enrollments')->where('id', $head->id)->update([
             'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
@@ -223,6 +246,7 @@ final class CashInvoiceService
         $this->create('02', $termId, '02', (int) $head->id,
             (int) $head->user_id, (int) $head->booker_user_id,
             (string) $term->price_amount, $hours);
+        return true;
     }
 
     /**

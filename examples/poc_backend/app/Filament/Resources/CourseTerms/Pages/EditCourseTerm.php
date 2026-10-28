@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CourseTerms\Pages;
 use App\Filament\Resources\CourseTerms\CourseTermResource;
 use App\Models\AuditEvent;
 use App\Models\CourseTerm;
+use App\Services\Payment\CashInvoiceService;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -46,12 +47,20 @@ class EditCourseTerm extends EditRecord
             ];
             $term->fill($data)->save();
 
+            // Offer added seats to existing FIFO waiters before new admissions.
+            $promoted = 0;
+            if ($capacity > $before['enrollment_capacity'] && $waiting > 0) {
+                $promoted = app(CashInvoiceService::class)
+                    ->fillCourseWaitlistAfterCapacityChange((int) $term->id);
+            }
+
             if ($before['enrollment_capacity'] !== $capacity || $before['waitlist_capacity'] !== $waitlistCapacity) {
                 AuditEvent::record('course.capacity_changed', auth()->id(), $term, [
                     'from' => $before,
                     'to' => ['enrollment_capacity' => $capacity, 'waitlist_capacity' => $waitlistCapacity],
                     'occupied' => $occupied,
                     'waiting' => $waiting,
+                    'promoted' => $promoted,
                 ]);
             }
 

@@ -728,6 +728,72 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('invoice_refund_audits')->where('invoice_id', $invoice->id)->count());
     }
 
+    public function test_course_cancel_also_releases_assigned_makeup_without_extra_invoice(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $entry = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $entry['id'])->first();
+        app(CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+
+        $originalSessionId = DB::table('course_sessions')->where('course_term_id', $term)->value('id');
+        $leaveId = DB::table('course_session_leaves')->insertGetId([
+            'course_enrollment_id' => $entry['id'],
+            'course_session_id' => $originalSessionId,
+            'reason' => '請假',
+            'requested_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $makeupEvent = s9Event(['booking_capacity' => 2]);
+        $targetTerm = $this->term();
+        $targetSessionId = DB::table('course_sessions')->insertGetId([
+            'course_term_id' => $targetTerm,
+            'calendar_event_id' => $makeupEvent->id,
+            'makeup_capacity' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $groupId = DB::table('event_booking_groups')->insertGetId([
+            'calendar_event_id' => $makeupEvent->id,
+            'booker_user_id' => $member->id,
+            'contact_name' => $member->name,
+            'contact_email' => $member->email,
+            'status' => 'confirmed',
+            'seat_count' => 1,
+            'booked_at' => now(),
+            'confirmed_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('event_booking_attendees')->insert([
+            'event_booking_group_id' => $groupId,
+            'calendar_event_id' => $makeupEvent->id,
+            'member_user_id' => $member->id,
+            'name' => $member->name,
+            'status' => 'confirmed',
+            'active' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('course_makeups')->insert([
+            'course_session_leave_id' => $leaveId,
+            'target_course_session_id' => $targetSessionId,
+            'event_booking_group_id' => $groupId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $result = app(CourseEnrollmentService::class)->cancel($entry['id'], $member);
+        $this->assertSame('cancelled', $result['status']);
+        $this->assertSame('cancelled', DB::table('event_booking_groups')->where('id', $groupId)->value('status'));
+        $this->assertSame('cancelled', DB::table('event_booking_attendees')
+            ->where('event_booking_group_id', $groupId)->value('status'));
+        $this->assertNull(DB::table('event_booking_attendees')
+            ->where('event_booking_group_id', $groupId)->value('active'));
+        $this->assertSame(1, (int) DB::table('invoices')->where('id', $invoice->id)->value('invoice_status'));
+        $this->assertSame(1, DB::table('invoices')->where('booking_type', '02')->count());
+        $this->assertSame(0, DB::table('invoices')->where('booking_type', '01')->count());
+    }
+
     public function test_course_cancel_rejects_other_booker_and_preserves_enrollment(): void
     {
         $term = $this->term(2);

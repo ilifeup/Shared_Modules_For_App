@@ -255,8 +255,10 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
     } catch (error) {
       if (mounted) setState(() => _error = error);
     } finally {
-      ref.invalidate(myBookingGroupsProvider);
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        ref.invalidate(myBookingGroupsProvider);
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -279,8 +281,9 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
         ],
       ),
     );
-    if (ok != true) return;
-    await _act(() => ref.read(bookingGroupApiProvider).cancel(g.id));
+    if (ok != true || !mounted) return;
+    final api = ref.read(bookingGroupApiProvider);
+    await _act(() => api.cancel(g.id));
   }
 
   @override

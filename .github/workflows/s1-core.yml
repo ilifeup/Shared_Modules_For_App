@@ -3,11 +3,15 @@ on:
   pull_request:
     paths:
       - 'packages/**'
+      - 'examples/poc_backend/**'
+      - 'examples/poc_flutter/**'
       - '.github/workflows/s1-core.yml'
   push:
     branches: [main]
     paths:
       - 'packages/**'
+      - 'examples/poc_backend/**'
+      - 'examples/poc_flutter/**'
       - '.github/workflows/s1-core.yml'
 permissions:
   contents: read
@@ -32,6 +36,28 @@ jobs:
       - name: Composer package validation
         working-directory: packages/laravel/shared_core
         run: composer validate --strict
+  m08-backend-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Install PoC backend dependencies
+        working-directory: examples/poc_backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run M08 single-member feature contract (SQLite only)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: |
+          set -euo pipefail
+          php artisan test tests/Feature/S9/SingleMemberBookingContractTest.php
+
   dart:
     runs-on: ubuntu-24.04
     steps:

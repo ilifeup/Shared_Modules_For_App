@@ -210,6 +210,32 @@ P0：永久會員制、權限、資料庫一致性、不可逆清除安全；P1�
 - **新增強制檢查**：修正任何 Pint diff 後，必須重新執行 **完整** `vendor/bin/pint --test`，不可因一項已修就假定其他格式問題消失；若無本地環境，標示未驗證，從 CI 的全部 Pint diff 一次修完。不得反覆只修單一格式問題後立即 Push。
 
 
+### DEBUG-PHP-PINT-001｜標準化執行契約 v2（2026-10-29，所有 PHP 提交強制遵守）
+
+**權威來源及優先序：** 使用本 Repository `examples/poc_backend/composer.lock` 鎖定的 Laravel Pint 版本、實際存在的 Pint 設定檔（若無則採該版本預設規則），以及 `.github/workflows/s1-poc-backend.yml` 的完整 `vendor/bin/pint --test -v`。本節列的是**執行與驗證標準**，不是人工重新定義一份會過期的空白、import 規則。若規則變動，先檢查 lockfile/config/CI，禁止 AI 自行猜測或降低嚴格度。
+
+**任何 PHP 程式修改（包含測試、Migration、Filament、Controller、Service）都必須在 Push 前完成以下 Gate：**
+
+1. 先完成本批所有 PHP、API、DB 與測試變更，確認工作目錄、`git status --short`、`git diff --check`；不要邊修邊 Push，避免反覆啟動整套 CI。
+2. 於 Repository 根目錄執行（已 `composer install`，並使用與 CI 相容的 PHP/Composer 環境）：
+
+   ```bash
+   cd examples/poc_backend
+   vendor/bin/pint --test -v
+   ```
+
+   只要 Exit Code 非 0，即為 **PINT FAIL / 不准 Push**。先執行 `vendor/bin/pint` 產生格式修正，再檢查 `git diff --check` 與 `git diff`；若修改超出預期範圍，先查明原因，不可無條件提交。
+3. **完整再次執行** `vendor/bin/pint --test -v`，確認 Exit Code 0；不是只修第一個錯誤、不是只對改動檔案測試、不是目視檢查。若格式化後還有任何 PHP 變更，重跑完整 Pint；再執行相關 Pest、OpenAPI 與 DB 測試。**最後一次完整 Pint PASS 之後不得再偷偷編輯 PHP 然後直接 Push**；如有改動，重新檢查。
+4. 由 Claude/ChatGPT/Agent 輸出的 PHP 一律視為**未格式化草稿**，不得因 AI 產生、語法可解析或 Pest PASS 而免檢。人工檢查常見項：`use` import 與排序、避免可匯入型別的行內全限定類別名稱、未使用 import、多餘空行、結尾換行；最終以 Pint 自動修正結果為準。
+5. 無 PHP/Composer 執行環境時，明確回報 **PINT NOT RUN / BLOCKED**，將變更交給有環境的責任者完成 Pint 後才 Push；**不得**以猜測、CI 重試、人工比對取代本地 Gate。禁止關閉 Pint、放寬 preset、加 ignore、刪測試或把失敗改為容許成功。
+6. GitHub CI 若仍報 `pint=failure`，先取 **該 exact SHA** 的完整 Pint diff（workflow 已輸出 `PINT_PATCH_BEGIN/END`），列出**全部**受影響檔案與 fixer，再一次修完；不要逐項微提交。修完以新 SHA 重新跑完整 required checks，舊 SHA 的 Pest/Docs/Flutter PASS 不能移植當作新 SHA 的驗收證據。
+
+**單一標準驗收記錄：** `PR # / HEAD SHA / composer.lock Pint version / config path or default / PHP version / full pint command / exit code / modified files / exact-SHA CI link / PASS|FAIL|NOT RUN`。沒有本地完整 Pint PASS 的紀錄，不得寫「格式已驗證」。
+
+**這次實際根因（非推測）：** PR #53 SHA `de3950a9190411347b4e54b55b8cee9d9ddbb40d` 的 Backend job `123192214016`，Pint 掃描 365 files，只有 `app/Services/Course/CourseEnrollmentService.php` 一處 `fully_qualified_strict_types` 類型格式差異：應新增 `use Illuminate\\Support\\Carbon;` 並將 `\\Illuminate\\Support\\Carbon::parse(...)` 改為 `Carbon::parse(...)`。該 SHA 的 Pest/MySQL/並發/rollback 已 PASS，但 Pint FAIL 使 Backend FAIL；修正前不得宣稱此 SHA Backend PASS。此例與先前 `SingleMemberBookingContractTest.php` 的 import、`no_extra_blank_lines` 反覆失敗同根因：**缺少完整 Pint 提交前 Gate**，不是缺少另一套手工格式規則。
+
+**責任歸屬：** 程式批次的作者（目前 Claude）執行完整 Pint 與修正；獨立審查者（ChatGPT）核對命令、exit code、GitHub exact-SHA log 與歷史案例，不搶寫同一程式檔案。只改本文檔不會修復既有 PHP 格式問題；該修正留給 Claude 同批處理。
+
 ## 19. Flutter ListView 點擊失敗：永久 Debug 紀錄（DEBUG-FLUTTER-LISTVIEW-001）
 
 **適用：所有 Flutter Widget Tests、ChatGPT、Claude、Codex。** 同類問題先查本節，不得反覆猜測像素距離。

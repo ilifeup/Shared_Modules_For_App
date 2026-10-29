@@ -40,7 +40,7 @@ function ctcSession(int $term): int
     return (int) DB::table('course_sessions')->where('course_term_id', $term)->value('calendar_event_id');
 }
 
-function ctcInvoice(int $enrollmentId): object
+function ctcInvoice(int $enrollmentId): ?object
 {
     return DB::table('invoices')->where('booking_type', '02')->where('booking_id', $enrollmentId)->first();
 }

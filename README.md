@@ -1,3 +1,6 @@
+# Stop Github online -> offline will be faster for開發.
+2026-10-29 PM2200轉Ubuntu
+
 # Shared Modules for Three Apps
 
 Reusable Flutter, Laravel API and Filament Web Admin modules for three **independent** applications: Tiandi (first integration), Wuxiang and EachCore.

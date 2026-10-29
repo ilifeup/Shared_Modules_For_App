@@ -42,6 +42,10 @@ class PendingBookingRequest {
   final int? memberUserId;
 }
 
+/// A restored request owns its original member, including null for self.
+int? bookingMemberForRetry(PendingBookingRequest? saved, int? selected) =>
+    saved == null ? selected : saved.memberUserId;
+
 class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
   FlutterSecureStorage get _storage => ref.read(pendingBookingStorageProvider);
   final Set<String> _loaded = {};
@@ -227,7 +231,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       if (mounted) setState(() => _busy = false);
       return;
     }
-    final selected = saved == null ? _memberUserId : saved.memberUserId;
+    final selected = bookingMemberForRetry(saved, _memberUserId);
     final requestId = saved?.requestId ?? newRequestId();
     if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
@@ -344,9 +348,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             DropdownButtonFormField<int?>(
               key: ValueKey('booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}'),
               initialValue: availableMembers == null ||
-                      !(availableMembers.any((m) => m.id == (pending == null ? _memberUserId : pending.memberUserId)))
+                      !(availableMembers.any((m) => m.id == (bookingMemberForRetry(pending, _memberUserId))))
                   ? null
-                  : pending == null ? _memberUserId : pending.memberUserId,
+                  : bookingMemberForRetry(pending, _memberUserId),
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
                 for (final member in availableMembers ?? <ManageableFamilyMember>[])

@@ -1,5 +1,6 @@
 name: S1 Shared Core Checks
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'packages/**'

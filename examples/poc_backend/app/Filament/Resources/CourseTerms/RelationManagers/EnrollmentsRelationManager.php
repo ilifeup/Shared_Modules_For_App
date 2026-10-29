@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CourseTerms\RelationManagers;
 use App\Filament\Resources\CalendarEvents\CalendarEventResource;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class EnrollmentsRelationManager extends RelationManager
@@ -42,6 +43,13 @@ class EnrollmentsRelationManager extends RelationManager
                 })->placeholder('—'),
             TextColumn::make('waitlist_sequence')->label('候補順位')->sortable()->placeholder('—'),
             TextColumn::make('fee_confirmed_at')->label('收款確認時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->placeholder('—'),
+        ])->filters([
+            SelectFilter::make('status')->label('報名狀態')->options([
+                'pending_payment' => '待付款',
+                'confirmed' => '已確認',
+                'waitlisted' => '候補中',
+                'cancelled' => '已取消',
+            ]),
         ]);
     }
 }

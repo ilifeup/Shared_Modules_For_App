@@ -3,6 +3,13 @@
 > **每次工作第一步：先讀 [PROJECT_RULES.md](PROJECT_RULES.md) 的「一、有效決策」。** 該文件是唯一的已核准業務規則權威；本文件只管理 AI 工作方法，**不另行建立第二套業務規則**。
 > 永久問題與 Debug 追蹤：[Shared Issue #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35)。跨 App 依賴參考 [Tiandi Issue #38](https://github.com/ilifeup/tiandi-app/issues/38)。`FAST-DEVELOP.md` 已刪除，其完整歷史內容封存於 PROJECT_RULES.md。
 
+## 本機快速開發（2026-10-29 新決策）
+- 使用者已核准在原 iStudy Ubuntu 主機建立**隔離的** Shared Modules 開發環境，禁止干擾原有 iStudy 服務、容器、ZFS、PostgreSQL、憑證及資料；使用獨立 MySQL 8.4 InnoDB 開發 DB。
+- Claude Code 單一寫入者；ChatGPT／Codex 只審查。開發前先鎖定 main SHA，MVP 基準線只盤點會員、預約、現金收款、簽到、必要公告通知；其他模組保留但不作交接阻礙。
+- 本機以 Pint、相關 Pest、Flutter analyze/test、真實 MySQL migration／併發為快速 Gate；雲端 CI 僅於階段驗證使用。45 秒 Push 間隔及每小修回寫 Issue #35 暫停；重大根因／阻擋／階段驗收仍更新 Issue #35。
+- **保留 GOV-001**：未另獲核准不得新增 PR、合併或部署。每批有實質進度必須同步更新 `docs/shared_modules_list.md`；不得虛報 PASS。
+- 上架 App 與首發平台尚待使用者確認；`examples/poc_flutter` 是 PoC，不得稱為正式上架 App。
+
 ## 進度同步硬性規則（2026-10-29 使用者核准）
 每次開發、修復、合併、測試、驗收或模組狀態有進展，必須在同一工作批次同步更新 `docs/shared_modules_list.md` 的對應 M01–M20 狀態、變更摘要、證據 SHA／PR／CI、PASS／FAIL／BLOCKED／NOT TESTED 與剩餘事項。只找到程式碼不得標示 PASS；沒有新進度不需空轉提交。若文件未同步，不得宣稱該批工作已完成。`PROJECT_RULES.md` 的有效決策優先，不得以狀態文件更改業務規則。
 
@@ -15,7 +22,7 @@
 6. **提交前本地 Gate**：PHP 語法／Laravel Pint、相關 Feature tests、Flutter analyze/tests、必要 MySQL InnoDB 交易與並發、權限、冪等、rollback；沒跑不可宣稱 PASS。
 7. **GitHub 節制**：優先沿用既有 Issue/分支；**禁止新增 PR**（除非使用者重新明確授權）。不得自動合併、部署、刪除真實資料或啟用付費服務。既有 PR 需人工核准合併。
 8. **CI 只驗證**：對照 exact HEAD SHA；先修根因再重跑，使用 cache、合理的 paths/concurrency、避免取消唯一驗收 run；CI 綠燈不等於正式驗收。
-9. **完成回寫**：更新 PROJECT_RULES.md（僅在有新核准決策時）、Issue #35（進度與根因），列出修改檔案、SHA、測試結果、回退、未測事項。
+9. **完成回寫**：更新 PROJECT_RULES.md（僅在有新核准決策時）、Issue #35（僅重大根因、阻擋或階段驗收），列出修改檔案、SHA、測試結果、回退、未測事項。
 10. **跨專案回補**：審 Tiandi PR 時評估共用 API/Service/Flutter 契約能否回補 Shared Modules，但不因審查自動啟動 Tiandi 開發。
 
 ## 專案與環境邊界

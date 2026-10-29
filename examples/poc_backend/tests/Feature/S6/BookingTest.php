@@ -204,3 +204,47 @@ it('keeps the booking admin behind events.manage', function () {
     // A member account never reaches the admin.
     $this->actingAs(User::factory()->create())->get('/admin/calendar-events')->assertForbidden();
 });
+
+it('enforces legacy cancellation ownership inside the service even when bypassing the API controller', function () {
+    $event = bookableEvent();
+    $owner = User::factory()->create();
+    $stranger = User::factory()->create();
+    $booking = app(BookingService::class)->book($event, $owner);
+
+    try {
+        app(BookingService::class)->cancel($booking, $stranger);
+        test()->fail('An ordinary member must not cancel another member booking');
+    } catch (\App\Support\Api\ApiException $exception) {
+        expect($exception)->toBeInstanceOf(\App\Support\Api\ApiException::class);
+    }
+
+    expect($booking->refresh()->status)->toBe('confirmed');
+});
+
+it('permits the actual administrator to cancel a legacy booking through the service', function () {
+    $event = bookableEvent();
+    $owner = User::factory()->create();
+    $admin = makeAdmin();
+    $booking = app(BookingService::class)->book($event, $owner);
+
+    app(BookingService::class)->cancel($booking, $admin);
+
+    expect($booking->refresh()->status)->toBe('cancelled')
+        ->and($booking->cancelled_by)->toBe($admin->id);
+});
+
+it('rejects a forged administrator flag passed directly to the booking engine', function () {
+    $event = bookableEvent();
+    $owner = User::factory()->create();
+    $stranger = User::factory()->create();
+    $booking = app(BookingService::class)->book($event, $owner);
+
+    try {
+        app(\App\Services\Booking\BookingEngine::class)->cancelLegacy($booking, $stranger, true);
+        test()->fail('A forged admin flag must not bypass ownership');
+    } catch (\App\Support\Api\ApiException $exception) {
+        expect($exception)->toBeInstanceOf(\App\Support\Api\ApiException::class);
+    }
+
+    expect($booking->refresh()->status)->toBe('confirmed');
+});

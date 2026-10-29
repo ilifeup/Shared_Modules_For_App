@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
+import '../../core/storage/token_storage.dart';
 
 enum AuthStatus { unknown, signedOut, signedIn }
 
@@ -48,8 +49,13 @@ class AuthController extends Notifier<AuthState> {
       state = AuthState.signedIn(profile);
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
-        await storage.clear();
-        state = const AuthState.signedOut();
+        try {
+          await storage.clear();
+        } finally {
+          // Credential revocation must sign out even if secure storage fails.
+          state = const AuthState.signedOut();
+          // Unknown member identity: do not clear another account's pending data.
+        }
       } else {
         // Offline or server error: keep the token, let the member retry.
         state = const AuthState.signedOut();
@@ -66,19 +72,28 @@ class AuthController extends Notifier<AuthState> {
       final profile = await ref.read(memberApiProvider).myProfile();
       state = AuthState.signedIn(profile);
     } catch (_) {
-      await storage.clear();
+      try {
+        await storage.clear();
+      } finally {
+        state = const AuthState.signedOut();
+      }
       rethrow;
     }
   }
 
   Future<void> logout() async {
+    final memberId = state.profile?.id;
     try {
       await ref.read(sessionApiProvider).logout();
     } on ApiException {
       // The local credential is cleared even if the server is unreachable.
     } finally {
-      await ref.read(tokenStorageProvider).clear();
-      state = const AuthState.signedOut();
+      try {
+        await ref.read(tokenStorageProvider).clear();
+      } finally {
+        state = const AuthState.signedOut();
+        if (memberId != null) await clearPendingBookingStorage(memberId);
+      }
     }
   }
 

@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - 'packages/**'
+      - 'examples/poc_backend/**'
+      - 'examples/poc_flutter/**'
       - '.github/workflows/s1-core.yml'
   push:
     branches: [main]
     paths:
       - 'packages/**'
+      - 'examples/poc_backend/**'
+      - 'examples/poc_flutter/**'
       - '.github/workflows/s1-core.yml'
 permissions:
   contents: read
@@ -33,6 +37,118 @@ jobs:
       - name: Composer package validation
         working-directory: packages/laravel/shared_core
         run: composer validate --strict
+  m08-backend-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Install PoC backend dependencies
+        working-directory: examples/poc_backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run M08 single-member feature contract (SQLite only)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: |
+          set -euo pipefail
+          php artisan test tests/Feature/S9/SingleMemberBookingContractTest.php tests/Feature/S6/BookingTest.php tests/Feature/S9/CourseEnrollmentServiceTest.php tests/Feature/S9/CourseGroupAdmissionTest.php
+
+  flutter-poc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Analyze changed Flutter PoC entry points
+        working-directory: examples/poc_flutter
+        run: |
+          flutter pub get
+          flutter analyze lib/features/s9/group_booking_screen.dart lib/features/calendar/event_detail_screen.dart lib/router.dart
+
+
+  integration-premerge:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/m08-single-member-contract-20261029'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build complete Flutter Android debug APK
+        working-directory: examples/poc_flutter
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build apk --debug
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Validate Laravel database migrations (SQLite)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          php artisan migrate:fresh --force
+
+
+  mysql-queue-atomicity:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/m08-single-member-contract-20261029'
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: testroot
+          MYSQL_DATABASE: shared_core_ci
+          MYSQL_USER: shared_ci
+          MYSQL_PASSWORD: shared_ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestroot"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql
+          coverage: none
+      - name: MySQL queue atomicity (dedicated CI database)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: shared_core_ci
+          DB_USERNAME: shared_ci
+          DB_PASSWORD: shared_ci_password
+          QUEUE_CONNECTION: database
+          DB_QUEUE_CONNECTION: mysql
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          php artisan migrate:fresh --force
+          php tests/integration/mysql_queue_atomicity.php
+
   dart:
     runs-on: ubuntu-24.04
     steps:
@@ -40,7 +156,7 @@ jobs:
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
-      - name: Dart format (prints the diff on failure)
+      - name: Verify canonical Dart formatting (annotate diff on failure)
         working-directory: packages/flutter/shared_core
         shell: bash
         run: |
@@ -69,5 +185,6 @@ jobs:
           dart run test/notification_api_smoke.dart
           dart run test/event_api_smoke.dart
           dart run test/booking_api_smoke.dart
+          dart run test/booking_group_api_smoke.dart
           dart run test/article_api_smoke.dart
           dart run test/s9_api_smoke.dart

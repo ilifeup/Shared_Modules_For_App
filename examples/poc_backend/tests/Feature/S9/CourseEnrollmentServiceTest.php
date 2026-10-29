@@ -45,6 +45,25 @@ class CourseEnrollmentServiceTest extends TestCase
         return $user;
     }
 
+    public function test_legacy_s6_booking_cannot_bypass_course_term_admission(): void
+    {
+        $termId = $this->term();
+        $eventId = (int) DB::table('course_sessions')
+            ->where('course_term_id', $termId)->value('calendar_event_id');
+        $member = $this->verified();
+
+        $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$eventId}/bookings")
+            ->assertStatus(409)->assertJsonPath('error.code', 'SERIES_BOOKING_REQUIRED');
+
+        $this->assertSame(0, DB::table('event_bookings')
+            ->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_groups')
+            ->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_attendees')
+            ->where('calendar_event_id', $eventId)->count());
+    }
+
     public function test_paid_check_rejects_missing_invoice_without_recording_payment(): void
     {
         $term = $this->term();

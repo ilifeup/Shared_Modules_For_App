@@ -31,8 +31,8 @@ class BookingAttendee {
       );
 }
 
-/// S9 M08 members-only booking group with 1..n identified attendees;
-/// confirmed or waitlisted as a whole (strict FIFO).
+/// S9 M08 single-member booking; each booking occupies exactly one seat.
+/// Waitlist promotion is strictly first-in-first-out.
 class BookingGroup {
   const BookingGroup({
     required this.id,
@@ -126,6 +126,12 @@ class BookingGroup {
   }
 }
 
+class ManageableFamilyMember {
+  const ManageableFamilyMember({required this.id, required this.name});
+  final int id;
+  final String name;
+}
+
 class BookingGroupPage {
   const BookingGroupPage({
     required this.items,
@@ -138,7 +144,7 @@ class BookingGroupPage {
   final int lastPage;
 }
 
-/// S9 M08 members-only group booking and waitlist. Retries must reuse
+/// S9 M08 single-member booking and waitlist. Retries must reuse
 /// the same [clientRequestId] (UUID) so a booking is never created twice.
 class BookingGroupApi {
   const BookingGroupApi(this.transport);
@@ -150,34 +156,28 @@ class BookingGroupApi {
   Future<BookingGroup> book(
     String eventId, {
     required String clientRequestId,
-    bool includeSelf = true,
-    List<int> attendeeMemberIds = const [],
+    int? memberUserId,
   }) async {
-    if (attendeeMemberIds.any((id) => id <= 0) ||
-        attendeeMemberIds.toSet().length != attendeeMemberIds.length) {
+    if (memberUserId != null && memberUserId <= 0) {
       throw ArgumentError.value(
-        attendeeMemberIds,
-        'attendeeMemberIds',
-        'Expected distinct positive member IDs',
+        memberUserId,
+        'memberUserId',
+        'Expected a positive member ID',
       );
     }
     final json = await transport.request(
       'POST',
       '/api/v1/events/${s9Seg(eventId)}/booking-groups',
       body: {
-        'include_self': includeSelf,
-        'attendees': [
-          for (final id in attendeeMemberIds) {'member_user_id': id},
-        ],
         'client_request_id': clientRequestId,
+        if (memberUserId != null) 'member_user_id': memberUserId,
       },
     );
     return BookingGroup.fromJson(s9Data(json));
   }
 
-  /// IDs of active family members for whom this account can currently book.
-  /// The server is authoritative; the POST rechecks delegation under its lock.
-  Future<List<int>> manageableMemberIds() async {
+  /// Active delegated members with their names; server rechecks on booking.
+  Future<List<ManageableFamilyMember>> manageableMembers() async {
     final json = await transport.request(
       'GET',
       '/api/v1/me/family-memberships',
@@ -195,10 +195,18 @@ class BookingGroupApi {
           if (id is! int || id <= 0) {
             throw const FormatException('Invalid family member ID');
           }
-          return id;
+          final name = row['name'];
+          if (name is! String || name.trim().isEmpty) {
+            throw const FormatException('Invalid family member name');
+          }
+          return ManageableFamilyMember(id: id, name: name);
         })
         .toList(growable: false);
   }
+
+  Future<List<int>> manageableMemberIds() async => (await manageableMembers())
+      .map((member) => member.id)
+      .toList(growable: false);
 
   /// [status]: `active`, `confirmed`, `waitlisted` or `cancelled`.
   Future<BookingGroupPage> mine({String? status, int page = 1}) async {

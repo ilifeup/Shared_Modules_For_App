@@ -42,3 +42,18 @@ class MemoryTokenStorage implements TokenStorage {
   @override
   Future<void> clear() async => _token = null;
 }
+
+/// Clear only the signed-in member's unresolved booking attempts.
+/// A failed session restore has no trusted member identity, so it must not
+/// erase other accounts' durable idempotency keys.
+Future<void> clearPendingBookingStorage(
+  String memberId, [
+  FlutterSecureStorage? storage,
+]) async {
+  final secure = storage ?? const FlutterSecureStorage();
+  final prefix = 'pending_booking_v1:${Uri.encodeComponent(memberId)}:';
+  final values = await secure.readAll();
+  for (final key in values.keys.where((key) => key.startsWith(prefix))) {
+    await secure.delete(key: key);
+  }
+}

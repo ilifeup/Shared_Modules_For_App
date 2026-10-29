@@ -133,6 +133,12 @@ final class BookingEngine
             $booking = $this->transaction(function () use ($event, $member): EventBooking {
                 $locked = $this->lock($event);
                 $this->assertActiveVerifiedMember($member);
+                // Series-owned occurrences must use the authoritative whole-term path.
+                if (DB::table('course_group_events')->where('calendar_event_id', $locked->id)->exists()
+                    || DB::table('course_sessions')->where('calendar_event_id', $locked->id)->exists()) {
+                    throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                        '此場次屬於系列活動／課程，請由整系列報名入口預約。');
+                }
 
                 if ($this->activeAttendeeOf($locked, $member) !== null) {
                     throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
@@ -183,8 +189,16 @@ final class BookingEngine
      */
     public function cancelLegacy(EventBooking $booking, User $actor, bool $byAdmin = false): EventBooking
     {
+        // Never trust a caller-supplied admin flag: authorization belongs in the engine.
+        $byAdmin = $byAdmin && $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
         $cancelled = $this->transaction(function () use ($booking, $actor, $byAdmin): EventBooking {
             $event = $this->lock($booking->event);
+            // Series-owned occurrences must use the authoritative whole-term path.
+            if (DB::table('course_group_events')->where('calendar_event_id', $event->id)->exists()
+                || DB::table('course_sessions')->where('calendar_event_id', $event->id)->exists()) {
+                throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                    '此場次屬於系列活動／課程，請由整系列報名入口預約。');
+            }
             /** @var EventBooking $locked */
             $locked = EventBooking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
 

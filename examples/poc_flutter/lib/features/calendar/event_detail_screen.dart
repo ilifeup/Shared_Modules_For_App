@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../ui/content_unavailable.dart';
 import '../../ui/status_box.dart';
-import '../bookings/booking_section.dart';
 import '../s9/discovery_screens.dart';
 import 'calendar_providers.dart';
 
@@ -47,7 +46,12 @@ class EventDetailScreen extends ConsumerWidget {
             Text('時間：${formatDate(item.startsAt)} ${formatEventTime(item)}'),
             if (item.location != null) Text('地點：${item.location}'),
             const SizedBox(height: 12),
-            BookingSection(eventId: item.id),
+            if (!item.isCancelled)
+              FilledButton(
+                key: const Key('event-booking-s9'),
+                onPressed: () => context.push('/events/${item.id}/booking-groups'),
+                child: const Text('報名／候補（單人）'),
+              ),
             // S9: check-in entries.
             Wrap(
               spacing: 8,

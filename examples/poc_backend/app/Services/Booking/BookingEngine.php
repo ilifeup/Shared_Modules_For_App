@@ -189,6 +189,8 @@ final class BookingEngine
      */
     public function cancelLegacy(EventBooking $booking, User $actor, bool $byAdmin = false): EventBooking
     {
+        // Never trust a caller-supplied admin flag: authorization belongs in the engine.
+        $byAdmin = $byAdmin && $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
         $cancelled = $this->transaction(function () use ($booking, $actor, $byAdmin): EventBooking {
             $event = $this->lock($booking->event);
             // Series-owned occurrences must use the authoritative whole-term path.

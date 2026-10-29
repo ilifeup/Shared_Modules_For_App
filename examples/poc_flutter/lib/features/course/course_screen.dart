@@ -64,6 +64,46 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
     }
   }
 
+  Future<void> _cancelEnrollment(int enrollmentId, String status) async {
+    final isWaitlisted = status == 'waitlisted';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isWaitlisted ? '退出候補' : '取消整期課程報名'),
+        content: Text(isWaitlisted
+            ? '確定退出這筆課程候補？'
+            : '確定取消整期課程報名？已付款的退款須由管理員另外處理。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('確認'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _saving = true;
+      _message = null;
+    });
+    try {
+      final action = isWaitlisted ? 'cancel-waitlist' : 'cancel';
+      await ref.read(dioProvider).post(
+        '/api/v1/me/course-enrollments/$enrollmentId/$action',
+      );
+      ref.invalidate(myCourseEnrollmentsProvider);
+      if (mounted) setState(() => _message = isWaitlisted ? '已退出候補' : '已取消報名');
+    } catch (error) {
+      if (mounted) setState(() => _message = '取消失敗：$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = ref.watch(myCourseEnrollmentsProvider);
@@ -138,6 +178,20 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
                     subtitle: Text(
                       '會員 ID：${item['user_id']}　狀態：${item['status']}',
                     ),
+                    trailing: ['waitlisted', 'pending_payment', 'confirmed']
+                            .contains(item['status'])
+                        ? TextButton(
+                            onPressed: _saving
+                                ? null
+                                : () => _cancelEnrollment(
+                                      item['id'] as int,
+                                      item['status'] as String,
+                                    ),
+                            child: Text(item['status'] == 'waitlisted'
+                                ? '退出候補'
+                                : '取消報名'),
+                          )
+                        : null,
                   ),
               ],
             ),

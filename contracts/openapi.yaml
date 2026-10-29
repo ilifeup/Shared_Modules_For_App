@@ -123,6 +123,86 @@ paths:
                       status: { type: integer, enum: [5] }
                       replayed: { type: boolean }
 
+  /me/course-enrollments/{id}/sessions:
+    get:
+      tags: [courses]
+      operationId: listCourseEnrollmentSessions
+      summary: List sessions and recorded leave requests for an enrollment
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Sessions of the enrollment, ordered by start time
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        starts_at: { type: string, format: date-time }
+                        ends_at: { type: string, format: date-time }
+                        leave_id: { type: integer, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Enrollment not found or not visible to this member }
+  /me/course-enrollments/{id}/sessions/{sessionId}/leave:
+    post:
+      tags: [courses]
+      operationId: requestCourseSessionLeave
+      summary: Record a single-session leave request without cancelling the course enrollment
+      description: Original booker with current membership authority only. Active pending_payment or confirmed enrollment; request must precede the session by at least 48 hours. Repeated request returns the existing leave record without duplicate writes.
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: sessionId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 2, maxLength: 2000 }
+      responses:
+        '201':
+          description: New leave request recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      session_id: { type: integer }
+                      replayed: { type: boolean }
+        '200':
+          description: Existing leave request returned on retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      session_id: { type: integer }
+                      replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: Invalid request, unavailable session or insufficient authorization }
+        '429': { description: Too many requests }
+
   /me/course-enrollments/{id}/cancel:
     post:
       tags: [courses]

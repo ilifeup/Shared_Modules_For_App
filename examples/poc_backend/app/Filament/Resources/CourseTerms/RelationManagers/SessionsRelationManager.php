@@ -67,6 +67,24 @@ class SessionsRelationManager extends RelationManager
                     }, 3);
                 }),
         ])->recordActions([
+            Action::make('removeSession')->label('移除課堂')->color('danger')
+                ->requiresConfirmation()
+                ->action(function (CourseSession $record): void {
+                    DB::transaction(function () use ($record): void {
+                        $term = CourseTerm::query()->whereKey($this->getOwnerRecord()->getKey())->lockForUpdate()->firstOrFail();
+                        $session = CourseSession::query()
+                            ->whereKey($record->id)->where('course_term_id', $term->id)
+                            ->lockForUpdate()->firstOrFail();
+                        if ($term->enrollments()->exists()
+                            || DB::table('course_session_leaves')->where('course_session_id', $session->id)->exists()
+                            || DB::table('course_makeups')->where('target_course_session_id', $session->id)->exists()) {
+                            throw ValidationException::withMessages([
+                                'calendar_event_id' => '已有報名、請假或補課紀錄，禁止移除課堂；請由管理員依核准流程處理。',
+                            ]);
+                        }
+                        $session->delete();
+                    }, 3);
+                }),
             Action::make('editEvent')->label('編輯課堂活動')
                 ->url(fn ($record): string => CalendarEventResource::getUrl('edit', ['record' => $record->calendar_event_id])),
         ]);

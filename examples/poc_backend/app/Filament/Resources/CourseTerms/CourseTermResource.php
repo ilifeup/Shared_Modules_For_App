@@ -71,6 +71,15 @@ class CourseTermResource extends Resource
             TextColumn::make('waitlist_capacity')->label('候補名額'),
             TextColumn::make('sessions_count')->label('堂數')->counts('sessions')->sortable(),
             TextColumn::make('enrollments_count')->label('報名總數')->counts('enrollments')->sortable(),
+            TextColumn::make('active_enrollments_count')->label('正式占位')->counts([
+                'enrollments as active_enrollments_count' => fn ($query) => $query->whereIn('status', ['pending_payment', 'confirmed']),
+            ])->sortable(),
+            TextColumn::make('pending_enrollments_count')->label('待付款')->counts([
+                'enrollments as pending_enrollments_count' => fn ($query) => $query->where('status', 'pending_payment'),
+            ])->sortable(),
+            TextColumn::make('waitlisted_enrollments_count')->label('候補中')->counts([
+                'enrollments as waitlisted_enrollments_count' => fn ($query) => $query->where('status', 'waitlisted'),
+            ])->sortable(),
             TextColumn::make('booking_closes_at')->label('報名截止')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone()),
         ])->recordActions([EditAction::make()]);
     }

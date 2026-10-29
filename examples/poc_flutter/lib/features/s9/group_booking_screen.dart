@@ -73,6 +73,7 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
     }
     try {
       final raw = await _storage.read(key: _key(scope));
+      PendingBookingRequest? restored;
       // Recheck the session before publishing any persisted request.
       final authBefore = ref.read(authControllerProvider);
       if (authBefore.status != AuthStatus.signedIn ||
@@ -86,8 +87,7 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
             RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$').hasMatch(parts[0])) {
           final member = parts[1] == 'self' ? null : int.tryParse(parts[1]);
           if (parts[1] == 'self' || (member != null && member > 0)) {
-            final pending = PendingBookingRequest(parts[0], member);
-            state = {...state, scope: pending};
+            restored = PendingBookingRequest(parts[0], member);
           } else {
             throw const FormatException('已保存的預約對象資料異常，停止重新送出以避免重複報名。');
           }
@@ -104,8 +104,9 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
         state = {...state}..remove(scope);
         throw StateError('登入會員已變更，請重新開啟預約畫面。');
       }
+      if (restored != null) state = {...state, scope: restored};
       _loaded.add(scope);
-      return state[scope];
+      return restored;
     } finally {
       _loading.remove(scope);
     }

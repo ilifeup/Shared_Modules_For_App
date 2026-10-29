@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
+import '../../core/storage/token_storage.dart';
 
 enum AuthStatus { unknown, signedOut, signedIn }
 
@@ -49,6 +50,7 @@ class AuthController extends Notifier<AuthState> {
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
         await storage.clear();
+        await clearPendingBookingStorage();
         state = const AuthState.signedOut();
       } else {
         // Offline or server error: keep the token, let the member retry.
@@ -77,8 +79,12 @@ class AuthController extends Notifier<AuthState> {
     } on ApiException {
       // The local credential is cleared even if the server is unreachable.
     } finally {
-      await ref.read(tokenStorageProvider).clear();
-      state = const AuthState.signedOut();
+      try {
+        await ref.read(tokenStorageProvider).clear();
+      } finally {
+        state = const AuthState.signedOut();
+        await clearPendingBookingStorage();
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 class RecordingTransport implements ApiTransport {
   final calls = <String>[];
   final bodies = <Map<String, dynamic>?>[];
+  Map<String, dynamic>? familyResponse;
 
   @override
   Future<Map<String, dynamic>> request(
@@ -12,6 +13,9 @@ class RecordingTransport implements ApiTransport {
   }) async {
     calls.add('$method $path');
     bodies.add(body);
+    if (path == '/api/v1/me/family-memberships') {
+      return familyResponse ?? {'data': [{'member_user_id': 42, 'name': '家人甲'}]};
+    }
     return {
       'data': {
         'id': '12',
@@ -72,5 +76,18 @@ Future<void> main() async {
   check(rejected, 'Invalid member ID must be rejected before transport');
   check(transport.calls.length == 2,
       'Invalid member ID must not reach transport');
+  final family = await api.manageableMembers();
+  check(family.length == 1 && family.single.id == 42 && family.single.name == '家人甲',
+      'Family member name and ID must be retained');
+  final ids = await api.manageableMemberIds();
+  check(ids.length == 1 && ids.single == 42, 'Legacy IDs API must remain compatible');
+  transport.familyResponse = {'data': [{'member_user_id': 42}]};
+  var malformedRejected = false;
+  try {
+    await api.manageableMembers();
+  } on FormatException {
+    malformedRejected = true;
+  }
+  check(malformedRejected, 'Missing family member name must fail explicitly');
   print('S9 single-member booking API contract: PASS');
 }

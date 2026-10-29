@@ -14,7 +14,11 @@ class RecordingTransport implements ApiTransport {
     calls.add('$method $path');
     bodies.add(body);
     if (path == '/api/v1/me/family-memberships') {
-      return familyResponse ?? {'data': [{'member_user_id': 42, 'name': '家人甲'}]};
+      return familyResponse ?? {
+        'data': [
+          {'member_user_id': 42, 'name': '家人甲'},
+        ],
+      };
     }
     return {
       'data': {
@@ -94,9 +98,7 @@ Future<void> main() async {
   );
   final family = await api.manageableMembers();
   check(
-    family.length == 1 &&
-        family.single.id == 42 &&
-        family.single.name == '家人甲',
+    family.length == 1 && family.single.id == 42 && family.single.name == '家人甲',
     'Family member name and ID must be retained',
   );
   final ids = await api.manageableMemberIds();

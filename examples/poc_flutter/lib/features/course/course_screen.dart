@@ -133,7 +133,10 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
                       for (final session in sessions)
                         ListTile(
                           title: Text(session['title']?.toString() ?? '課堂'),
-                          subtitle: Text('${session['starts_at'] ?? ''}'),
+                          subtitle: Text(
+                        '${session['starts_at'] ?? ''}'
+                        '${session['makeup_id'] == null ? '' : '　補課：${session['makeup_title'] ?? ''} ${session['makeup_starts_at'] ?? ''}'}',
+                      ),
                           trailing: session['leave_id'] != null
                               ? const Text('已請假')
                               : TextButton(

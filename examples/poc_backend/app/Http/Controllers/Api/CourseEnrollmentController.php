@@ -98,9 +98,14 @@ final class CourseEnrollmentController extends Controller
                 $join->on('l.course_session_id', '=', 's.id')
                     ->where('l.course_enrollment_id', '=', $id);
             })
+            ->leftJoin('course_makeups as m', 'm.course_session_leave_id', '=', 'l.id')
+            ->leftJoin('course_sessions as target', 'target.id', '=', 'm.target_course_session_id')
+            ->leftJoin('calendar_events as makeup_event', 'makeup_event.id', '=', 'target.calendar_event_id')
             ->where('s.course_term_id', $entry->course_term_id)
             ->orderBy('e.starts_at')
-            ->get(['s.id', 'e.title', 'e.starts_at', 'e.ends_at', 'l.id as leave_id']);
+            ->get(['s.id', 'e.title', 'e.starts_at', 'e.ends_at', 'l.id as leave_id',
+                'm.id as makeup_id', 'makeup_event.title as makeup_title',
+                'makeup_event.starts_at as makeup_starts_at']);
 
         return new JsonResponse(['data' => $sessions]);
     }

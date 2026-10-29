@@ -73,6 +73,39 @@ jobs:
           flutter pub get
           flutter analyze lib/features/s9/group_booking_screen.dart lib/features/calendar/event_detail_screen.dart lib/router.dart
 
+
+  integration-premerge:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/m08-single-member-contract-20261029'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build complete Flutter Android debug APK
+        working-directory: examples/poc_flutter
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build apk --debug
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Validate Laravel database migrations (SQLite)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          php artisan migrate:fresh --force
+
   dart:
     runs-on: ubuntu-24.04
     permissions:

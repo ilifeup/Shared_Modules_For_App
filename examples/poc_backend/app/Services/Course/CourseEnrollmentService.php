@@ -44,6 +44,10 @@ final class CourseEnrollmentService
      */
     public function paidCheck(int $enrollmentId, User $admin): array
     {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw new \App\Support\Api\ApiException(403, 'ADMIN_REQUIRED', '僅管理員可確認收費。');
+        }
+
         $invoice = DB::table('invoices')->where('booking_type', '02')
             ->where('booking_id', $enrollmentId)->first();
         if ($invoice !== null) {

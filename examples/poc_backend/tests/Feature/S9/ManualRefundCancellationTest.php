@@ -55,6 +55,7 @@ class ManualRefundCancellationTest extends TestCase
             'course_term_id' => $term,
             'user_id' => $member->id,
             'booker_user_id' => $member->id,
+            'contact_name' => $member->name,
             'status' => 'confirmed',
             'created_at' => now(),
             'updated_at' => now(),
@@ -85,6 +86,7 @@ class ManualRefundCancellationTest extends TestCase
         }
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
     }
+
     public function test_refund_requires_cancelled_event_booking(): void
     {
         $admin = $this->admin();
@@ -117,5 +119,4 @@ class ManualRefundCancellationTest extends TestCase
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
         $this->assertSame(1, DB::table('invoice_refund_audits')->where('invoice_id', $invoice)->count());
     }
-
 }

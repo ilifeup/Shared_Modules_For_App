@@ -35,7 +35,7 @@ class SessionsRelationManager extends RelationManager
             TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
             TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
             TextColumn::make('makeup_capacity')->label('補課名額')->sortable(),
-            TextColumn::make('makeups_count')->label('已指派補課')->counts('makeups')->sortable(),
+            TextColumn::make('makeups_count')->label('補課歷史筆數')->counts('makeups')->sortable(),
         ])->headerActions([
             Action::make('addSession')->label('新增課堂（選擇活動）')
                 ->form([
@@ -80,8 +80,13 @@ class SessionsRelationManager extends RelationManager
                         $session = CourseSession::query()
                             ->whereKey($record->id)->where('course_term_id', $term->id)
                             ->lockForUpdate()->firstOrFail();
-                        $assigned = DB::table('course_makeups')
-                            ->where('target_course_session_id', $session->id)->count();
+                        // Cancelled makeup bookings remain as audit history but do
+                        // not consume a live makeup seat after parent cancellation.
+                        $assigned = DB::table('course_makeups as makeup')
+                            ->join('event_booking_groups as booking', 'booking.id', '=', 'makeup.event_booking_group_id')
+                            ->where('makeup.target_course_session_id', $session->id)
+                            ->where('booking.status', 'confirmed')
+                            ->count();
                         $capacity = (int) $data['makeup_capacity'];
                         if ($capacity < $assigned) {
                             throw ValidationException::withMessages([

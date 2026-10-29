@@ -12,7 +12,6 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/auth/verify_account_screen.dart';
 import 'features/auth/verify_phone_screen.dart';
-import 'features/bookings/my_bookings_screen.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/family/family_application_screen.dart';
@@ -136,7 +135,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/me/bookings',
-        builder: (context, state) => const MyBookingsScreen(),
+        builder: (context, state) => const MyBookingGroupsScreen(),
       ),
       GoRoute(
         path: '/me/booking-groups',

@@ -156,9 +156,16 @@ jobs:
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
-      - name: Verify canonical Dart formatting
+      - name: Verify canonical Dart formatting (annotate diff on failure)
         working-directory: packages/flutter/shared_core
-        run: dart format --output none --set-exit-if-changed lib test
+        shell: bash
+        run: |
+          dart format lib test
+          git diff -- . > "$RUNNER_TEMP/format.diff"
+          if [ -s "$RUNNER_TEMP/format.diff" ]; then
+            bash ../../../.github/scripts/annotate_failure.sh "$RUNNER_TEMP/format.diff" "dart format diff" 4000 30 tail
+            exit 1
+          fi
       - name: Dart analyze and smoke
         working-directory: packages/flutter/shared_core
         shell: bash

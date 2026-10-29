@@ -6,6 +6,8 @@ use App\Filament\Resources\CalendarEvents\CalendarEventResource;
 use App\Models\CalendarEvent;
 use App\Models\CourseSession;
 use App\Models\CourseTerm;
+use App\Services\Course\CourseMakeupAssignmentService;
+use Filament\Facades\Filament;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -68,6 +70,25 @@ class SessionsRelationManager extends RelationManager
                     }, 3);
                 }),
         ])->recordActions([
+            Action::make('assignMakeup')->label('指派補課')
+                ->form([
+                    Select::make('course_session_leave_id')->label('待安排請假')->required()->searchable()
+                        ->options(fn (): array => DB::table('course_session_leaves as l')
+                            ->join('course_enrollments as e', 'e.id', '=', 'l.course_enrollment_id')
+                            ->join('users as u', 'u.id', '=', 'e.user_id')
+                            ->where('e.status', 'confirmed')
+                            ->whereNotIn('l.id', DB::table('course_makeups')->select('course_session_leave_id'))
+                            ->orderBy('l.id')->limit(200)
+                            ->get(['l.id', 'u.name'])
+                            ->mapWithKeys(fn ($leave): array => [$leave->id => $leave->name.' — 請假 #'.$leave->id])->all()),
+                ])
+                ->action(function (CourseSession $record, array $data): void {
+                    app(CourseMakeupAssignmentService::class)->assign(
+                        (int) $data['course_session_leave_id'],
+                        (int) $record->id,
+                        Filament::auth()->user(),
+                    );
+                }),
             Action::make('adjustMakeupCapacity')->label('調整補課名額')
                 ->form([
                     TextInput::make('makeup_capacity')->label('補課名額')

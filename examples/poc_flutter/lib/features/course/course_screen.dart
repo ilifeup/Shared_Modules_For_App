@@ -173,10 +173,11 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
                                       );
                                       if (reason == null) return;
                                       if (reason.length < 2) {
-                                        if (mounted)
+                                        if (mounted) {
                                           setState(
                                             () => _message = '請假原因至少 2 個字',
                                           );
+                                        }
                                         return;
                                       }
                                       await ref
@@ -188,13 +189,15 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
                                       sheetRef.invalidate(
                                         courseSessionsProvider(enrollmentId),
                                       );
-                                      if (mounted)
+                                      if (mounted) {
                                         setState(() => _message = '單堂請假已記錄');
+                                      }
                                     } catch (error) {
-                                      if (mounted)
+                                      if (mounted) {
                                         setState(
                                           () => _message = '請假失敗：$error',
                                         );
+                                      }
                                     } finally {
                                       controller.dispose();
                                     }

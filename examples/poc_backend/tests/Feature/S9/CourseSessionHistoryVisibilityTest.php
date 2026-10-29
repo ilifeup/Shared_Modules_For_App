@@ -40,8 +40,8 @@ class CourseSessionHistoryVisibilityTest extends TestCase
 
     public function test_original_booker_cannot_read_family_sessions_older_than_two_months(): void
     {
-        $booker = User::factory()->create();
-        $member = User::factory()->create();
+        $booker = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $id = $this->createEnrollment($member, $booker, 3);
 
         $this->actingAs($booker)->getJson("/api/v1/me/course-enrollments/{$id}/sessions")
@@ -57,8 +57,8 @@ class CourseSessionHistoryVisibilityTest extends TestCase
 
     public function test_original_booker_can_read_recent_family_sessions_without_mutation_rights(): void
     {
-        $booker = User::factory()->create();
-        $member = User::factory()->create();
+        $booker = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $id = $this->createEnrollment($member, $booker, 1);
 
         $this->actingAs($booker)->getJson("/api/v1/me/course-enrollments/{$id}/sessions")
@@ -69,9 +69,9 @@ class CourseSessionHistoryVisibilityTest extends TestCase
 
     public function test_unrelated_user_cannot_read_enrollment_sessions(): void
     {
-        $booker = User::factory()->create();
-        $member = User::factory()->create();
-        $stranger = User::factory()->create();
+        $booker = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $stranger = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
         $id = $this->createEnrollment($member, $booker, 1);
 
         $this->actingAs($stranger)->getJson("/api/v1/me/course-enrollments/{$id}/sessions")

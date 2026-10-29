@@ -120,3 +120,10 @@
 - 沿用 PR #53，保持 Draft；Claude/ChatGPT 必須先確認分支 SHA 及檔案責任，避免並行覆寫；禁止自動合併或部署。
 - 驗收矩陣每項標記 `VERIFIED` / `PASS` / `FAIL` / `BLOCKED` / `NOT TESTED`，附程式位置、測試與實際操作證據；只有所有必要流程通過才可提請使用者核准。
 - 本節更新是**審查基線更新**，不是宣稱上述未完成項目已修好。
+
+### 2026-10-29 課堂安排實作進度（未驗收）
+
+- `SessionsRelationManager` 已新增選取未被其他期別使用的活動、補課名額欄位及交易內重複綁定檢查。
+- 已有 `pending_payment`／`confirmed` 正式報名時禁止直接新增課堂，避免破壞整期 Booking 數量。
+- 尚缺完整課堂移除/調整、補課指派、會員請假 API 與 Flutter 畫面，以及後端/前端實際執行驗收。
+- 此修改尚未取得同 SHA 的 Pint、Pest、Filament、Flutter CI 結果；狀態為 `NOT TESTED`，PR 保持 Draft。

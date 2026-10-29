@@ -190,7 +190,10 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           ] else ...[
             DropdownButtonFormField<int?>(
               key: const Key('booking-member'),
-              initialValue: pending?.memberUserId ?? _memberUserId,
+              initialValue: availableMembers == null ||
+                      !(availableMembers.any((m) => m.id == (pending?.memberUserId ?? _memberUserId)))
+                  ? null
+                  : pending?.memberUserId ?? _memberUserId,
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
                 for (final member in availableMembers ?? <ManageableFamilyMember>[])

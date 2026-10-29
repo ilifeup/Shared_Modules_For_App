@@ -85,4 +85,37 @@ class ManualRefundCancellationTest extends TestCase
         }
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
     }
+    public function test_refund_requires_cancelled_event_booking(): void
+    {
+        $admin = $this->admin();
+        $member = User::factory()->create();
+        $event = s9Event(['booking_capacity' => 2]);
+        $group = DB::table('event_booking_groups')->insertGetId([
+            'calendar_event_id' => $event->id,
+            'booker_user_id' => $member->id,
+            'status' => 'confirmed',
+            'seat_count' => 1,
+            'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+            'booked_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $invoice = $this->invoice('01', $group, $member->id);
+
+        try {
+            app(CashInvoiceService::class)->recordManualRefund($invoice, $admin, 'Before cancellation');
+            $this->fail('Active event booking must not be refunded.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invoice', $exception->errors());
+        }
+        $this->assertSame(0, DB::table('payment_transactions')->count());
+        $this->assertSame(0, DB::table('invoice_refund_audits')->count());
+
+        DB::table('event_booking_groups')->where('id', $group)->update(['status' => 'cancelled']);
+        $result = app(CashInvoiceService::class)->recordManualRefund($invoice, $admin, 'After cancellation');
+        $this->assertSame(5, $result['status']);
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
+        $this->assertSame(1, DB::table('invoice_refund_audits')->where('invoice_id', $invoice)->count());
+    }
+
 }

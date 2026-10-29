@@ -73,6 +73,13 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
     }
     try {
       final raw = await _storage.read(key: _key(scope));
+      // Recheck the session before publishing any persisted request.
+      final authBefore = ref.read(authControllerProvider);
+      if (authBefore.status != AuthStatus.signedIn ||
+          authBefore.profile == null ||
+          !scope.startsWith('${Uri.encodeComponent(authBefore.profile!.id)}:')) {
+        throw StateError('登入會員已變更，請重新開啟預約畫面。');
+      }
       if (raw != null) {
         final parts = raw.split('|');
         if (parts.length == 2 &&

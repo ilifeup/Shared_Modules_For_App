@@ -67,6 +67,29 @@ class SessionsRelationManager extends RelationManager
                     }, 3);
                 }),
         ])->recordActions([
+            Action::make('adjustMakeupCapacity')->label('調整補課名額')
+                ->form([
+                    TextInput::make('makeup_capacity')->label('補課名額')
+                        ->integer()->minValue(0)->required()
+                        ->default(fn (CourseSession $record): int => (int) $record->makeup_capacity),
+                ])
+                ->action(function (CourseSession $record, array $data): void {
+                    DB::transaction(function () use ($record, $data): void {
+                        $term = CourseTerm::query()->whereKey($this->getOwnerRecord()->getKey())->lockForUpdate()->firstOrFail();
+                        $session = CourseSession::query()
+                            ->whereKey($record->id)->where('course_term_id', $term->id)
+                            ->lockForUpdate()->firstOrFail();
+                        $assigned = DB::table('course_makeups')
+                            ->where('target_course_session_id', $session->id)->count();
+                        $capacity = (int) $data['makeup_capacity'];
+                        if ($capacity < $assigned) {
+                            throw ValidationException::withMessages([
+                                'makeup_capacity' => '補課名額不得小於已指派的補課人數。',
+                            ]);
+                        }
+                        $session->update(['makeup_capacity' => $capacity]);
+                    }, 3);
+                }),
             Action::make('removeSession')->label('移除課堂')->color('danger')
                 ->requiresConfirmation()
                 ->action(function (CourseSession $record): void {

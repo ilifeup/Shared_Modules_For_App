@@ -106,6 +106,49 @@ jobs:
           composer install --no-interaction --prefer-dist --no-progress
           php artisan migrate:fresh --force
 
+
+  mysql-queue-atomicity:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/m08-single-member-contract-20261029'
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: testroot
+          MYSQL_DATABASE: shared_core_ci
+          MYSQL_USER: shared_ci
+          MYSQL_PASSWORD: shared_ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestroot"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql
+          coverage: none
+      - name: MySQL queue atomicity (dedicated CI database)
+        working-directory: examples/poc_backend
+        env:
+          APP_ENV: testing
+          APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: shared_core_ci
+          DB_USERNAME: shared_ci
+          DB_PASSWORD: shared_ci_password
+          QUEUE_CONNECTION: database
+          DB_QUEUE_CONNECTION: mysql
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          php artisan migrate:fresh --force
+          php tests/integration/mysql_queue_atomicity.php
+
   dart:
     runs-on: ubuntu-24.04
     permissions:

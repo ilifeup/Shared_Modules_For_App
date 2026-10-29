@@ -200,13 +200,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
 
   Future<void> _submit() async {
     final scope = _requestScope;
-    if (_busy || _restoringScope == scope ||
-        (scope != null && _restoredScope != scope) ||
-        _restoreErrorScope == scope) return;
     if (scope == null) {
       setState(() => _error = '請先登入會員帳號。');
       return;
     }
+    if (_busy || _restoringScope == scope ||
+        _restoredScope != scope || _restoreErrorScope == scope) return;
     setState(() { _busy = true; _error = null; });
     final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
     PendingBookingRequest? saved;
@@ -299,6 +298,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     if (_selectionScope != scope) {
       _selectionScope = scope;
       _memberUserId = null;
+      _restoredScope = null;
+      _restoreErrorScope = null;
+      _restoreError = null;
     }
     final result = scope != null && scope == _resultScope ? _result : null;
     final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];

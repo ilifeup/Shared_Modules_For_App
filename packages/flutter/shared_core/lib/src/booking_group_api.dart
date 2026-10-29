@@ -31,8 +31,8 @@ class BookingAttendee {
       );
 }
 
-/// S9 M08 members-only booking group with 1..n identified attendees;
-/// confirmed or waitlisted as a whole (strict FIFO).
+/// S9 M08 single-member booking; each booking occupies exactly one seat.
+/// Waitlist promotion is strictly first-in-first-out.
 class BookingGroup {
   const BookingGroup({
     required this.id,
@@ -138,7 +138,7 @@ class BookingGroupPage {
   final int lastPage;
 }
 
-/// S9 M08 members-only group booking and waitlist. Retries must reuse
+/// S9 M08 single-member booking and waitlist. Retries must reuse
 /// the same [clientRequestId] (UUID) so a booking is never created twice.
 class BookingGroupApi {
   const BookingGroupApi(this.transport);
@@ -150,26 +150,21 @@ class BookingGroupApi {
   Future<BookingGroup> book(
     String eventId, {
     required String clientRequestId,
-    bool includeSelf = true,
-    List<int> attendeeMemberIds = const [],
+    int? memberUserId,
   }) async {
-    if (attendeeMemberIds.any((id) => id <= 0) ||
-        attendeeMemberIds.toSet().length != attendeeMemberIds.length) {
+    if (memberUserId != null && memberUserId <= 0) {
       throw ArgumentError.value(
-        attendeeMemberIds,
-        'attendeeMemberIds',
-        'Expected distinct positive member IDs',
+        memberUserId,
+        'memberUserId',
+        'Expected a positive member ID',
       );
     }
     final json = await transport.request(
       'POST',
       '/api/v1/events/${s9Seg(eventId)}/booking-groups',
       body: {
-        'include_self': includeSelf,
-        'attendees': [
-          for (final id in attendeeMemberIds) {'member_user_id': id},
-        ],
         'client_request_id': clientRequestId,
+        if (memberUserId != null) 'member_user_id': memberUserId,
       },
     );
     return BookingGroup.fromJson(s9Data(json));

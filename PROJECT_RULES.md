@@ -9,6 +9,11 @@
 
 | ID | 生效規則 | 禁止／檢查 |
 |---|---|---|
+| DEV-LOCAL-001 | **使用者 2026-10-29 明確解除 iStudy Ubuntu 主機的全面禁用規則**：允許在該 Ubuntu 主機建立獨立的 Shared Modules 本機開發環境 | 只准使用隔離工作目錄、獨立 MySQL 8.4 InnoDB 開發資料庫／容器／埠；**不得**覆寫、停用、重設或混用 iStudy 服務、資料、Docker 容器、ZFS、PostgreSQL、憑證與埠；不得使用正式會員資料；先確認資源餘裕與衝突 |
+| DEV-LOCAL-002 | 本機快速開發為優先：**Claude Code 為單一寫入者**，ChatGPT／Codex 只審查；本機先跑 Pint、受影響 Pest、Flutter analyze/test、MySQL migration／交易測試，CI 留給階段驗證 | 同一分支不得多 AI 同時改寫；不可為了快而跳過身份、授權、交易與資料保護；未跑的測試記 NOT TESTED |
+| DEV-LOCAL-003 | **MVP 基準線僅盤點**會員 M01/M02/M03、預約 M08、現金收款、簽到 M11、必要公告／通知 M04/M06；其他 M01–M20 暫列「非本輪 MVP 交接驗收」，原規格與已實作程式保留 | 這是**交接盤點範圍**而非擅自刪除功能；最終上架 App 與 Android/iOS 首發目標仍待使用者確認；未核准不得擴大或改寫業務規則 |
+| DEV-LOCAL-004 | 本機開發期間：取消 45 秒 Push 間隔要求；不必每個小修都 Push／重跑雲端 CI／回寫 Issue #35；同一批工作完成時同步更新 `docs/shared_modules_list.md`；Issue #35 只記重大根因、阻擋或階段驗收 | GOV-001 **禁止未授權新增 PR／合併／部署**仍有效；Commit 可本機批次整理；回 GitHub 前必須通過相關本機 Gate、檢查 Secrets，並核對版本 SHA |
+| DEV-LOCAL-005 | 交接目標是**可重現的現況基準線**，不是先把 20 模組全部完成：鎖定 SHA、PoC／正式 App 界線、依賴安裝、MySQL 8.4 migration、Flutter 檢查、已知缺口、ZIP 快照與完整 Git clone | GitHub 遠端檔案檢查不能冒充 Ubuntu 上的 Composer／Flutter／MySQL 實際 PASS；下載與驗證在本機完成 |
 | GOV-001 | 禁止新增 PR，除非使用者再次明確授權；合併、部署、破壞性遷移須明確授權 | 不得因「繼續」自行開 PR、合併或部署 |
 | GOV-002 | 共用模組 P1，Tiandi P2；Tiandi 開發暫停，不因審查而自行啟動 | 不要改造成單一 Tiandi App |
 | GOV-003 | CI PASS 不等於功能驗收或結案 | 必須核對 exact SHA、跨層契約、真實 DB/Flutter、並發與失敗測試 |
@@ -555,7 +560,7 @@ https://www.reddit.com/r/flutterhelp/comments/1joue8z/
 
 ## 7. 環境保護
 
-- 不得使用、重設、安裝、修改 iStudy Ubuntu 主機及其 ZFS/PostgreSQL/Docker 作為本專案環境。
+- **已由 DEV-LOCAL-001 新決策取代**：可在 iStudy Ubuntu 主機建立**隔離**的 Shared Modules 開發環境；不得干擾 iStudy 原有服務、ZFS、PostgreSQL、Docker 工作負載、憑證或資料。
 - Laravel Cloud 只是候選 staging；任何付費開通或正式部署需使用者核准。
 - 不假設 iOS 已有 Mac 或簽章資源；Android APK Build 不等於雙平台上架完成。
 

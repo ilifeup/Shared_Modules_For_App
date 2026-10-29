@@ -20,7 +20,7 @@ class CourseSessionHistoryVisibilityTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $event = s9Event(['starts_at' => now()->addDays(10)]);
+        $event = s9Event(['starts_at' => now()->addDays(10), 'ends_at' => now()->addDays(10)->addHours(2)]);
         DB::table('course_sessions')->insert([
             'course_term_id' => $termId,
             'calendar_event_id' => $event->id,

@@ -126,6 +126,12 @@ class BookingGroup {
   }
 }
 
+class ManageableFamilyMember {
+  const ManageableFamilyMember({required this.id, required this.name});
+  final int id;
+  final String name;
+}
+
 class BookingGroupPage {
   const BookingGroupPage({
     required this.items,
@@ -170,9 +176,8 @@ class BookingGroupApi {
     return BookingGroup.fromJson(s9Data(json));
   }
 
-  /// IDs of active family members for whom this account can currently book.
-  /// The server is authoritative; the POST rechecks delegation under its lock.
-  Future<List<int>> manageableMemberIds() async {
+  /// Active delegated members with their names; server rechecks on booking.
+  Future<List<ManageableFamilyMember>> manageableMembers() async {
     final json = await transport.request(
       'GET',
       '/api/v1/me/family-memberships',
@@ -190,10 +195,17 @@ class BookingGroupApi {
           if (id is! int || id <= 0) {
             throw const FormatException('Invalid family member ID');
           }
-          return id;
+          final name = row['name'];
+          if (name is! String || name.trim().isEmpty) {
+            throw const FormatException('Invalid family member name');
+          }
+          return ManageableFamilyMember(id: id, name: name);
         })
         .toList(growable: false);
   }
+
+  Future<List<int>> manageableMemberIds() async =>
+      (await manageableMembers()).map((member) => member.id).toList(growable: false);
 
   /// [status]: `active`, `confirmed`, `waitlisted` or `cancelled`.
   Future<BookingGroupPage> mine({String? status, int page = 1}) async {

@@ -35,6 +35,7 @@ class SessionsRelationManager extends RelationManager
             TextColumn::make('event.starts_at')->label('開始時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
             TextColumn::make('event.ends_at')->label('結束時間')->dateTime('Y-m-d H:i', timezone: CalendarEventResource::displayTimezone())->sortable(),
             TextColumn::make('makeup_capacity')->label('補課名額')->sortable(),
+            TextColumn::make('makeups_count')->label('已指派補課')->counts('makeups')->sortable(),
         ])->headerActions([
             Action::make('addSession')->label('新增課堂（選擇活動）')
                 ->form([

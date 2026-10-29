@@ -8,6 +8,15 @@
 
 ## 00｜進度更新規則與最新查核紀錄
 
+### 2026-10-29｜轉移 Ubuntu 本機快速開發基準線（規則已更新，實機尚未驗證）
+- 已核准：原 iStudy Ubuntu 主機可用於**隔離的** Shared Modules 開發，不得干擾既有 iStudy 服務、資料、ZFS、PostgreSQL、Docker；獨立 MySQL 8.4 InnoDB 開發環境。
+- 本輪交接只驗證會員 M01/M02/M03、預約 M08、現金收款、簽到 M11、必要公告通知 M04/M06；其他 M01–M20 **OUT OF HANDOFF SCOPE**，保留原規格與程式。
+- 本機 Claude Code 單一寫入者，ChatGPT／Codex 審查；本機先 Pint／Pest／Flutter／MySQL，GitHub CI 作階段確認。45 秒 Push 間隔及每次小修更新 Issue #35 暫停；每批實質進度仍須更新本文件。
+- 待實機：Ubuntu clone、Composer install、Flutter pub get/analyze、MySQL 8.4 migration、Pest／Flutter tests、ZIP 快照與 Secrets 歷史掃描；目前全部 **NOT TESTED**。
+- 已知 PoC：`examples/poc_backend` 要求 PHP ^8.4、Laravel ^13.17；`examples/poc_flutter` 為 Flutter PoC，**不是正式可上架 App**。上架目標 App、首發 Android/iOS 待確認。
+
+
+
 **使用者核准規則（2026-10-29）**：每次開發、修復、合併、測試或驗收有實質進度，必須同步更新本文件對應模組與進度紀錄，附 SHA／PR／CI 證據、PASS／FAIL／BLOCKED／NOT TESTED 及未完成項目；未測試不得標示 PASS。下方 2026-10-23 模組索引為原始規劃快照，後續應依實際驗證逐項更新，不得以歷史 PLANNED 否定已存在的程式碼。
 
 ### 2026-10-29｜main 整合及唯讀檢查

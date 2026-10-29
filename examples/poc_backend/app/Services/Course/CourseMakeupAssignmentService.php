@@ -73,6 +73,16 @@ final class CourseMakeupAssignmentService
                 throw ValidationException::withMessages(['member' => '會員在目標場次已有有效預約。']);
             }
 
+            // Makeup capacity is a separate administrative quota, but the
+            // occurrence's physical booking capacity is still a hard ceiling.
+            $occupied = EventBookingAttendee::query()
+                ->where('calendar_event_id', $event->id)
+                ->where('status', EventBookingAttendee::STATUS_CONFIRMED)
+                ->where('active', true)->count();
+            if ($occupied >= (int) $event->booking_capacity) {
+                throw ValidationException::withMessages(['target_course_session_id' => '目標活動總座位已滿，無法安排補課。']);
+            }
+
             $requestId = (string) Uuid::uuid5(Uuid::NAMESPACE_URL, 'course-makeup:leave:'.$leaveId);
             $group = EventBookingGroup::query()->create([
                 'calendar_event_id' => $event->id,

@@ -53,7 +53,9 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
       // A transient offline restore is not an explicit logout. Keep persisted
       // requests so the next successful login can recover the original key.
       if (previous?.status == AuthStatus.signedIn &&
-          next.status == AuthStatus.signedOut) {
+          (next.status == AuthStatus.signedOut ||
+              (next.status == AuthStatus.signedIn &&
+                  previous?.profile?.id != next.profile?.id))) {
         state = {};
         _loaded.clear();
       }

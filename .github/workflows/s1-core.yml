@@ -59,6 +59,20 @@ jobs:
           set -euo pipefail
           php artisan test tests/Feature/S9/SingleMemberBookingContractTest.php tests/Feature/S6/BookingTest.php tests/Feature/S9/CourseEnrollmentServiceTest.php tests/Feature/S9/CourseGroupAdmissionTest.php
 
+  flutter-poc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Analyze changed Flutter PoC entry points
+        working-directory: examples/poc_flutter
+        run: |
+          flutter pub get
+          flutter analyze lib/features/s9/group_booking_screen.dart lib/features/calendar/event_detail_screen.dart lib/router.dart
+
   dart:
     runs-on: ubuntu-24.04
     steps:

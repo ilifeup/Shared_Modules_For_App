@@ -28,6 +28,7 @@ import 'features/profile/change_email_screen.dart';
 import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/s9/checkin_screens.dart';
+import 'features/s9/group_booking_screen.dart';
 import 'features/s9/discovery_screens.dart';
 import 'features/s9/my_calendar_screen.dart';
 import 'features/s9/verification_marketing.dart';
@@ -136,6 +137,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/me/bookings',
         builder: (context, state) => const MyBookingsScreen(),
+      ),
+      GoRoute(
+        path: '/me/booking-groups',
+        builder: (context, state) => const MyBookingGroupsScreen(),
+      ),
+      GoRoute(
+        path: '/events/:id/booking-groups',
+        builder: (context, state) =>
+            GroupBookingScreen(eventId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/events/:id',

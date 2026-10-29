@@ -158,6 +158,9 @@ class GroupBookingScreen extends ConsumerStatefulWidget {
 class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   int? _memberUserId;
   bool _busy = false;
+  String? _restoredScope;
+  String? _restoringScope;
+  Object? _restoreError;
   Object? _error;
   BookingGroup? _result;
   String? _resultScope;
@@ -167,8 +170,28 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     return bookingRequestScope(auth.profile!.id, widget.eventId);
   }
 
+  // Restore durable attempts before allowing the member to change selection.
+  // A restored request always keeps its original member and idempotency key.
+  Future<void> _restorePending(String scope) async {
+    try {
+      await ref.read(pendingBookingRequestsProvider.notifier).load(scope);
+      if (mounted && _requestScope == scope) {
+        setState(() {
+          _restoredScope = scope;
+          _restoreError = null;
+        });
+      }
+    } catch (error) {
+      if (mounted && _requestScope == scope) {
+        setState(() => _restoreError = error);
+      }
+    } finally {
+      if (mounted) setState(() => _restoringScope = null);
+    }
+  }
+
   Future<void> _submit() async {
-    if (_busy) return;
+    if (_busy || _restoringScope != null || _restoreError != null) return;
     final scope = _requestScope;
     if (scope == null) {
       setState(() => _error = '請先登入會員帳號。');
@@ -265,6 +288,15 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         : null;
     final result = scope != null && scope == _resultScope ? _result : null;
     final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
+    if (scope != null &&
+        _restoredScope != scope &&
+        _restoringScope != scope &&
+        _restoreError == null) {
+      _restoringScope = scope;
+      Future.microtask(() => _restorePending(scope));
+    }
+    final restoring = scope != null && _restoredScope != scope;
+
 
     return Scaffold(
       appBar: AppBar(title: const Text('單人報名／候補')),
@@ -299,7 +331,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                     child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || pending != null || availableMembers == null
+              onChanged: _busy || restoring || pending != null || availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(
@@ -307,6 +339,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
+            if (restoring)
+              Text(_restoreError == null
+                  ? '正在還原上次報名資料…'
+                  : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError'),
+            if (pending != null)
+              const Text('偵測到未確認的報名請求；重試將沿用原參加會員及識別碼。'),
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),

@@ -49,6 +49,7 @@ class GroupBookingScreen extends ConsumerStatefulWidget {
 class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   int? _memberUserId;
   int? _pendingMemberUserId;
+  bool _hasPendingRequest = false;
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
@@ -56,8 +57,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
 
   Future<void> _submit() async {
     if (_busy) return;
-    final selected = _pendingMemberUserId ?? _memberUserId;
-    if (_pendingMemberUserId == null && selected != null) {
+    final selected = _hasPendingRequest ? _pendingMemberUserId : _memberUserId;
+    if (!_hasPendingRequest && selected != null) {
       final allowed = ref.read(manageableFamilyMemberIdsProvider).value;
       if (allowed == null || !allowed.contains(selected)) {
         setState(() => _error = '請選擇已授權的家庭會員。');
@@ -68,6 +69,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _busy = true;
       _error = null;
       _pendingMemberUserId = selected;
+      _hasPendingRequest = true;
     });
     try {
       final booking = await ref.read(bookingGroupApiProvider).book(
@@ -79,6 +81,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       setState(() {
         _result = booking;
         _pendingMemberUserId = null;
+        _hasPendingRequest = false;
         _requestId = newRequestId();
       });
       ref.invalidate(myBookingGroupsProvider);
@@ -93,6 +96,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             error.statusCode != 408 &&
             error.statusCode != 429) {
           _pendingMemberUserId = null;
+          _hasPendingRequest = false;
           _requestId = newRequestId();
         }
       });
@@ -138,7 +142,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                     child: Text('家庭會員 ID $id'),
                   ),
               ],
-              onChanged: _busy || _pendingMemberUserId != null || availableIds == null
+              onChanged: _busy || _hasPendingRequest || availableIds == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(

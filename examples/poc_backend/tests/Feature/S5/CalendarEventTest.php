@@ -5,6 +5,7 @@ use App\Filament\Resources\CalendarEvents\Pages\ListCalendarEvents;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\User;
+use App\Support\Settings;
 use Filament\Facades\Filament;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -56,6 +57,15 @@ it('returns published and cancelled events in the range, never drafts', function
 
     // Cancelling keeps the row and its id.
     expect(CalendarEvent::query()->find($cancelled->id)?->cancelled_at)->not->toBeNull();
+});
+
+it('exposes configured waitlist limit in the event API', function () {
+    $event = calendarEvent(['waitlist_capacity' => 3, 'waitlist_enabled' => true]);
+    $this->actingAs(User::factory()->create(), 'sanctum')
+        ->getJson("/api/v1/events/{$event->id}")
+        ->assertOk()
+        ->assertJsonPath('data.waitlist_capacity', 3)
+        ->assertJsonPath('data.waitlist_enabled', true);
 });
 
 it('keeps member events away from the public and from unverified members', function () {
@@ -200,4 +210,47 @@ it('rejects invalid intervals on direct model create and update but accepts over
         $event->refresh();
         expect($event->ends_at->toDateTimeString())->toBe('2026-11-11 01:00:00');
     }
+});
+
+it('rejects paid events whose booking deadline violates the cash hold period', function () {
+    expect(fn () => calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 500,
+        'booking_closes_at' => '2026-11-09 02:00:00',
+    ]))->toThrow(ValidationException::class);
+
+    $valid = calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 500,
+        'booking_closes_at' => '2026-11-08 12:00:00',
+    ]);
+    expect($valid->exists)->toBeTrue();
+
+    expect(fn () => $valid->update([
+        'payment_hold_hours' => 48,
+    ]))->toThrow(ValidationException::class);
+});
+
+it('rejects nonpositive cash hold hours and negative event prices', function () {
+    expect(fn () => calendarEvent(['payment_hold_hours' => 0]))
+        ->toThrow(ValidationException::class);
+    expect(fn () => calendarEvent(['price_amount' => -1]))
+        ->toThrow(ValidationException::class);
+});
+
+it('uses administrator cash hold default when the event has no override', function () {
+    app(Settings::class)->put(['payment_hold_hours' => 24]);
+
+    $event = calendarEvent([
+        'booking_enabled' => true,
+        'booking_capacity' => 5,
+        'price_amount' => 200,
+        'booking_closes_at' => '2026-11-09 02:00:00',
+    ]);
+    expect($event->exists)->toBeTrue();
+
+    expect(fn () => $event->update(['booking_closes_at' => '2026-11-09 03:00:00']))
+        ->toThrow(ValidationException::class);
 });

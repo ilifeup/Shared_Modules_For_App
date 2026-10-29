@@ -16,27 +16,19 @@ use Illuminate\Support\Str;
 // Fixes from the 2026-10-25 review (docs/s9_compliance_matrix.md).
 
 // M08-D05: the seat limit is per person and occurrence, not per request.
-it('caps the seats one member books across several bookings', function () {
-    $event = s9Event(['booking_capacity' => 20, 'booking_max_seats' => 3]);
+it('rejects multiple attendees and duplicate active bookings for one member', function () {
+    $event = s9Event(['booking_capacity' => 20]);
     $member = User::factory()->create();
 
-    groupBook($event, $member, ['家人'])->assertCreated();                      // 2 seats
-    groupBook($event, $member, ['友人一', '友人二'], false)->assertStatus(422)  // 2 + 2 > 3
-        ->assertJsonPath('error.code', 'BOOKING_LIMIT_EXCEEDED');
-    groupBook($event, $member, ['友人一'], false)->assertCreated();             // 3 = limit
+    groupBook($event, $member, ['家人'])->assertStatus(422)
+        ->assertJsonPath('error.code', 'VALIDATION_FAILED');
+    groupBook($event, $member)->assertCreated()
+        ->assertJsonPath('data.seat_count', 1);
+    groupBook($event, $member)->assertStatus(409)
+        ->assertJsonPath('error.code', 'ALREADY_BOOKED');
 
-    // Cancelled bookings no longer count.
-    $first = EventBookingGroup::query()->where('booker_user_id', $member->id)->orderBy('id')->firstOrFail();
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/me/booking-groups/{$first->id}/cancel")->assertOk();
-    groupBook($event, $member, ['友人二', '友人三'], false)->assertCreated();
-
-    // Admins may book beyond it on the member's behalf (D14), but only for registered attendees.
-    $extra = User::factory()->create(['name' => '加位']);
-    app(BookingEngine::class)->book($event, new BookingRequest(
-        booker: $member, contactName: $member->name, contactEmail: $member->email, contactPhone: null,
-        attendees: [['name' => $extra->name, 'member_user_id' => $extra->id]], clientRequestId: (string) Str::uuid(), byAdmin: true, actor: makeAdmin(),
-    ));
-    expect(EventBookingGroup::query()->where('booker_user_id', $member->id)->where('status', 'confirmed')->sum('seat_count'))->toEqual(4);
+    expect(EventBookingGroup::query()->where('booker_user_id', $member->id)
+        ->where('status', 'confirmed')->sum('seat_count'))->toEqual(1);
 });
 
 it('rejects guest contacts even for a public event and direct engine calls', function () {
@@ -59,7 +51,7 @@ it('refuses GPS check-in when the fix is less precise than the radius', function
     $location->events()->attach($event->id);
 
     $post = fn (array $gps) => $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin",
-        ['attendee_ids' => [$attendee->id], 'location_token' => $location->token] + $gps);
+        ['attendee_id' => $attendee->id, 'location_token' => $location->token] + $gps);
 
     // 150 m away with a claimed 100 m accuracy used to pass (radius + accuracy); not any more.
     $post(['lat' => 25.03435, 'lng' => 121.5654, 'accuracy' => 100])->assertStatus(422)->assertJsonPath('error.code', 'GPS_OUT_OF_RANGE');

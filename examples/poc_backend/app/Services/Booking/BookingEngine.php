@@ -2,18 +2,23 @@
 
 namespace App\Services\Booking;
 
+use App\Jobs\DispatchBookingGoogleSync;
+use App\Jobs\DispatchBookingNotification;
 use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
+use App\Models\GoogleCalendarConnection;
 use App\Models\MemberVerification;
 use App\Models\User;
-use App\Services\Family\FamilyDelegation;
+use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
+use App\Support\Settings;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid;
 
 /**
  * S9 M08 the only seat / waitlist engine (S9-L06 A).
@@ -35,6 +40,43 @@ final class BookingEngine
     private array $pendingSync = [];
 
     public function __construct(private readonly BookingSideEffects $effects) {}
+
+    /**
+     * Current database authorization for self or a delegated family member.
+     * The caller's User models may be stale: qualification is re-read from the
+     * database, with a locking read when $lock is set so that a revocation
+     * committed after this transaction started is still seen (InnoDB consistent
+     * reads would return the older snapshot).
+     */
+    public function canManageFamily(User $manager, User $member, bool $lock = false): bool
+    {
+        $users = User::query()->whereKey(array_unique([$manager->id, $member->id]))
+            ->when($lock, fn ($query) => $query->sharedLock())
+            ->get()->keyBy('id');
+        $manager = $users->get($manager->id);
+        $member = $users->get($member->id);
+        if ($manager === null || $member === null
+            || ! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser
+            || ! $member->is_active || (int) $member->verified_status !== 2) {
+            return false;
+        }
+        if ($manager->id === $member->id) {
+            return true;
+        }
+        if (! $member->FamilyUser) {
+            return false;
+        }
+        $query = DB::table('family_memberships')
+            ->where('manager_user_id', $manager->id)
+            ->where('member_user_id', $member->id)
+            ->where('status', 'active')
+            ->whereNull('ended_at');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first() !== null;
+    }
 
     public function confirmedSeats(CalendarEvent $event): int
     {
@@ -90,6 +132,7 @@ final class BookingEngine
         try {
             $booking = $this->transaction(function () use ($event, $member): EventBooking {
                 $locked = $this->lock($event);
+                $this->assertActiveVerifiedMember($member);
 
                 if ($this->activeAttendeeOf($locked, $member) !== null) {
                     throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
@@ -119,6 +162,7 @@ final class BookingEngine
                     'seat_count' => 1,
                 ]);
                 $this->createAttendee($group, $member->name, $member->id, EventBookingAttendee::STATUS_CONFIRMED);
+                app(CashInvoiceService::class)->forEvent($locked, $group, $member->id);
                 $this->queueSync($member->id, $locked->id);
 
                 AuditEvent::record('booking.confirmed', $member->id, $booking, ['event_id' => $event->id]);
@@ -144,6 +188,12 @@ final class BookingEngine
             /** @var EventBooking $locked */
             $locked = EventBooking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
 
+            // The engine, not only the API controller, enforces ownership.
+            // An administrator may cancel on behalf of a member; ordinary
+            // members can only cancel their own legacy single-member booking.
+            if (! $byAdmin && (int) $locked->user_id !== (int) $actor->id) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約會員可以取消此預約。');
+            }
             if (! $locked->isConfirmed()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此預約已取消。');
             }
@@ -176,13 +226,16 @@ final class BookingEngine
     /**
      * S9 group booking (registered member or admin on the member's behalf).
      */
-    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null): EventBookingGroup
+    public function book(CalendarEvent $event, BookingRequest $request, ?bool &$created = null, bool $coveredByCourseTerm = false): EventBookingGroup
     {
         $created = false;
         // Guard before idempotency replay: no legacy guest request can be replayed.
         if ($request->booker === null) {
             throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動僅接受正式會員預約。');
         }
+        // Verify the current database qualification before any replay lookup.
+        // A revoked or inactive booker must not inspect an existing booking.
+        $this->assertActiveVerifiedMember($request->booker);
         if ($request->clientRequestId !== null) {
             $existing = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first();
             if ($existing !== null) {
@@ -192,23 +245,75 @@ final class BookingEngine
 
         $replayed = null;
         try {
-            $group = $this->transaction(function () use ($event, $request, &$replayed): ?EventBookingGroup {
+            $group = $this->transaction(function () use ($event, $request, $coveredByCourseTerm, &$replayed): ?EventBookingGroup {
                 $locked = $this->lock($event);
                 // A parallel retry with the same id may have committed while we waited for the lock.
                 if ($request->clientRequestId !== null
                     && ($replayed = EventBookingGroup::query()->where('client_request_id', $request->clientRequestId)->first()) !== null) {
                     return null;
                 }
+                // Series-owned occurrences are never independently bookable.
+                // Legacy term-derived bookings use the validated parent path below.
+                if (DB::table('course_group_events')
+                    ->where('calendar_event_id', $locked->id)->exists()) {
+                    throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                        '此場次屬於系列活動／課程，請由整系列報名入口預約。');
+                }
+                if (! $coveredByCourseTerm && DB::table('course_sessions')
+                    ->where('calendar_event_id', $locked->id)->exists()) {
+                    throw new ApiException(409, 'SERIES_BOOKING_REQUIRED',
+                        '此場次屬於系列活動／課程，請由整系列報名入口預約。');
+                }
                 $this->validateRequest($locked, $request);
 
-                $seats = count($request->attendees);
-                $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
-
-                $status = match (true) {
-                    $reason === null => EventBookingGroup::STATUS_CONFIRMED,
-                    $reason === 'full' && $locked->waitlist_enabled => EventBookingGroup::STATUS_WAITLISTED,
-                    default => throw self::unavailable($reason),
-                };
+                // Each accepted booking represents exactly one verified member.
+                $seats = 1;
+                if ($coveredByCourseTerm) {
+                    // This is a derived seat of an already admitted whole term,
+                    // not a new independent event capacity or waitlist decision.
+                    // Authenticate the precise enrollment and deterministic key
+                    // BEFORE allowing this distinct booking path.
+                    $attendee = $request->attendees[0];
+                    $linked = DB::table('course_enrollments')
+                        ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
+                        ->where('course_sessions.calendar_event_id', $locked->id)
+                        ->where('course_enrollments.user_id', $attendee['member_user_id'])
+                        ->where('course_enrollments.booker_user_id', $request->booker->id)
+                        ->where('course_enrollments.status', 'pending_payment')
+                        ->select('course_enrollments.id')->get();
+                    $valid = $linked->contains(function ($entry) use ($locked, $request): bool {
+                        return $request->clientRequestId === (string) Uuid::uuid5(
+                            Uuid::NAMESPACE_URL,
+                            'course-enrollment:'.$entry->id.':event:'.$locked->id,
+                        );
+                    });
+                    if (! $valid) {
+                        throw new ApiException(422, 'INVALID_COURSE_BOOKING', '整期課程預約關聯無效。');
+                    }
+                    // Term capacity is the authority, but a derived seat still
+                    // needs a live occurrence (never a cancelled or draft one).
+                    $sessionReason = match (true) {
+                        $locked->status === CalendarEvent::STATUS_CANCELLED => 'event_cancelled',
+                        $locked->status !== CalendarEvent::STATUS_PUBLISHED => 'event_not_published',
+                        ! $locked->booking_enabled => 'disabled',
+                        default => null,
+                    };
+                    if ($sessionReason !== null) {
+                        throw self::unavailable($sessionReason);
+                    }
+                    $status = EventBookingGroup::STATUS_CONFIRMED;
+                } else {
+                    $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
+                    $status = match (true) {
+                        $reason === null => EventBookingGroup::STATUS_CONFIRMED,
+                        $reason === 'full' && $locked->waitlist_enabled => EventBookingGroup::STATUS_WAITLISTED,
+                        default => throw self::unavailable($reason),
+                    };
+                    if ($status === EventBookingGroup::STATUS_WAITLISTED
+                        && $this->waitingGroups($locked) >= (int) $locked->waitlist_capacity) {
+                        throw new ApiException(409, 'WAITLIST_FULL', '候補名額已滿。');
+                    }
+                }
 
                 $group = $this->createGroup($locked, [
                     'booker_user_id' => $request->booker?->id,
@@ -221,8 +326,13 @@ final class BookingEngine
                 ]);
 
                 $attendeeStatus = $status === EventBookingGroup::STATUS_CONFIRMED ? EventBookingAttendee::STATUS_CONFIRMED : EventBookingAttendee::STATUS_WAITLISTED;
-                foreach ($request->attendees as $attendee) {
-                    $this->createAttendee($group, $attendee['name'], $attendee['member_user_id'] ?? null, $attendeeStatus);
+                // validateRequest() guarantees exactly one verified users.id.
+                $attendee = $request->attendees[0];
+                $this->createAttendee($group, $attendee['name'], (int) $attendee['member_user_id'], $attendeeStatus);
+                if ($status === EventBookingGroup::STATUS_CONFIRMED) {
+                    if (! $coveredByCourseTerm) {
+                        app(CashInvoiceService::class)->forEvent($locked, $group, (int) $attendee['member_user_id']);
+                    }
                 }
 
                 if ($status === EventBookingGroup::STATUS_WAITLISTED) {
@@ -262,6 +372,42 @@ final class BookingEngine
     }
 
     /**
+     * Expire a cash hold while serialising with seat changes. A paid invoice is
+     * never cancelled by this job; repeat calls are safe.
+     */
+    public function expireCashHold(int $groupId, int $invoiceId): bool
+    {
+        $expired = $this->transaction(function () use ($groupId, $invoiceId): bool {
+            $candidate = EventBookingGroup::query()->find($groupId);
+            if ($candidate === null) {
+                return false;
+            }
+            $event = $this->lock($candidate->event);
+            $group = EventBookingGroup::query()->whereKey($groupId)->lockForUpdate()->first();
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($group === null || $invoice === null
+                || $invoice->booking_type !== '01' || (int) $invoice->booking_id !== $groupId
+                || (int) $invoice->invoice_status !== 0 || $invoice->payment_due_at === null
+                || now()->lt($invoice->payment_due_at)) {
+                return false;
+            }
+            DB::table('invoices')->where('id', $invoiceId)->update([
+                'invoice_status' => 3, 'updated_at' => now(),
+            ]);
+            if ($group->status === EventBookingGroup::STATUS_CONFIRMED) {
+                $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, 'payment_expired');
+                $this->promote($event);
+            }
+            AuditEvent::record('booking.payment_expired', null, $group, ['invoice_id' => $invoiceId]);
+
+            return true;
+        });
+        $this->flush();
+
+        return $expired;
+    }
+
+    /**
      * Cancels a confirmed or waitlisted group (member before the cancel deadline, or an
      * admin at any time) and promotes waiting groups at once (D15, D16).
      */
@@ -273,6 +419,65 @@ final class BookingEngine
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
 
+            // A derived series occurrence must not be cancelled separately.
+            // The payment-expiry workflow owns the parent term lock and is
+            // the only authorized per-occurrence release in this MVP.
+            $courseSession = DB::table('course_sessions')
+                ->where('calendar_event_id', $locked->calendar_event_id)->exists();
+            $courseGroupSession = DB::table('course_group_events')
+                ->where('calendar_event_id', $locked->calendar_event_id)->exists();
+            if ($courseSession || $courseGroupSession) {
+                $releaseAllowed = false;
+                if ($courseSession && $byAdmin && in_array($reason, ['course_payment_expired', 'course_enrollment_cancelled'], true)) {
+                    // A caller-supplied reason is not authorization. The parent
+                    // enrollment must already be cancelled and its cash invoice
+                    // expired within the owning transaction.
+                    $enrollments = DB::table('course_enrollments')
+                        ->join('course_sessions', 'course_sessions.course_term_id', '=', 'course_enrollments.course_term_id')
+                        ->join('invoices', function ($join) {
+                            $join->on('invoices.booking_id', '=', 'course_enrollments.id')
+                                ->where('invoices.booking_type', '=', '02');
+                        })
+                        ->where('course_sessions.calendar_event_id', $locked->calendar_event_id)
+                        ->where('course_enrollments.status', 'cancelled')
+                        ->whereIn('invoices.invoice_status', $reason === 'course_payment_expired' ? [3] : [1, 2])
+                        ->select('course_enrollments.id', 'course_enrollments.booker_user_id')->get();
+                    foreach ($enrollments as $enrollment) {
+                        $expected = (string) Uuid::uuid5(
+                            Uuid::NAMESPACE_URL,
+                            'course-enrollment:'.$enrollment->id.':event:'.$locked->calendar_event_id,
+                        );
+                        if ($locked->client_request_id === $expected
+                            && (int) $enrollment->booker_user_id === (int) $actor->id) {
+                            $releaseAllowed = true;
+                            break;
+                        }
+                    }
+                }
+                // A makeup seat belongs to its original course enrollment, not to
+                // a standalone event reservation. Only the cancelled parent may
+                // release it, and the exact canonical group must match.
+                if (! $releaseAllowed && $courseSession && $byAdmin
+                    && $reason === 'course_makeup_released') {
+                    $releaseAllowed = DB::table('course_makeups as m')
+                        ->join('course_session_leaves as l', 'l.id', '=', 'm.course_session_leave_id')
+                        ->join('course_enrollments as ce', 'ce.id', '=', 'l.course_enrollment_id')
+                        ->join('invoices as i', function ($join) {
+                            $join->on('i.booking_id', '=', 'ce.id')
+                                ->where('i.booking_type', '=', '02');
+                        })
+                        ->where('m.event_booking_group_id', $locked->id)
+                        ->where('ce.status', 'cancelled')
+                        ->where('ce.booker_user_id', $actor->id)
+                        ->whereIn('i.invoice_status', [1, 2, 3])
+                        ->exists();
+                }
+                if (! $releaseAllowed) {
+                    throw new ApiException(409, 'SERIES_BOOKING_MANAGED_BY_PARENT',
+                        '系列活動／課程的從屬場次不可單獨取消，請由整系列管理流程處理。');
+                }
+            }
+
             if (! $byAdmin) {
                 if ((int) $locked->booker_user_id !== (int) $actor->id) {
                     throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約者可以取消此預約。');
@@ -281,7 +486,7 @@ final class BookingEngine
                     $member = $attendee->member_user_id !== null
                         ? User::query()->find($attendee->member_user_id)
                         : null;
-                    if ($member === null || ! app(FamilyDelegation::class)->canManage($actor, $member, true)) {
+                    if ($member === null || ! $this->canManageFamily($actor, $member, true)) {
                         throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '此預約包含目前無權代管的家庭會員，請洽管理員處理。');
                     }
                 }
@@ -321,6 +526,7 @@ final class BookingEngine
     {
         $count = $this->transaction(function () use ($event, $reason, $actor): int {
             $locked = $this->lock($event);
+            $this->assertNotCourseOwned($locked);
             $locked->cancel($reason);
 
             $groups = EventBookingGroup::query()->where('calendar_event_id', $locked->id)
@@ -345,6 +551,22 @@ final class BookingEngine
     }
 
     /**
+     * A course-owned occurrence cannot be changed through independent event
+     * actions: the course-term/group transaction owns its enrolled members.
+     */
+    private function assertNotCourseOwned(CalendarEvent $event): void
+    {
+        $termOwned = DB::table('course_sessions')
+            ->where('calendar_event_id', $event->id)->exists();
+        $groupOwned = DB::table('course_group_events')
+            ->where('calendar_event_id', $event->id)->exists();
+        if ($termOwned || $groupOwned) {
+            throw new ApiException(409, 'COURSE_EVENT_MANAGED_BY_TERM',
+                '此課堂屬於系列課程，請由系列課程管理介面處理名額、取消及報名異動。');
+        }
+    }
+
+    /**
      * Admin capacity change (D20): the admin chooses which confirmed groups to cancel
      * when the new capacity is below the confirmed seats; never leaves overbooking.
      *
@@ -359,6 +581,7 @@ final class BookingEngine
         $before = 0;
         $this->transaction(function () use ($event, $capacity, $cancelGroupIds, $actor, $reason, &$before): void {
             $locked = $this->lock($event);
+            $this->assertNotCourseOwned($locked);
             $before = (int) $locked->booking_capacity;
 
             $groups = EventBookingGroup::query()->where('calendar_event_id', $locked->id)->whereIn('id', $cancelGroupIds)
@@ -424,8 +647,8 @@ final class BookingEngine
     }
 
     /**
-     * Promotes waiting groups in strict FIFO order while whole groups fit (call with
-     * the occurrence locked). Stops at the first group that does not fit.
+     * Promotes one verified member booking at a time in strict FIFO order
+     * (call with the occurrence locked). Stops when no capacity remains.
      *
      * @return list<EventBookingGroup>
      */
@@ -448,6 +671,29 @@ final class BookingEngine
             $group = EventBookingGroup::query()->whereKey($head->event_booking_group_id)->lockForUpdate()->firstOrFail();
 
             $permanent = $this->permanentFailure($group);
+            // New MVP bookings have exactly one verified users.id. Historical
+            // guest/group records must never be promoted into a valid seat.
+            $attendees = $group->attendees()->get();
+            if ($permanent === null && ($group->status !== EventBookingGroup::STATUS_WAITLISTED
+                || $group->seat_count !== 1 || $attendees->count() !== 1
+                || $attendees->first()?->status !== EventBookingAttendee::STATUS_WAITLISTED
+                || $attendees->first()?->active != 1)) {
+                $permanent = 'invalid_waitlist_entry';
+            }
+            if ($permanent === null) {
+                $memberId = $attendees->first()?->member_user_id;
+                $member = $memberId === null ? null : User::query()->find($memberId);
+                if ($member === null || ! $member->is_active || (int) $member->verified_status !== 2) {
+                    $permanent = 'attendee_unverified';
+                } elseif ($member->id !== $group->booker_user_id) {
+                    // A family proxy may lose delegation while waiting.
+                    // Recheck current authorization before granting a seat.
+                    $booker = User::query()->find($group->booker_user_id);
+                    if ($booker === null || ! $this->canManageFamily($booker, $member, true)) {
+                        $permanent = 'delegation_revoked';
+                    }
+                }
+            }
             if ($permanent !== null) {
                 $head->forceFill(['status' => EventWaitlistEntry::SKIPPED, 'skip_reason' => $permanent, 'resolved_at' => now()])->save();
                 $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent);
@@ -456,17 +702,22 @@ final class BookingEngine
                 continue;
             }
 
-            if ($this->confirmedSeats($event) + $group->seat_count > (int) $event->booking_capacity) {
-                break; // strict FIFO: later (smaller) groups never jump the head group
+            if ($this->confirmedSeats($event) >= (int) $event->booking_capacity) {
+                break; // Strict FIFO: the next single-member booking must wait for one free seat.
             }
 
+            // Strict FIFO: do not skip the head if the full cash hold cannot fit.
+            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
+                break;
+            }
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
+            app(CashInvoiceService::class)->forEvent($event, $group, (int) $attendees->first()->member_user_id);
             EventBookingAttendee::query()->where('event_booking_group_id', $group->id)->where('status', EventBookingAttendee::STATUS_WAITLISTED)
                 ->update(['status' => EventBookingAttendee::STATUS_CONFIRMED, 'updated_at' => now()]);
             $head->forceFill(['status' => EventWaitlistEntry::PROMOTED, 'resolved_at' => now()])->save();
 
             AuditEvent::record('booking.promoted', null, $group, ['event_id' => $event->id, 'seats' => $group->seat_count]);
-            $this->notice($group, '候補成功：'.$event->title, '已為您保留 '.$group->seat_count.' 個名額，請準時出席。');
+            $this->notice($group, '候補成功：'.$event->title, '已為您保留 1 個名額，請準時出席。');
             if ($group->booker_user_id !== null) {
                 $this->queueSync($group->booker_user_id, $event->id);
             }
@@ -481,17 +732,24 @@ final class BookingEngine
      */
     public function notifyChange(CalendarEvent $event, string $title, string $body): int
     {
-        $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
-            ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
-        foreach ($groups as $group) {
-            $this->notice($group, $title, $body);
-            if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
-                $this->queueSync($group->booker_user_id, $event->id);
+        // Event changes can be called outside a booking transaction. Enqueue
+        // notifications and Google sync in an explicit DB transaction so the
+        // production database queue cannot silently fall back to afterCommit.
+        $count = $this->transaction(function () use ($event, $title, $body): int {
+            $groups = EventBookingGroup::query()->where('calendar_event_id', $event->id)
+                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])->get();
+            foreach ($groups as $group) {
+                $this->notice($group, $title, $body);
+                if ($group->booker_user_id !== null && $group->status === EventBookingGroup::STATUS_CONFIRMED) {
+                    $this->queueSync($group->booker_user_id, $event->id);
+                }
             }
-        }
+
+            return $groups->count();
+        });
         $this->flush();
 
-        return $groups->count();
+        return $count;
     }
 
     public function assertEligible(CalendarEvent $event, ?User $booker): void
@@ -521,74 +779,51 @@ final class BookingEngine
 
     // ---- internals ------------------------------------------------------------------
 
+    private function assertActiveVerifiedMember(User $member): void
+    {
+        if (! User::query()->whereKey($member->id)->where('is_active', true)->where('verified_status', 2)->exists()) {
+            throw new ApiException(403, 'MEMBER_NOT_VERIFIED', '僅開放已驗證且啟用的會員預約。');
+        }
+    }
+
     private function validateRequest(CalendarEvent $event, BookingRequest $request): void
     {
+        // No guest booking, including admin/internal calls and malformed payloads.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
+        }
+        $this->assertActiveVerifiedMember($request->booker);
+
+        // Exactly one registered attendee per booking, independent of legacy
+        // event booking_max_seats and administrator privileges.
         $seats = count($request->attendees);
-        $category = $event->category;
-
-        if ($seats < 1) {
-            throw new ApiException(422, 'VALIDATION_FAILED', '請至少填寫一位參加者。', ['attendees' => ['請至少填寫一位參加者。']]);
-        }
-        if ($seats > max(1, (int) $event->booking_max_seats)) {
-            throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每筆報名最多 '.max(1, (int) $event->booking_max_seats).' 人。');
+        if ($seats !== 1) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', 'MVP 每筆預約只能有一位參加者。');
         }
 
-        // Every entry point, including admin/internal calls, requires an active booker.
-        if ($request->booker === null) {
-            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
+        // Only a real, active and verified users.id can occupy the one seat.
+        $attendeeId = $request->attendees[0]['member_user_id'] ?? null;
+        if ($attendeeId === null || ! is_numeric($attendeeId)) {
+            throw new ApiException(422, 'MEMBER_ID_REQUIRED', '參加者必須有正式會員 ID。');
         }
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
-            throw new ApiException(422, 'INVALID_BOOKER', '預約者必須是有效的正式會員。');
+        $attendee = User::query()->whereKey((int) $attendeeId)
+            ->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null) {
+            throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
         }
-
-        // Enforce attendee identities for every caller, including administrators.
-        if ($request->booker !== null) {
-            $memberIds = array_map(static fn (array $a) => $a['member_user_id'] ?? null, $request->attendees);
-            if (in_array(null, $memberIds, true)) {
-                throw new ApiException(422, 'MEMBER_ID_REQUIRED', '每位參加者都必須有正式會員 ID。');
-            }
-            if (count($memberIds) !== count(array_unique($memberIds))) {
-                throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
-            }
-            foreach ($memberIds as $memberId) {
-                if (! User::query()->whereKey($memberId)->where('is_active', true)->exists()) {
-                    throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
-                }
-                // Do not permit arbitrary proxy booking before verified family delegation exists.
-                if (! $request->byAdmin && ! app(FamilyDelegation::class)->canManage($request->booker, User::query()->findOrFail($memberId), true)) {
-                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
-                }
-            }
+        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
+        }
+        if ($this->activeAttendeeOf($event, $attendee) !== null) {
+            throw new ApiException(409, 'ALREADY_BOOKED', '此會員已預約此活動。');
         }
 
-        if ($request->booker === null) {
-            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約，請先建立正式會員身分。');
-        } else {
-            $proxy = $seats > 1 || collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) !== $request->booker->id);
-            if ($proxy && ! $request->byAdmin && ! ($category?->allow_proxy_booking ?? false)) {
-                throw new ApiException(422, 'PROXY_NOT_ALLOWED', '此活動只能為自己報名。');
-            }
-            if (! $request->byAdmin && $this->activeAttendeeOf($event, $request->booker) !== null
-                && collect($request->attendees)->contains(fn (array $a): bool => ($a['member_user_id'] ?? null) === $request->booker->id)) {
-                throw new ApiException(409, 'ALREADY_BOOKED', '您已預約此活動。');
-            }
-        }
-
-        // D05 "每人名額": the limit is per booker and occurrence, not
-        // per request — several smaller bookings cannot add up past it (admins exempt).
-        if (! $request->byAdmin) {
-            $limit = max(1, (int) $event->booking_max_seats);
-            $already = (int) EventBookingGroup::query()->where('calendar_event_id', $event->id)
-                ->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED])
-                ->where('booker_user_id', $request->booker->id)
-                ->sum('seat_count');
-            if ($already + $seats > $limit) {
-                throw new ApiException(422, 'BOOKING_LIMIT_EXCEEDED', '每人於此場次最多可報名 '.$limit.' 位（已報名 '.$already.' 位）。');
-            }
-        }
+        // MVP limit is per attendee users.id, enforced by activeAttendeeOf().
+        // Do not cap bookings per booker: one guardian may book separately
+        // for multiple authorized family members, one member per request.
 
         // Eligibility is checked when booking only (D10, D19).
-        $this->assertEligible($event, $request->booker);
+        $this->assertEligible($event, $attendee);
     }
 
     private function permanentFailure(EventBookingGroup $group): ?string
@@ -598,6 +833,7 @@ final class BookingEngine
         return match (true) {
             $booker === null => 'booker_deleted',
             ! $booker->is_active => 'booker_disabled',
+            (int) $booker->verified_status !== 2 => 'booker_unverified',
             default => null,
         };
     }
@@ -613,6 +849,8 @@ final class BookingEngine
 
     private function endGroup(EventBookingGroup $group, string $status, ?User $actor, ?string $reason): void
     {
+        DB::table('invoices')->where('booking_type', '01')->where('booking_id', $group->id)
+            ->where('invoice_status', 0)->update(['invoice_status' => 2, 'updated_at' => now()]);
         $group->forceFill([
             'status' => $status,
             'cancelled_at' => now(),
@@ -680,30 +918,36 @@ final class BookingEngine
             && ($request->booker !== null || ($existing->contact_name === $request->contactName
                 && $existing->contact_email === $request->contactEmail
                 && $existing->contact_phone === $request->contactPhone));
-        // Member IDs (and order), not mutable display names, identify the original
-        // attendees. A profile rename must not turn a legitimate retry into 409.
+        // The attendee's immutable users.id, not their mutable display name,
+        // identifies an idempotent retry. Legacy multi-attendee records are rejected.
         $storedMemberIds = $existing->attendees()->orderBy('id')->pluck('member_user_id')
             ->map(static fn ($id): ?int => $id === null ? null : (int) $id)->all();
-        $incomingMemberIds = array_map(
-            static fn (array $attendee): ?int => isset($attendee['member_user_id']) ? (int) $attendee['member_user_id'] : null,
-            $request->attendees,
-        );
-        if (! $same || $existing->seat_count !== count($incomingMemberIds) || $storedMemberIds !== $incomingMemberIds) {
+        $incomingMemberId = count($request->attendees) === 1
+            ? ($request->attendees[0]['member_user_id'] ?? null)
+            : null;
+        if (! $same || count($request->attendees) !== 1 || $existing->seat_count !== 1
+            || count($storedMemberIds) !== 1 || $storedMemberIds[0] === null
+            || $incomingMemberId === null || ! is_numeric($incomingMemberId)
+            || $storedMemberIds[0] !== (int) $incomingMemberId) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 
-        // An idempotent replay is still a read of protected booking details.
-        // Recheck current identity/delegation; revocation must take effect immediately.
-        if (! User::query()->whereKey($request->booker->id)->where('is_active', true)->exists()) {
-            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '預約者已停用。');
+        // Replays cannot revive or disclose historical guest/group bookings.
+        // The current MVP contract applies even when the idempotency key exists.
+        if ($request->booker === null) {
+            throw new ApiException(403, 'GUEST_NOT_ALLOWED', '活動不開放訪客預約。');
         }
-        if (! $request->byAdmin) {
-            foreach ($existing->attendees()->get() as $attendee) {
-                $member = User::query()->whereKey($attendee->member_user_id)->where('is_active', true)->first();
-                if ($member === null || ! app(FamilyDelegation::class)->canManage($request->booker, $member)) {
-                    throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
-                }
-            }
+        $this->assertActiveVerifiedMember($request->booker);
+        // An idempotent replay is still a read of protected booking details.
+        // Admin callers must not bypass attendee validity; family delegation is
+        // rechecked for members to prevent access after authorization revocation.
+        $attendee = User::query()->whereKey($storedMemberIds[0])
+            ->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null) {
+            throw new ApiException(403, 'INVALID_ATTENDEE', '參加者會員資格已失效。');
+        }
+        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
         }
 
         return $existing->load('attendees', 'waitlistEntry');
@@ -731,10 +975,24 @@ final class BookingEngine
      * @param  callable(): T  $callback
      * @return T
      */
+    private function assertDurableQueueConfiguration(): void
+    {
+        if (app()->environment('production') && (
+            config('queue.default') !== 'database'
+            || (config('queue.connections.database.connection') !== null
+                && config('queue.connections.database.connection') !== DB::getDefaultConnection())
+            || config('queue.connections.database.after_commit') !== false
+        )) {
+            throw new \LogicException('Booking durable handoff requires the database queue on the booking DB with after_commit=false.');
+        }
+    }
+
     private function transaction(callable $callback): mixed
     {
+        $this->assertDurableQueueConfiguration();
+
         try {
-            return DB::transaction($callback);
+            return DB::transaction($callback, 3);
         } catch (\Throwable $e) {
             $this->pendingNotices = [];
             $this->pendingSync = [];
@@ -744,11 +1002,39 @@ final class BookingEngine
 
     private function notice(EventBookingGroup $group, string $title, string $body): void
     {
+        if (DB::transactionLevel() > 0
+            && config('queue.default') === 'database'
+            && (config('queue.connections.database.connection') === null
+                || config('queue.connections.database.connection') === DB::getDefaultConnection())) {
+            DispatchBookingNotification::dispatch($group->id, $title, $body)->onConnection('database');
+
+            return;
+        }
+
         $this->pendingNotices[] = [$group, $title, $body];
     }
 
     private function queueSync(int $userId, int $eventId): void
     {
+        // A database-queued handoff is inserted on the same DB transaction as
+        // the booking. No Google API calls or Google mapping writes occur here.
+        // Other queue drivers retain the old post-commit behavior until their
+        // durable handoff has been explicitly configured and validated.
+        if (DB::transactionLevel() > 0
+            && config('queue.default') === 'database'
+            && (config('queue.connections.database.connection') === null
+                || config('queue.connections.database.connection') === DB::getDefaultConnection())) {
+            if (GoogleCalendarConnection::query()
+                ->where('user_id', $userId)
+                ->where('status', GoogleCalendarConnection::ACTIVE)
+                ->whereNotNull('google_calendar_id')
+                ->exists()) {
+                DispatchBookingGoogleSync::dispatch($userId, $eventId)->onConnection('database');
+            }
+
+            return;
+        }
+
         $this->pendingSync[$userId][$eventId] = true;
     }
 
@@ -760,13 +1046,22 @@ final class BookingEngine
         $this->pendingNotices = [];
         $this->pendingSync = [];
 
-        foreach ($notices as [$group, $title, $body]) {
-            $this->effects->notify($group, $title, $body);
-        }
-        foreach ($sync as $userId => $events) {
-            foreach (array_keys($events) as $eventId) {
-                $this->effects->syncBooking($userId, $eventId);
+        // A course may book many sessions inside one outer transaction.
+        // Never perform external side effects until that transaction commits.
+        $deliver = function () use ($notices, $sync): void {
+            foreach ($notices as [$group, $title, $body]) {
+                $this->effects->notify($group, $title, $body);
             }
+            foreach ($sync as $userId => $events) {
+                foreach (array_keys($events) as $eventId) {
+                    $this->effects->syncBooking($userId, $eventId);
+                }
+            }
+        };
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit($deliver);
+        } else {
+            $deliver();
         }
     }
 }

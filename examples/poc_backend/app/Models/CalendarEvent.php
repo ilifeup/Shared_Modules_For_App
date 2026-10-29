@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -37,9 +38,13 @@ class CalendarEvent extends Model
 
     public const MAX_RESULTS = 200;
 
+    // Keep newly created Eloquent instances aligned with the MySQL column default.
+    protected $attributes = ['waitlist_capacity' => 5];
+
     protected $fillable = [
         'title', 'description', 'location', 'starts_at', 'ends_at', 'audience', 'status',
-        'booking_enabled', 'booking_capacity', 'booking_opens_at', 'booking_closes_at',
+        'booking_enabled', 'booking_capacity', 'waitlist_capacity', 'booking_opens_at', 'booking_closes_at',
+        'payment_hold_hours', 'price_amount',
         // S9 (M08/M09/M11)
         'event_category_id', 'timezone', 'floor', 'studio', 'booking_max_seats', 'waitlist_enabled',
         'booking_close_offset_minutes', 'cancel_closes_at', 'cancel_offset_minutes',
@@ -55,8 +60,11 @@ class CalendarEvent extends Model
             'cancelled_at' => 'datetime',
             'booking_enabled' => 'boolean',
             'booking_capacity' => 'integer',
+            'waitlist_capacity' => 'integer',
             'booking_opens_at' => 'datetime',
             'booking_closes_at' => 'datetime',
+            'payment_hold_hours' => 'integer',
+            'price_amount' => 'decimal:2',
             'series_original_start_at' => 'datetime',
             'is_series_exception' => 'boolean',
             'booking_max_seats' => 'integer',
@@ -89,11 +97,38 @@ class CalendarEvent extends Model
                 ]);
             }
 
-            if ($event->booking_max_seats !== null && ($event->booking_max_seats < 1 || $event->booking_max_seats > 50)) {
+            if ($event->waitlist_capacity !== null && $event->waitlist_capacity < 0) {
                 throw ValidationException::withMessages([
-                    'booking_max_seats' => ['每筆報名人數需為 1–50 人。'],
+                    'waitlist_capacity' => ['候補名額不得小於 0。'],
                 ]);
             }
+
+            if ($event->payment_hold_hours !== null && $event->payment_hold_hours < 1) {
+                throw ValidationException::withMessages([
+                    'payment_hold_hours' => ['付款保留時間必須至少 1 小時。'],
+                ]);
+            }
+
+            if ($event->price_amount !== null && (float) $event->price_amount < 0) {
+                throw ValidationException::withMessages([
+                    'price_amount' => ['活動價格不得為負數。'],
+                ]);
+            }
+
+            // A paid bookable event must allow the last booker their entire
+            // configured payment hold period before the event starts.
+            if ($event->booking_enabled && (float) $event->price_amount > 0) {
+                $hours = $event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours');
+                $closes = $event->bookingClosesAt();
+                if ($closes->copy()->addHours($hours)->greaterThan($event->starts_at)) {
+                    throw ValidationException::withMessages([
+                        'booking_closes_at' => ['最後預約時間加上付款保留時間，不得晚於活動開始時間。'],
+                    ]);
+                }
+            }
+
+            // The legacy per-booking seat setting remains readable for old event rows.
+            // Single-member requests are enforced by the booking API, not event model saves.
 
             if ($event->timezone !== null && ! in_array($event->timezone, timezone_identifiers_list(), true)) {
                 throw ValidationException::withMessages(['timezone' => ['時區格式錯誤。']]);

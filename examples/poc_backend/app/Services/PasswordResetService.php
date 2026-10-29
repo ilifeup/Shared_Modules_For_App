@@ -26,9 +26,9 @@ final class PasswordResetService
      */
     public function requestByEmail(string $email): void
     {
-        $user = User::query()->where('email', mb_strtolower(trim($email)))->first();
+        $user = $this->uniqueEmailAccount($email);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             return;
         }
 
@@ -38,6 +38,11 @@ final class PasswordResetService
 
     public function resetByEmail(string $email, string $token, string $password): void
     {
+        $user = $this->uniqueEmailAccount($email);
+        if ($user === null || $user->FamilyUser) {
+            throw new ApiException(422, 'RESET_TOKEN_INVALID', '重設連結無效或已過期，請重新申請。');
+        }
+
         $status = Password::broker()->reset(
             ['email' => mb_strtolower(trim($email)), 'token' => $token, 'password' => $password],
             fn (User $user) => $this->apply($user, $password, 'email'),
@@ -50,9 +55,9 @@ final class PasswordResetService
 
     public function requestByPhone(string $phoneE164): void
     {
-        $user = User::query()->where('phone_e164', $phoneE164)->first();
+        $user = $this->uniquePhoneAccount($phoneE164);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             $this->otp->throttleWithoutSending($phoneE164, PhoneOtp::PURPOSE_PASSWORD_RESET);
 
             return;
@@ -76,9 +81,9 @@ final class PasswordResetService
 
     public function resetByPhone(string $phoneE164, string $code, string $password): void
     {
-        $user = User::query()->where('phone_e164', $phoneE164)->first();
+        $user = $this->uniquePhoneAccount($phoneE164);
 
-        if ($user === null) {
+        if ($user === null || $user->FamilyUser) {
             throw PhoneOtpService::invalidCode();
         }
 
@@ -94,6 +99,24 @@ final class PasswordResetService
         );
 
         $this->completed($user, 'phone');
+    }
+
+    /**
+     * A shared contact cannot identify which account to recover.
+     * Never send a reset token or OTP to an arbitrarily selected member.
+     */
+    private function uniqueEmailAccount(string $email): ?User
+    {
+        $matches = User::query()->where('email', mb_strtolower(trim($email)))->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    private function uniquePhoneAccount(string $phone): ?User
+    {
+        $matches = User::query()->where('phone_e164', $phone)->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function apply(User $user, string $password, string $channel): void

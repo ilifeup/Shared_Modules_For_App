@@ -9,14 +9,13 @@ use App\Models\EventBookingGroup;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
-use App\Services\Family\FamilyDelegation;
 use App\Support\Api\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S9 M08 members-only group bookings and waitlist.
- * The S6 single-booking API stays unchanged (BookingController).
+ * MVP single-member booking and waitlist backed by the existing seat ledger.
+ * Exactly one attendee: self or an authorized verified family member.
  */
 class BookingGroupController extends Controller
 {
@@ -26,38 +25,26 @@ class BookingGroupController extends Controller
 
     /**
      * POST /api/v1/events/{id}/booking-groups
-     * Body: {include_self, attendees:[{member_user_id}], client_request_id}
-     * 201 confirmed or waitlisted (whole group), 200 for an idempotent retry.
+     * Body: {client_request_id, member_user_id?}. One attendee, self by default.
+     * 201 confirmed or waitlisted, 200 for an idempotent retry.
      */
     public function store(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
-            'include_self' => ['sometimes', 'boolean'],
-            'attendees' => ['sometimes', 'array', 'max:50'],
-            'attendees.*.member_user_id' => ['required', 'integer'],
             'client_request_id' => ['required', 'uuid'],
+            'include_self' => ['prohibited'],
+            'attendees' => ['prohibited'],
+            'member_user_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $member = $request->user();
-        $attendees = [];
-        if ($request->boolean('include_self', true)) {
-            $attendees[] = ['name' => $member->name, 'member_user_id' => $member->id];
+        $attendeeId = (int) ($data['member_user_id'] ?? $member->id);
+        $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->first();
+        if ($attendee === null || ! $this->engine->canManageFamily($member, $attendee)) {
+            throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '參加者不是有效的已驗證家庭會員，或沒有代管授權。');
         }
-        foreach ($data['attendees'] ?? [] as $a) {
-            $attendeeId = (int) $a['member_user_id'];
-            // Missing and unauthorized member IDs must have the same response.
-            // Never reveal account existence through 422 vs 403 differences.
-            $attendee = User::query()->whereKey($attendeeId)->where('is_active', true)->first();
-            if ($attendee === null || ! app(FamilyDelegation::class)->canManage($member, $attendee)) {
-                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
-            }
-            $attendees[] = ['name' => $attendee->name, 'member_user_id' => $attendee->id];
-        }
-        $ids = array_column($attendees, 'member_user_id');
-        if (count($ids) !== count(array_unique($ids))) {
-            throw new ApiException(422, 'DUPLICATE_ATTENDEE', '同一位會員不可重複加入預約。');
-        }
+        $attendees = [['name' => $attendee->name, 'member_user_id' => $attendee->id]];
 
         // The engine determines whether this was created or replayed under its event lock.
         $created = false;
@@ -84,7 +71,18 @@ class BookingGroupController extends Controller
             'status' => ['sometimes', 'in:active,confirmed,waitlisted,cancelled'],
         ]);
         $status = $request->input('status');
-        $page = EventBookingGroup::query()->where('booker_user_id', $request->user()->id)
+        $actorId = $request->user()->id;
+        $page = EventBookingGroup::query()->where('booker_user_id', $actorId)
+            // History belongs to the original booker, even if delegation or
+            // member verification changes later. Family history is limited to
+            // two months; own-member bookings have no history cutoff.
+            ->whereHas('attendees', function ($query) use ($actorId) {
+                $query->where('member_user_id', $actorId)
+                    ->orWhere(function ($history) {
+                        $history->whereNotNull('member_user_id')
+                            ->where('event_booking_groups.booked_at', '>=', now()->subMonths(2));
+                    });
+            })
             ->when($status === 'active', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED]))
             ->when($status === 'cancelled', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CANCELLED, EventBookingGroup::STATUS_EVENT_CANCELLED]))
             ->when(in_array($status, ['confirmed', 'waitlisted'], true), fn ($q) => $q->where('status', $status))

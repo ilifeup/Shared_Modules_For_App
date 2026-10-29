@@ -32,6 +32,7 @@ class UserFactory extends Factory
             'phone_e164' => null,
             'phone_verified_at' => null,
             'is_active' => true,
+            'verified_status' => 2,
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
@@ -47,6 +48,7 @@ class UserFactory extends Factory
             'email_verified_at' => null,
             'phone_e164' => $phoneE164,
             'phone_verified_at' => $verified ? now() : null,
+            'verified_status' => $verified ? 2 : 1,
         ]);
     }
 
@@ -57,6 +59,7 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+            'verified_status' => 1,
         ]);
     }
 }

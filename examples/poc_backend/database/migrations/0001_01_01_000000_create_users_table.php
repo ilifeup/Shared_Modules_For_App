@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('phone_e164', 20)->nullable()->unique();
             $table->timestamp('phone_verified_at')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->string('password');
+            $table->string('password')->nullable(); // FamilyUser accounts have no password and cannot log in.
             $table->rememberToken();
             $table->timestamps();
         });

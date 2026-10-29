@@ -48,16 +48,10 @@ class EventDetailScreen extends ConsumerWidget {
             if (item.location != null) Text('地點：${item.location}'),
             const SizedBox(height: 12),
             BookingSection(eventId: item.id),
-            // S9: group booking / waitlist and check-in entries.
+            // S9: check-in entries.
             Wrap(
               spacing: 8,
               children: [
-                TextButton(
-                  key: const Key('open-group-booking'),
-                  onPressed: () =>
-                      context.push('/events/${item.id}/group-booking'),
-                  child: const Text('多人報名／候補'),
-                ),
                 TextButton(
                   key: const Key('open-checkin'),
                   onPressed: () => context.push('/events/${item.id}/checkin'),

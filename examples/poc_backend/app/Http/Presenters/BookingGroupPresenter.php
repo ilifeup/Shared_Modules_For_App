@@ -6,7 +6,8 @@ use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\EventWaitlistEntry;
 use App\Models\User;
-use App\Services\Family\FamilyDelegation;
+use App\Services\Booking\BookingEngine;
+use Illuminate\Support\Facades\DB;
 
 /**
  * S9 M08 JSON of a booking group (separate from the S6 Booking DTO).
@@ -26,14 +27,22 @@ final class BookingGroupPresenter
                 ->where('status', EventWaitlistEntry::WAITING)->where('sequence', '<=', $group->waitlistEntry->sequence)->count();
         }
         $cancelUntil = $event->cancelClosesAt();
-        $canCancel = $group->isActive()
+        // A derived occurrence of a series (term) is cancelled only through the
+        // whole-series cancellation; the engine refuses it, so never offer it.
+        $seriesOwned = DB::table('course_sessions')->where('calendar_event_id', $group->calendar_event_id)->exists()
+            || DB::table('course_group_events')->where('calendar_event_id', $group->calendar_event_id)->exists();
+        $canCancel = ! $seriesOwned && $group->isActive()
             && ($group->status === EventBookingGroup::STATUS_WAITLISTED || now()->lt($cancelUntil))
             && $viewer !== null
             && (int) $group->booker_user_id === (int) $viewer->id
-            && app(FamilyDelegation::class)->canManageMemberIds(
-                $viewer,
-                $group->attendees->pluck('member_user_id')->all()
-            );
+            && $group->attendees->isNotEmpty()
+            && $group->attendees->every(function (EventBookingAttendee $attendee) use ($viewer): bool {
+                $member = $attendee->member_user_id !== null
+                    ? User::query()->find($attendee->member_user_id)
+                    : null;
+
+                return $member !== null && app(BookingEngine::class)->canManageFamily($viewer, $member);
+            });
 
         return [
             'id' => (string) $group->id,

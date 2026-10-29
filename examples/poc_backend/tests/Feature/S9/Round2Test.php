@@ -49,7 +49,9 @@ function r2Occurrence(): array
     $event = s9Event(['audience' => CalendarEvent::AUDIENCE_PUBLIC, 'booking_capacity' => 10, 'starts_at' => now()->addMinutes(30),
         'ends_at' => now()->addHours(2), 'checkin_enabled' => true, 'checkout_enabled' => true], $category);
     $member = User::factory()->create(['name' => '會員甲乙丙', 'email' => 'member-r2@example.com']);
-    groupBook($event, $member, ['家人丁戊'])->assertCreated();
+    groupBook($event, $member)->assertCreated();
+    $family = User::factory()->create(['name' => '家人丁戊']);
+    groupBook($event, $family)->assertCreated();
     $other = User::factory()->create(['name' => '會員己庚', 'email' => 'other-r2@example.com', 'phone_e164' => '+886912000111']);
     groupBook($event, $other)->assertCreated();
     $attendees = EventBookingAttendee::query()->where('calendar_event_id', $event->id)->orderBy('id')->get();
@@ -65,7 +67,7 @@ it('keeps the audit log append-only, purges check-in data and leaves no way to r
     $admin = makeAdmin();
 
     // Member self check-in, staff manual registered-member check-in, staff checkout, admin correction.
-    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_ids' => [$attendees[0]->id], 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
+    $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin", ['attendee_id' => $attendees[0]->id, 'event_token' => app(CheckinTokens::class)->event($event->id)])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'contact' => '0912-000-111'])->assertOk();
     $this->actingAs($staff, 'sanctum')->postJson("/api/v1/events/{$event->id}/checkin/staff", ['attendee_id' => $attendees[2]->id, 'action' => 'checkout'])->assertOk();
     app(CheckinService::class)->adminSet($event, $attendees[1], EventAttendance::CHECKED_IN, $admin, '家人丁戊遲到補登 0912000111');

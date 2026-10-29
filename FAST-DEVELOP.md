@@ -158,3 +158,264 @@ A 完成、B 整合候選可重現且阻礙已列明時，才考慮以 git clone
 
 ### 優先順序與決策權
 P0：永久會員制、權限、資料庫一致性、不可逆清除安全；P1：M08/M11/通知整合；P2：會員資格與影音中心並行；P3：不阻礙 Tiandi MVP 的其他共用模組。此排序不取代使用者已明確核准的業務優先序。
+
+## 12. PR #53 MVP 合併前缺口 Gate（2026-10-28）
+
+> 本節記錄驗收責任而非宣告功能已完成。每次判定均須附 exact HEAD、CI run 與具體測試／程式路徑。CI PASS 不代表實機與完整功能驗收。PR #53 保持 Draft；未經使用者核准不得合併或部署。
+
+| 模組 | 本次 MVP 必須完成／驗收 | 可明確延後／禁止項目 | 目前證據與缺口 |
+|---|---|---|---|
+| #49 會員資格 | `users.id` 唯一會員鍵、`verified_status=1/2` 唯一資格權威；停用／撤銷、Email/手機驗證成功與政策切換、資料升級回退 | 舊歷史欄位清理可延後；禁止用聯絡驗證時間推算會員資格 | `docs/member-status-db-authority.md`、`MemberStatusDbAuthorityTest.php`；正式舊資料盤點／核准回填／備份還原 NOT TESTED |
+| #47 預約 | 一次僅一位已驗證 `users.id`，自己或正式授權家庭會員；取消／撤銷代管、FIFO 候補、冪等、交易與並發、通知／Google handoff、Flutter 參加者選取 | 訪客／匿名／管理員開放訪客、單次多人預約均**永久禁止**，不是延後功能 | `SingleMemberBookingContractTest.php`、`BookingEngine.php` 與後端 CI；家庭撤銷／取消競態及端到端 Flutter 操作仍需逐項核對 |
+| #46 影音中心 | 音樂單曲／會員等級授權、個別 deny 優先、有效期與撤銷即時檢查、MySQL FK/CHECK/rollback、受保護影音不得洩漏至公開 YouTube 清單、Flutter 實際播放 | 進階推薦、非必要播放體驗可延後；公開 YouTube 不得宣稱為 DRM | `AvEntitlement.php`、`AvCatalogController.php`、`AvEntitlementTest.php`；加密音訊解密／播放端及實機 NOT VERIFIED |
+| #41 附件權限 | 管理員啟用、已驗證會員、週額度／大小與獨立 MySQL 並行、私人路徑、每次開啟重新授權、到期／下架／隱藏撤銷、Flutter PDF/圖片閱讀、AES-GCM 私人快取、強制浮水印與快取失效 | Windows 桌面版、非必要個人化浮水印、背景清理可延後；管理員浮水印／預設期限設定是否屬本次 MVP 尚待明確決策 | `s8-attachment-cache-contract.md`、`AttachmentEntitlementTest.php`；獨立 MySQL 並行、Flutter 閱讀器／加密快取／浮水印 NOT VERIFIED |
+
+**合併規則：** 先針對上述 NOT TESTED / NOT VERIFIED 建立最小可重現驗收證據；必要功能未完成則保持 Draft。不可用刪測試、降低權限要求或將未核准功能改列延後來換取綠燈。正式資料庫 Migration、guest purge、部署均須另行核准。
+
+## 13. 家庭會員 Client 與預約歷史不可變原則（使用者決策，優先於先前 #47 推論）
+
+- **Client 禁止解除家庭會員關係**：代管者只可編輯家庭會員資料；不得提供刪除家庭會員、解除代管關係、或透過刪除觸發關係終止的 UI／API 流程。不可為了測試假想 Client 解除流程而新增功能。
+- **預約發起者及歷史不可變**：原代管者建立的預約，booker_user_id 及歷史紀錄歸屬不因家庭關係變動而改寫、隱藏或刪除；「我的預約」按原發起者顯示其歷史，不能以目前家庭關係過濾。不得重新引入 #47 曾錯誤新增的 whereHas/whereDoesntHave 家庭授權過濾。
+- **區分歷史與後續操作**：查看自己發起的歷史預約不等於取得對家庭會員的永久編輯權；新增／修改／取消等操作仍依各自已核准的業務授權判斷。管理端若有正式關係變更需求，須另立規格，不得推定 Client 有此功能。
+- **驗收與測試**：保留「原發起者可查歷史」的正向回歸測試；刪除以「Client 解除關係→歷史消失」為正確預期的測試。不得將後端資料修復／管理員異動誤當 Client 功能。
+- **家庭會員建立即已驗證（最高資料契約）**：代管者透過正式家庭會員新增流程建立的家庭會員，資料庫 users.verified_status 必須直接為 2，並有唯一 users.id 與合法 family_memberships 關聯；不可再要求該家庭會員另外進行 Email／手機驗證才可預約。代管者可替其家庭會員預約。後端仍以資料庫 verified_status=2 為唯一資格判準；若資料異常為 1，應拒絕操作並調查建立流程，而非把未驗證家庭會員視為正常產品情境。
+
+## 14. 家庭會員免費額度與 External Services 付費擴充（使用者決策）
+
+- 每一位代管者以唯一 users.id 為計算單位，免費最多新增 **1 位家庭會員**；不是全站共用額度。**產品目的：鼓勵家庭成員使用自己的手機與獨立帳號使用 App，而非集中由代管者新增帳號。**
+- 家庭會員新增流程由系統建立唯一 users.id，**直接寫入 users.verified_status = 2** 並建立有效家庭代管關聯；不需該家庭會員再自行驗證 Email 或手機，代管者即可代為預約。
+- 第 2 位起屬於 **External Services 付費擴充**。後端必須根據資料庫的家庭會員數量與已生效的擴充額度決定是否可新增；無有效額度一律拒絕，不可僅依 Flutter UI 或付款畫面判斷。
+- 必須在交易中對同一代管者的新增操作實施併發保護，避免同時請求繞過免費上限；額度與有效資格均以資料庫為權威。
+- 不提供 Client 刪除家庭會員／解除代管關係的功能，也不能藉刪除重新取得免費名額；既有家庭會員及預約歷史不得因額度或付費狀態變動而刪除。
+- **未定事項**：External Services 供應商、付款方式、價格、付費後可增加的人數與有效期。不得自行假設已付款或硬編價格；未確認前不啟用第 2 位新增。
+- 驗收至少涵蓋審核前全部拒絕、審核通過後第 1 位成功、第 2 位未付費拒絕、已核准付費額度下成功、重複請求與併發新增不超額，以及建立後 verified_status=2。只測真實支援的 Client 操作，不虛構解除家庭關係流程。
+
+## 15. 家庭代管申請與管理員關係審核（使用者決策）
+
+- 家庭代管不是註冊即享有的權限。每一位家庭成員都須先由代管者**申請**，填寫申請人與擬新增家庭成員資料，檢附**兩人之間關係證明證件**，由管理員審核核准後才可建立家庭會員 users.id。付費資格不能跳過關係審核。
+- 管理員審核狀態以資料庫為準，至少區分 pending/approved/rejected，並綁定申請人 users.id、受審核家庭成員、證明附件與審核者／時間。證明文件屬敏感資料，採私人儲存、嚴格授權及最小化保留；不得公開網址。
+- 建立前後端均須核對**對應申請已核准**及剩餘名額；核准前禁止直接建立已驗證家庭會員，不能以 Flutter UI、聯絡方式驗證或付費標記替代審核。
+- 每位代管者免費額度僅 **1 位**，第 **2 位**起必須額外有 External Services 付費擴充資格；產品目標是鼓勵成員使用自己的手機與獨立帳號，防止家庭會員代管被濫用為預約佔位。
+- **過渡安全 Gate**：審核資料表、管理員審核及受保護附件流程未完成之前，家庭會員新增 API 一律回應 FAMILY_APPROVAL_REQUIRED，不得繞過核准直接建立；完成審核流程後才解除暫時封鎖。原有家庭會員及歷史預約不得刪除。
+
+
+## 12. 五線集中驗證批次（家庭會員 / #41 / #46 / #47 / #49）
+- 唯一整合入口：PR #53；#41、#46、#47、#49 保留原 PR 追蹤與來源 SHA，不因某一條 CI 綠燈自動合併或關閉。
+- 優先一次讀取 exact-HEAD CI 全部失敗 job log，按共同根因分組：DB migration / API contract / 權限 / PHP / Flutter / workflow。先完成同根因的全部修改再驗證，不為每個錯誤反覆建立 PR。
+- 家庭會員極簡：只有主要會員可登入與代預約；FamilyUser=true 不得登入；第一位免費須管理員審核；第二位起每位先人工確認付款，再申請、審核；管理員設定總上限（預設 2），可查看各代管者數量。付款編號唯一且單次使用，駁回申請釋回未消費資格；不加付款閘道或多層審核。
+- #41：附件權限、上傳限額、下載時重新授權與撤權後不可讀；#46：影音目錄、存取/串流時重新驗證；#47：一人一席、代管權限、候補與取消冪等；#49：唯一會員資格依 users.verified_status=2，Email/手機驗證只是取得資格的流程，不可替代 DB 欄位。
+- 同批必查：跨模組共用會員中介層、資料庫外鍵與索引、授權錯誤碼、未登入/停權/FamilyUser 情境、重試與並發、OpenAPI/路由對齊；CI 通過後才進入人工驗收。
+- 驗證記錄必須標明實際執行的 SHA、job 結論、未測項目；不得把過期 SHA 的 CI 結果當成最新驗收。
+
+## 17. GitHub 提交間隔（所有 AI 必須遵守）
+
+- GitHub 官方建議：同一 Repository 每分鐘最多約 **6 次 Push**；這是頻率建議，不是 CI 完成時間。
+- **本專案統一規則：同一 Repository 兩次 Push／遠端 Commit 至少間隔 45 秒。** ChatGPT、Claude、Codex、Copilot、排程 Agent 全部適用。
+- 每次提交前先查最新遠端 Commit／Push 時間；**未滿 45 秒就暫緩提交**，不得以「繼續」或排程觸發為由跳過。其他 AI 已提交也要重新計時。
+- 等待期間**繼續工作**：查詢 PR／CI、閱讀程式、檢查 Bug、整理下一批修正、準備測試；不要空等，也不要為規避間隔改用另一個 PR。
+- **滿 45 秒才允許評估提交，不代表一定要提交。** 優先集中同類修正，避免每改一個檔案就 Push；若新 Push 會取消仍需保留的 CI 驗收，先檢查 CI 狀態再決定。
+- 提交後重新計算 45 秒；未經核准不得自動合併、部署或降低測試門檻。
+
+
+## 18. 永久 Debug 記錄：Backend CI 的 Laravel Pint 格式失敗（2026-10-28）
+
+**事件 ID：DEBUG-PHP-PINT-001；適用：Shared Modules 全部 PHP 修改、所有 AI 與排程。**
+
+### 已確認的歷史案例（不可重複從零調查）
+- PR #53，HEAD `307ca3f467a394c18618dd98a0f3f5e2cc17be6b`，Backend run `40615003113` / job `122575436620`：`pint=failure`；但 `php/validate/install/audit/mysql/migrate/openapi/pest/e2e/concurrency/booking_concurrency/s9_concurrency/m11_concurrency/rollback=success`。
+- 唯一格式差異：`tests/Feature/S9/SingleMemberBookingContractTest.php` 使用 `\\App\\Models\\EventBookingGroup::query()`，Pint `fully_qualified_stric` 要求 `use App\\Models\\EventBookingGroup;` 並改用 `EventBookingGroup::query()`。
+- 修正提交：`6660d66ebfbc8cff7d51b9826e21942fcf3dfb0c`。**此處記錄的是修法，不代表修正提交的 CI 已 PASS；仍須查 exact-SHA。**
+
+### 強制預防流程：修改 PHP → 先格式檢查 → 才 Push
+1. 在 `examples/poc_backend` 目錄，先執行 `vendor/bin/pint --test`（完整 PHP 範圍）；若只需快速定位，可先執行 `vendor/bin/pint --test -v path/to/changed.php`，但不得取代提交前完整檢查。
+2. 格式失敗時，先執行 `vendor/bin/pint path/to/changed.php`（或集中修正後執行 `vendor/bin/pint`），檢查 `git diff`，再重跑 `vendor/bin/pint --test`。**不得**關閉 Pint、修改 CI 忽略錯誤、刪除測試或放寬規則來取得綠燈。
+3. Pint PASS 後才跑受影響的 Pest／OpenAPI／資料庫測試；所有預計修改集中完成後再一次 Push。AI 若無可執行 PHP/Composer 的工作環境，必須明確標記 **PINT NOT RUN**，不可宣稱已驗證；可先對照 repo 既有 Pint 規範並審查 import，但不能取代實際執行。
+4. CI 失敗優先讀取該 SHA 的 **workflow job logs + OUTCOMES**，依 `pint/pest/migrate/openapi/e2e` 分類。若僅 `pint=failure`，直接查 Pint diff 修正，不要重查已 PASS 的預約功能；修復後仍需取得新 SHA 的完整 required checks。
+5. 記錄 `PR、SHA、run/job ID、第一個根因、受影響檔案、修正 SHA、驗證結果` 到本節或 #35；同類失敗先查此紀錄。CI 綠燈不等於驗收，也不能自動結案。
+
+**常見易犯項：** 完整命名空間寫在程式中（Pint 要求 import）、未使用的 import、use 排序、空白／換行、測試新增後漏跑 Pint。優先用實際 Pint diff 定位，禁止憑猜測大規模改碼。
+
+**效能原則：** Pint 是便宜的提交前 Gate，應在耗時較高的 MySQL／E2E／Flutter CI 之前執行；避免僅因一個格式錯誤反覆觸發完整 GitHub Actions。
+
+### DEBUG-PHP-PINT-001 追加案例（2026-10-28）
+- PR #53 HEAD `aafce3637f6d81b0243ddf0e24ff2ebe13067e4a`，Backend run `40615619027`：`pint=failure`，其餘 PHP、MySQL migration、Pest、E2E、並行與 rollback 檢查均 PASS。
+- 同一測試檔 `SingleMemberBookingContractTest.php` 的 `no_extra_blank_lines`：第 189、217 行附近兩處多餘空白行。先前只修正 `fully_qualified_stric`，未跑完整 Pint，因此再度浪費完整 CI。
+- **新增強制檢查**：修正任何 Pint diff 後，必須重新執行 **完整** `vendor/bin/pint --test`，不可因一項已修就假定其他格式問題消失；若無本地環境，標示未驗證，從 CI 的全部 Pint diff 一次修完。不得反覆只修單一格式問題後立即 Push。
+
+
+### DEBUG-PHP-PINT-001｜標準化執行契約 v2（2026-10-29，所有 PHP 提交強制遵守）
+
+**權威來源及優先序：** 使用本 Repository `examples/poc_backend/composer.lock` 鎖定的 Laravel Pint 版本、實際存在的 Pint 設定檔（若無則採該版本預設規則），以及 `.github/workflows/s1-poc-backend.yml` 的完整 `vendor/bin/pint --test -v`。本節列的是**執行與驗證標準**，不是人工重新定義一份會過期的空白、import 規則。若規則變動，先檢查 lockfile/config/CI，禁止 AI 自行猜測或降低嚴格度。
+
+**任何 PHP 程式修改（包含測試、Migration、Filament、Controller、Service）都必須在 Push 前完成以下 Gate：**
+
+1. 先完成本批所有 PHP、API、DB 與測試變更，確認工作目錄、`git status --short`、`git diff --check`；不要邊修邊 Push，避免反覆啟動整套 CI。
+2. 於 Repository 根目錄執行（已 `composer install`，並使用與 CI 相容的 PHP/Composer 環境）：
+
+   ```bash
+   cd examples/poc_backend
+   vendor/bin/pint --test -v
+   ```
+
+   只要 Exit Code 非 0，即為 **PINT FAIL / 不准 Push**。先執行 `vendor/bin/pint` 產生格式修正，再檢查 `git diff --check` 與 `git diff`；若修改超出預期範圍，先查明原因，不可無條件提交。
+3. **完整再次執行** `vendor/bin/pint --test -v`，確認 Exit Code 0；不是只修第一個錯誤、不是只對改動檔案測試、不是目視檢查。若格式化後還有任何 PHP 變更，重跑完整 Pint；再執行相關 Pest、OpenAPI 與 DB 測試。**最後一次完整 Pint PASS 之後不得再偷偷編輯 PHP 然後直接 Push**；如有改動，重新檢查。
+4. 由 Claude/ChatGPT/Agent 輸出的 PHP 一律視為**未格式化草稿**，不得因 AI 產生、語法可解析或 Pest PASS 而免檢。人工檢查常見項：`use` import 與排序、避免可匯入型別的行內全限定類別名稱、未使用 import、多餘空行、結尾換行；最終以 Pint 自動修正結果為準。
+5. 無 PHP/Composer 執行環境時，明確回報 **PINT NOT RUN / BLOCKED**，將變更交給有環境的責任者完成 Pint 後才 Push；**不得**以猜測、CI 重試、人工比對取代本地 Gate。禁止關閉 Pint、放寬 preset、加 ignore、刪測試或把失敗改為容許成功。
+6. GitHub CI 若仍報 `pint=failure`，先取 **該 exact SHA** 的完整 Pint diff（workflow 已輸出 `PINT_PATCH_BEGIN/END`），列出**全部**受影響檔案與 fixer，再一次修完；不要逐項微提交。修完以新 SHA 重新跑完整 required checks，舊 SHA 的 Pest/Docs/Flutter PASS 不能移植當作新 SHA 的驗收證據。
+
+**單一標準驗收記錄：** `PR # / HEAD SHA / composer.lock Pint version / config path or default / PHP version / full pint command / exit code / modified files / exact-SHA CI link / PASS|FAIL|NOT RUN`。沒有本地完整 Pint PASS 的紀錄，不得寫「格式已驗證」。
+
+**這次實際根因（非推測）：** PR #53 SHA `de3950a9190411347b4e54b55b8cee9d9ddbb40d` 的 Backend job `123192214016`，Pint 掃描 365 files，只有 `app/Services/Course/CourseEnrollmentService.php` 一處 `fully_qualified_strict_types` 類型格式差異：應新增 `use Illuminate\\Support\\Carbon;` 並將 `\\Illuminate\\Support\\Carbon::parse(...)` 改為 `Carbon::parse(...)`。該 SHA 的 Pest/MySQL/並發/rollback 已 PASS，但 Pint FAIL 使 Backend FAIL；修正前不得宣稱此 SHA Backend PASS。此例與先前 `SingleMemberBookingContractTest.php` 的 import、`no_extra_blank_lines` 反覆失敗同根因：**缺少完整 Pint 提交前 Gate**，不是缺少另一套手工格式規則。
+
+**責任歸屬：** 程式批次的作者（目前 Claude）執行完整 Pint 與修正；獨立審查者（ChatGPT）核對命令、exit code、GitHub exact-SHA log 與歷史案例，不搶寫同一程式檔案。只改本文檔不會修復既有 PHP 格式問題；該修正留給 Claude 同批處理。
+
+## 19. Flutter ListView 點擊失敗：永久 Debug 紀錄（DEBUG-FLUTTER-LISTVIEW-001）
+
+**適用：所有 Flutter Widget Tests、ChatGPT、Claude、Codex。** 同類問題先查本節，不得反覆猜測像素距離。
+
+### PR #53 真實失敗與修法（2026-10-28）
+- 測試：`examples/poc_flutter/test/app_flow_test.dart` 的手機 OTP 流程。Android CI 59 通過、1 失敗：`profile-change-phone` 點擊中心 `Offset(752,600)` 位於測試畫面 `800×600` 的邊界，點擊未命中；接著找不到 `change-phone`。
+- `754c85b5`：首次定位失敗；`613f5154`：僅加 `ensureVisible` 仍失敗；`7836637d`：固定 `drag(Offset(0,-120))` 是脆弱修補，不應沿用。
+- `47ae08e6`：改為針對目標 Key 使用 `tester.scrollUntilVisible()`，捲動後 `pumpAndSettle()`、點擊，並立即 `expect(find.byKey(const Key('change-phone')), findsOneWidget)` 驗證導航。**此為已提交的修正候選；須以該 SHA 的 Android CI 結果確認，不能預先宣稱通過。**
+
+### Reddit 實戰參考
+https://www.reddit.com/r/flutterhelp/comments/1joue8z/
+
+經驗：ListView 裡的 Widget 被 finder 找到，不代表在可點擊範圍內。先確認實際 Scrollable 和唯一 finder，再捲動至目標；如 `scrollUntilVisible` 遇到多重匹配或不適用，依 log 選擇正確清單的 `dragUntilVisible` 或 `fling`。導航後先確認新頁面出現，再輸入表單，避免後續錯誤掩蓋真正原因。
+
+### 強制排查流程
+1. 先讀 **exact HEAD SHA 的 Android job log**，找第一個 tap/hit-test/offset 錯誤與測試行號；不得只看最後的 `No element` 就猜後端問題。
+2. 使用唯一穩定的 `Key`，確認目標所在的 `Scrollable`；巢狀 ListView 不得盲目選 `.first`。
+3. 優先採用依目標捲動的 `scrollUntilVisible`；不適用時依實際錯誤使用 `dragUntilVisible` 或 `fling`。**禁止反覆猜測固定 -120、-200 像素。**
+4. `pumpAndSettle()` 後點擊，**立即斷言新頁面唯一 Key 或標題**，再執行後續輸入、OTP 等操作。
+5. 先跑受影響的單一 Flutter 測試，再跑 format、analyze、完整 test。沒有本地 Flutter 環境須標示 **LOCAL FLUTTER NOT RUN**，以 CI 實際結果為準。
+6. 同根因集中一次修改，遵守第 17 節 GitHub 提交間隔。記錄 PR、SHA、job、根因、修正與驗證結果；CI PASS 不代表整個 PR 完成驗收。
+
+**禁止：** `warnIfMissed: false` 掩蓋點擊錯誤、刪除失敗測試、跳過導航斷言、為單一測試盲目大改 UI。
+
+## 20. Shared Modules｜統一交易資料庫與預約付款規格（核准基線，2026-10-28）
+
+> **最高業務規則，適用所有 Shared Modules 模組。** 本節取代先前「只記錄現金、不限時保留名額」及「收費確認後才建立預約」的舊理解；不代表已完成程式實作。MVP 僅收線下現金；預約先成立並暫時保留名額，逾期未付須取消及釋位。後續金流擴充不得破壞既有資料契約。
+
+### 20.1 付款與預約狀態：兩條獨立狀態軸
+1. 已驗證且有效會員（資料庫 `users.verified_status = 2`）符合資格、名額及代管規則即可預約；**不以付款作為建立預約的前提**。禁止訪客預約；家庭會員不可自行登入，只能由合法代管者操作。
+2. 付費且有正式名額：建立預約（狀態如 confirmed / reserved）與未付帳單（`invoice_status=0`），立即占用名額；顯示「未付」及明確付款截止時間。**未付不等於候補，也不等於尚未預約。**
+3. 管理員於期限內收現金，人工確認並原子更新帳單與交易紀錄（`invoice_status=1`）；顯示「已付」，預約不需重新建立，不得重複占位。
+4. 期限屆滿仍未付：後端排程以資料庫交易重新檢查付款狀態，標記逾期並取消對應預約、釋出名額，再依原有候補 FIFO 規則處理；必須防止排程與收款同時執行時的競態及重複取消／遞補。**已付款者不得被逾期作業取消。**
+5. 候補不占正式名額；候補轉正才建立其付款期限與應付帳單（若已收款，按實際帳務處理），不能因未付款跳過較早的合法候補。不得保證「已付款候補」可插隊；FIFO 仍為最高排序規則。免費（應付 0）預約視為無待收款義務，不因付款期限被取消。
+6. 家庭會員第一位免費、需管理員核准；第二位起需線下現金及管理員核准；後台家庭會員上限預設 2、可調整。這是家庭會員資格審核，不得錯用為一般活動／課程預約的先付費門檻。
+
+### 20.2 管理員可設定的保留時間與活動建立驗證
+1. 系統管理員設定全域 `payment_hold_hours` 預設 **38**（正整數）；各活動／課程可覆寫，未覆寫則繼承系統預設。應於後台清楚顯示實際生效值。
+2. 活動必須有 `starts_at` 與 `booking_closes_at`；整期課程以**第一堂開始時間**為基準。建立、發布及修改時，後端必須驗證：`booking_closes_at + payment_hold_hours hours <= first_start_at`。不合規回傳欄位驗證錯誤，**禁止新增／發布不合規活動**；前端同步提示但不得取代後端檢查。變更全域預設不應無預警破壞既有已發布活動的有效設定。
+3. 有效預約的 `payment_due_at = booked_at + effective_payment_hold_hours`，以預約當下設定快照儲存，不因日後修改設定而追溯更改。建立預約時再次檢查尚未超過 `booking_closes_at` 且期限不晚於開始時間；以伺服器時鐘為準。
+4. 候補轉正亦須符合相同完整保留期限及活動開始時間限制；若已無足夠時間，**不可自動建立不合規的付款期限或暗中跳過 FIFO**，交由管理員依核准例外流程處理。付款截止日後的簽到不得代替收款確認。
+5. **資料庫與 API 必須同時驗證**；原子更新活動時間與保留設定。資料庫保存 UTC 時間、前端以 Asia/Taipei 顯示；計算時間須使用真正的時區時間值，不依賴瀏覽器時鐘。
+
+### 20.3 最小可擴充資料模型（MySQL/MariaDB；保留既有預約表）
+
+**A. `invoices`：應收帳單／預約訂單（名稱不代表已開立法定統一發票）**
+- `id BIGINT UNSIGNED PK`；`invoice_code VARCHAR(40) UNIQUE NOT NULL`，以交易類別＋日期＋原子流水號產生（例 `02_20261028_000001`，並發下不可重號）；`invoice_no VARCHAR(30) NULL` 僅供真正開立的法定發票號碼，不能拿 `invoice_code` 冒充。
+- `invoice_status TINYINT NOT NULL`：**0 未付、1 已付、2 已取消、3 已逾期、4 退款中、5 已退款**。金額為 0 的免費訂單不得留在需逾期催款的狀態，可標記已結清但**不可虛構實際收款交易**。
+- `invoice_amount DECIMAL(12,2) NOT NULL`、`currency CHAR(3) NOT NULL DEFAULT 'TWD'`。使用有號 DECIMAL 支援折讓／沖銷資料，但一般新預約應付金額 **>= 0**；退款／調整以獨立交易保留原始應收，不直接覆寫歷史金額。若日後支援部分付款，應付、已收與退款須由交易明細核對，不能僅憑狀態判斷。
+- `member_id BIGINT UNSIGNED FK -> users.id`（實際參加者）、`booker_user_id BIGINT UNSIGNED FK -> users.id`（代訂人）；`transaction_type CHAR(2)`（`01` 活動、`02` 整期課程、未來 `03` 商品）、`product_id BIGINT UNSIGNED`（模組內實體 ID），兩欄必須共同解讀，不能假裝 `product_id` 可直接跨多種表建立單一 FK。
+- **必備 `booking_id` / `booking_type` 的可驗證關聯**：活動使用原有 BookingEngine 正式預約 ID；整期課程使用 `course_enrollments.id`。建議 `booking_type CHAR(2)` + `booking_id BIGINT UNSIGNED`，兩者成對、服務層檢查存在性，並建立 `UNIQUE(booking_type, booking_id)` 防止同一正式預約重複開立帳單；不得以不唯一的 `product_id` 代替預約 ID。多名參加者是否各自收費，須與原有單會員預約契約一致。
+- `app_stage TINYINT NOT NULL DEFAULT 0`（0 MVP、1 進階營運，**只是建立時版本標記，不是付款驗證條件**）；`payment_method TINYINT NOT NULL DEFAULT 0`（0 現金，未來新增其他代碼）；`invoice_datetime DATETIME`、`payment_due_at DATETIME NULL`、`paid_at DATETIME NULL`、`staff_id BIGINT UNSIGNED NULL FK -> users.id`、`created_at`、`updated_at`。正式收款員工 ID 不得由會員 App 自填。
+- 索引：`UNIQUE(invoice_code)`、`UNIQUE(booking_type,booking_id)`、`INDEX(invoice_status,payment_due_at)`、`INDEX(member_id,created_at)`；必要 FK 索引與刪除限制，避免刪除會員／預約時造成帳務孤兒。正式發票號碼的唯一性應按實際發票制度、賣方與期別定義，不可草率假定單欄永遠唯一。
+
+**B. `payment_transactions`：實際收款／退款／失敗嘗試紀錄**
+- `id BIGINT UNSIGNED PK`、`invoice_id BIGINT UNSIGNED NOT NULL FK -> invoices.id`、`transaction_code VARCHAR(50) UNIQUE NOT NULL`、`transaction_amount DECIMAL(12,2) NOT NULL`（收款正數、退款負數）、`currency CHAR(3)`、`payment_method TINYINT`（MVP 僅 0 現金）、`transaction_status TINYINT`（0 待確認、1 成功、2 失敗、3 撤銷）。
+- `external_transaction_id VARCHAR(120) NULL` 預留金流；未來應以「金流商代碼＋外部交易編號」組合唯一鍵，而非全平台假定外部編號唯一。MVP 不建立假金流回呼。
+- `staff_id BIGINT UNSIGNED NULL FK -> users.id`、`processed_at DATETIME NULL`、`created_at`、`updated_at`；建議 `idempotency_key VARCHAR(100) NULL` 搭配唯一索引，防止重試／連點重複入帳；另設 `INDEX(invoice_id,transaction_status)`。
+- 管理員「確認收現金」必須於同一 DB transaction 鎖定帳單、檢查尚未付／未取消／未逾期、建立**唯一成功收款交易**、更新 `invoice_status=1`、`paid_at`、`staff_id`；重複請求回傳既有結果，不得重複收款。若截止瞬間競態，依交易鎖及實際提交先後決定；不可讓帳單已付但預約已取消。
+- 退款與撤銷**不能直接改掉原始成功收款紀錄**；追加可稽核的反向交易及對應狀態。MVP 不必實作線上退款服務。
+
+**C. 活動／課程設定**：全域 `payment_hold_hours` 預設 38；活動與整期課程各自可覆寫 `payment_hold_hours`、`booking_closes_at`、`price_amount DECIMAL(12,2)`；整期課程**一筆整期帳單**，不得按 12 堂重複收費。單堂活動一筆預約對應一筆帳單。若原資料庫已存在等價欄位，先盤點再沿用，不可盲目新增重複欄位。
+
+### 20.4 流程／API／驗收規則
+1. **預約：** Controller → Service → BookingEngine → DB，於一個原子交易建立正式預約與帳單；金額從**後端**讀取活動／課程定價並快照，不接受 App 任意提交金額、`invoice_status`、`app_stage`、`staff_id`。課程多堂預約必須全部成功或全部回滾；名額不足按既有候補規則處理。
+2. **顯示：** 後台與 App 使用同一帳單來源顯示「未付／已付／逾期／取消」及截止時間；App 僅可查自己或目前合法代管且符合歷史期間限制的家庭會員帳單；不因畫面隱藏就省略後端權限檢查。
+3. **現金確認：** 僅管理員 API 可操作；核對付款金額、對應預約有效性與期限，交易完成後同步更新 App 顯示。**付款狀態不應再觸發首次 BookingEngine 正式預約**。
+4. **逾期作業：** 簡單排程、可重跑、按索引找 `invoice_status=0 AND payment_due_at <= now()`；鎖定並二次檢查，取消預約、釋位及候補遞補須避免重複執行。不得用僅前端倒數計時替代伺服器排程。
+5. **未來金流：** 新增金流商 API、伺服器驗簽／主動查詢、冪等回呼與對帳；**不能**以 App 回傳 `invoice_status=1` 或 `app_stage=1` 當付款成功。MVP 不預先實作金流 SDK、支付憑證、付款額度鎖定或複雜帳務平台。
+6. **法定發票：** `invoice_code` 是系統帳單編號；`invoice_no` 是依法實際開立的發票號碼，`invoice_datetime` 在此規格為帳單建立時間。若需法定發票開立時間，應另設 `tax_invoice_issued_at`，並於日後依法規接合開立、作廢、折讓；不得宣稱建立帳單即已開立統一發票。
+7. **必測：** 38 小時與自訂值；建立／修改活動時間驗證；預約前後價格快照；免費活動；課程 12 堂原子預約；重複預約／收款；付款與逾期競態；逾期釋位及 FIFO；候補轉正時不足完整保留時間；家庭會員代管與 2 個月可見限制；無權限 API；既有資料 migration 與 rollback。CI 綠燈不等於完整驗收。
+
+**執行要求：** 先比對現有 migration、BookingEngine、活動／課程模型、API 與 Flutter，再集中一次完成程式／契約／測試修正；PR #53 保持 Draft，**不自動合併**。未完成的程式不可宣稱已實作。
+
+
+### 20.5 MVP 課程實際收款最低 NT$1（決策）
+- 課程金額最低 NT$1；NT$0、負數及 NULL 不允許。NT$1 代表實際應收並實際收取 NT$1，不是免費代碼。
+- 取得正式名額時建立一張整期帳單；候補未轉正前不建帳單。
+- 管理員核對並實際收現金後才可標記已付，記錄正向收款交易；退款記錄負向交易。不得以低金額自動確認付款。
+- 報名、候補、管理後台、API、資料庫及測試必須一致；舊零元資料不得自行改價或虛構收款。
+- 此決策僅針對課程 MVP，不直接改動免費活動規則。
+
+## 21. 系列課程 N 堂：整期名額唯一權威（使用者再次明確核准，最高業務規則）
+
+> **永久防錯決策 COURSE-TERM-CAPACITY-001。** 使用者具有實務經驗，已多次明確要求：系列類別 N 堂課程是一個整期報名商品，不是 N 堂獨立活動的組合預約。本節優先於第 20.4 節「課程多堂預約全部成功或全部回滾、名額不足按既有候補規則」等容易被誤解為逐堂容量驗證的舊敘述；相關舊規格、舊測試及舊程式不得再作為業務權威。
+
+### 21.1 不可再誤解的資料與預約契約
+1. **唯一容量來源是整期課程的正式名額**（`course_terms.enrollment_capacity` 或經正式核准的集合課程等價主表）。N 堂課共享同一組報名會員及同一個候補 FIFO，不得再把各堂 `calendar_events.booking_capacity`、單堂候補或單堂活動是否滿額，當成整期報名成功與否的第二道門檻。
+2. 管理員建立／發布系列課程時，就必須完成 N 堂課的有效關聯、日期及一致性設定。**前端呈現整期名額；後端依整期名額受理；資料庫鎖定整期主紀錄並以唯一約束防止重複報名。** 前端不得自行決定容量，不能只靠 UI 防超額。
+3. 報名時，在**同一筆資料庫交易**中鎖定整期主紀錄（`SELECT ... FOR UPDATE` 或等價機制），重新計算正式報名人數、候補順位、會員與家庭代管資格；整期名額可用則一次建立整期報名及全部 N 堂關聯預約。N 堂預約是整期資格的從屬資料，不是 N 次獨立搶位。
+4. **禁止**以 `BookingEngine::unavailableReason()` 的逐堂 `full` 判斷，或逐堂 `booking_capacity`／`waitlist_enabled`／`waitingGroups`，拒絕已取得整期名額的會員。若沿用一般活動 BookingEngine，必須明確隔離整期課程路徑，不能讓一般活動規則覆蓋整期容量權威；也不能為了課程而取消一般活動的正常容量保護。
+5. 整期正式名額不足時，僅依**整期候補 FIFO** 處理；整期轉正才一次取得 N 堂關聯預約及一張整期應收帳單。付款確認只核對實際現金與帳單，不重複建立課堂預約。逾期釋位也以整期資格為單位，整期取消、整期遞補，不逐堂搶位。
+6. 整期一張帳單，金額最低 NT$1，代表真實應收／實收；不使用 NT$0 免費代碼，不按 N 堂重複開帳。不得因課堂單獨設定不同而重新計算整期應收。
+7. **技術異常與正常業務規則必須分開**：資料庫寫入失敗、關聯資料損壞、交易衝突等仍須整筆交易回滾、報錯及稽核，避免部分資料；但不得設計「某堂課名額不足，所以整期報名失敗」作為正常產品情境或驗收目標。建立／修改課堂的完整性檢查應在課程管理階段完成，不能在會員報名時臨時逐堂搶位。
+8. 課程若要支援獨立單堂活動報名，必須另有**明確分離的商品與名額契約**，未經使用者核准不得混用或擅自新增。
+
+### 21.2 禁止再出現的錯誤及正確驗收
+- **錯誤（禁止）**：系列 N 堂逐堂呼叫一般活動容量檢查；單堂 `full` 導致整期失敗；單堂候補取代整期 FIFO；付款後才首次建立 N 堂預約；以「任何一堂無法預約，整期回滾」模擬正常的單堂名額不足業務情境。
+- **正確（必測）**：整期最後一席的併發報名只能成功一人；其他人依整期候補；同會員重試不得重複佔位；整期報名成功後 N 堂從屬紀錄完整且無重複；即使單堂一般活動的獨立容量已滿，也不得阻擋已取得整期資格的會員；整期取消／逾期／FIFO 遞補原子一致；付款確認冪等且不新增課堂預約；後台修改課堂不能破壞既有整期會員權益。
+- 測試資料必須反映**真實可建立的系列課程**，不得在會員已報名後才任意新增課堂，藉此製造假想「報名時缺堂」情境；如要測管理員違規改動，應明確標記為管理資料完整性測試，而非正常會員報名測試。
+- 若現有 `CourseEnrollmentService`、`CashInvoiceService`、`BookingEngine`、`CourseGroupAdmission`、API、Migration 或測試違反本節，標記 **IMPLEMENTATION CONFLICT / NOT VERIFIED**，必須集中修正實作、契約及測試；**不得只修改測試斷言或刪測試換 CI 綠燈**。
+- 驗收須有實際資料庫併發／交易測試與 exact-SHA CI 證據；沒有執行就標記 NOT TESTED，不能宣稱完成。
+
+### 21.3 AI 永久防重工流程
+1. **每次開始課程相關工作，先讀本節及 COURSE-TERM-CAPACITY-001，再讀目前主表／關聯／鎖／測試；禁止從舊測試推導業務規則。**
+2. 一次盤點並集中修正前端、後端、DB、服務、候補、付款與驗收，避免逐欄位提交／反覆觸發完整 CI。依第 17 節提交間隔及第 18 節 Pint 規範執行。
+3. 如果舊文件、註解或測試與本節矛盾，**先更新舊契約與錯誤測試**，再實作正確鎖定機制；不得默默恢復逐堂名額驗證。
+4. 每次交接記錄本決策 ID、衝突檔案、實際修正 SHA、CI 與未測項目；CI 綠燈不等於功能驗收。PR #53 保持 Draft，未經核准不合併。
+
+### 21.4 預約機制鎖定：InnoDB、唯一索引、冪等與跨流程一致鎖序（使用者核准）
+
+> **永久強制規則 BOOKING-LOCK-001**，適用一般活動與系列課程；兩者容量權威不同，**不得**藉此恢復系列課程逐堂搶名額。一般活動鎖定活動主資料列、檢查該活動剩餘名額與候補；系列 N 堂鎖定**整期課程主資料列**、檢查整期名額與整期 FIFO。N 堂從屬預約不再各自競爭容量。
+
+1. **MySQL InnoDB 資料列鎖**：所有新增正式預約／轉候補／取消／遞補，必須在資料庫交易內先鎖定容量權威主資料列（一般活動為活動資料列；系列課程為整期主資料列），**取得鎖後**再從資料庫重新計算剩餘名額、正式占位及候補 FIFO。禁止先讀剩餘名額、之後才上鎖並直接沿用舊結果。不能僅靠 `COUNT(*)` 的無鎖查詢防止並發超額。
+2. **資料庫唯一索引**：同一會員不得重複占用同一活動／堂課的有效名額；系列課程另須確保同一會員對同一整期只有一筆有效報名，且每位整期會員對每堂從屬課堂至多一筆有效關聯。以符合資料庫狀態模型的唯一鍵／有效占位約束落實，保留取消後依法重新報名所需的歷史；不得只靠程式先查是否存在。索引與既有資料、MySQL 實際支援語法必須先盤點再遷移，不可直接破壞正式資料。
+3. **冪等請求**：每次報名／取消／遞補／收款操作須有可追溯的請求識別碼或等價唯一業務鍵；同一請求重送，只回傳同一筆結果，不能重複扣名額、建立報名、開帳單、寫入實收或重複發送通知。交易提交前將冪等鍵、主業務紀錄及待發送通知（如採 outbox）一併持久化；通知重試依事件唯一鍵去重，不能把「API 回覆一次」誤當成「通知一定只送一次」。
+4. **前端防重複操作**：送出期間停用重複點擊、顯示處理中；網路逾時／重試**沿用同一請求識別碼**，不得每次重試產生新 ID。前端防連點只改善操作體驗，不是唯一的併發防線。
+5. **後端最終判定**：容量、資格、候補順位、價格、付款期限與狀態轉移全部以交易中的資料庫為權威。不可相信前端顯示的剩餘名額、不可只靠 Redis 分散鎖、前端按鈕鎖或快取。快取可輔助讀取，不得取代 InnoDB 交易及唯一約束。
+6. **全流程一致鎖定順序**：報名、取消、候補遞補、付款逾期、管理員手動修改及相關排程，必須共用同一份**明確、可測的鎖序契約**：先定位容量權威主資料列（活動或整期）；涉及多個主資料列時依穩定 ID 順序取得鎖；再鎖報名／預約與候補資料；最後鎖帳單、收款交易及通知待辦。若既有流程先鎖帳單再鎖整期主表，須統一重構或拆分安全交易邊界，不得在不同流程採反向鎖序。避免鎖內網路呼叫與不必要長交易；資料庫死鎖／鎖等待超時須有有界重試與冪等保護，**不得**靠放寬容量驗證解決。
+7. **管理員異動保護**：管理員調整名額、修改課堂、取消整期或手動遞補時，使用相同鎖序重新驗證既有占位及整期 N 堂關聯，不得將容量縮到低於已占名額後仍宣稱資料正常；不得讓手動操作繞過 FIFO、重複帳單或刪除歷史稽核。
+
+**強制驗收**：同時搶最後一席、重複請求／網路逾時重送、候補 FIFO 與取消交錯、收款與逾期排程競態、管理員修改與報名交錯、多活動鎖序與死鎖重試；驗證 DB 唯一鍵、有效占位、整期 N 堂完整關聯、帳單與通知去重。測試需使用實際 MySQL InnoDB 並發交易，不能只用 SQLite 或 Mock 宣稱鎖正確。未實測標記 NOT TESTED。
+
+**與 21.1 的優先關係**：此節「同一堂課不可重複占位」是**資料唯一性**，不是允許系列課程單堂容量重新限制整期會員。一般活動按活動容量鎖；系列課程按整期容量鎖。兩者不可混淆。
+
+### 21.5 管理員名額設定與會員報名判定分層（使用者最新釐清，覆蓋本節過度推論）
+
+> **永久決策 COURSE-CAPACITY-CONFIG-001**：管理員在後台分別建立／設定「單堂課程」與「系列課程」的名額及課堂資料，前端 UI → 後端驗證 → MySQL 持久化，這些設定**本來就可以同時存在，沒有矛盾**。任何 AI 不得再把「有逐堂容量欄位／檢查」直接推論為設計錯誤，也不得擅自移除、忽略或強制覆寫管理員對各堂課的容量設定。
+
+1. **設定階段**：管理員可在單堂課程／系列課程各自的後台 UI 設定容量與相關條件。前端呈現並送出數值；後端驗證合法性、課堂關聯與設定一致性；資料庫保存權威數值。管理員設定如何映射到 `course_terms`、`course_sessions`、`calendar_events`、`course_groups` 等現有表，必須先查清真實資料流與 UI 契約，不得憑欄位名稱猜測。
+2. **報名階段**：系列課程報名依已完成的系列課程設定及其 N 堂關聯執行，必須由資料庫交易、正確容量主紀錄鎖、唯一約束及冪等鍵保證整期報名一致性。**不允許因實作把 N 堂誤當成 N 次獨立搶位，才在正常報名中產生「某一堂不能預約」的假衝突。**
+3. **各堂名額與系列名額並存**：逐堂容量數值可供管理員設定與單堂課程預約使用；系列容量與各堂設定之間若存在業務關聯，應在**後台建立／修改／發布階段**檢查並保存一致設定，不可在會員整期報名時才發現設定互相矛盾。不得在未核對管理端契約前，宣稱「逐堂容量限制一律錯誤」或「所有課堂容量一律無效」。
+4. **修改既有課程**：管理員變更名額、課堂數、日期或關聯時，後端必須在與報名／取消／候補一致的 InnoDB 鎖序下，驗證不會破壞已取得的整期權益與既有占位；禁止僅改 UI、跳過 DB 權威或讓已報名者產生缺堂資料。
+5. **測試應分層**：管理端測試各自名額設定、前後端欄位映射、儲存、發布與修改一致性；會員端測試整期原子報名、併發、FIFO、N 堂關聯、帳單與冪等。**不可**用刻意製造「某堂容量不足」來驗收正常系列報名，也不可為避免該測試而刪掉合法的逐堂容量設定。
+6. **AI 變更前必查**：先讀本節與 21.1、21.4，再追查 Filament UI → Request/Validation → Service → Migration/DB → BookingEngine → 測試。若先前 21.1 或 21.4 的「唯一容量來源」文字被理解為「管理端不能設定各堂名額」，以**本節的分層澄清**為準；21.1 所禁止的仍是**正常整期報名中的獨立逐堂搶位**，不是管理端的名額欄位或設定檢查。
+
+**狀態**：這是已核准業務規則；現有程式、UI、DB 是否全部符合，仍須實際查證與測試，不因文件更新而宣稱實作完成。PR #53 保持 Draft，不自動合併。
+
+### 21.6 活動／課程統一預約模型與命名（EVENT-COURSE-UNIFIED-001）
+
+**使用者已核准之最高原則：活動與課程本質上都是預約管理，僅中文顯示名稱／業務情境不同；不得因此開發兩套重複的預約系統。**
+
+1. **一般活動／課程預約**：單一場次使用共用 BookingEngine、會員資格、名額、候補、取消、付款、簽到等基礎規則；「活動」與「課程」只是不同 UI 名稱。
+2. **系列活動／課程預約**：一個系列作為整體報名與名額分配單位；系列中的 N 個**從屬場次預約**由已核准的整體報名產生，維持交易原子性、FIFO、冪等與資料一致性，不重複進行 N 次獨立搶位。
+3. **從屬場次**為共用模組／程式／規格的統一名稱；課程 UI 可顯示「堂」，活動 UI 可顯示「場」，但不得因此複製 Controller、Service、預約引擎或資料表。
+4. 管理員仍可分別設定一般活動／課程及系列活動／課程、各從屬場次的名額、時間、發布狀態與其他合法條件。UI → 後端驗證 → DB 權威數值需一致；請同時遵守 **COURSE-CAPACITY-CONFIG-001**。
+5. 既有 `course_terms`、`course_groups`、`course_sessions`、`course_group_events`、`calendar_events` 是當前程式現況，**本規則不是立即改名或刪表授權**。未來整合須先檢查現有契約、Migration、API、前後端相依及資料遷移風險，以最小 MVP 變更消除重複業務邏輯。
+6. 所有後續 AI 規格、Issue、PR、測試敘述均使用「一般活動／課程預約」「系列活動／課程預約」「系列活動／課程的從屬場次預約」；如 UI 需要，可按情境顯示「堂／場」。
+
+**驗收**：同一預約引擎可支援兩種中文名稱；一般與系列差異只在單場／整系列預約模式，不在「活動／課程」字面分類。PR #53 維持 Draft，不自動合併。

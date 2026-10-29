@@ -2,6 +2,7 @@
 
 use App\Models\MemberVerification;
 use App\Models\User;
+use App\Models\VerificationEvidence;
 use App\Models\VerificationRequest;
 use App\Models\VerificationType;
 use App\Notifications\MemberNotification;
@@ -55,6 +56,34 @@ it('applies with private evidence readable only by the owner and reviewers', fun
 
     // The admin evidence URL needs a valid signature.
     $this->actingAs(makeAdmin(), 'web')->get("/admin/verification-evidence/{$evidenceId}")->assertForbidden();
+});
+
+// A persisted evidence path cannot escape its own verification request directory.
+it('rejects unrelated, cross-request and separator-normalized evidence paths', function () {
+    Storage::fake('local');
+    $member = User::factory()->create();
+    $type = verificationType();
+    applyFor($member, $type, [UploadedFile::fake()->image('proof.jpg')])->assertCreated();
+    $evidence = VerificationEvidence::query()->firstOrFail();
+    $url = '/api/v1/me/verification-evidence/'.$evidence->id;
+    $this->actingAs($member, 'sanctum')->get($url)->assertOk();
+
+    Storage::disk('local')->put('private/unrelated.jpg', 'secret');
+    $evidence->forceFill(['path' => 'private/unrelated.jpg'])->save();
+    $this->actingAs($member, 'sanctum')->get($url)->assertNotFound();
+    $this->actingAs(reviewer(), 'sanctum')->get($url)->assertNotFound();
+
+    $evidence->forceFill(['path' => 'verification-evidence/'.$evidence->verification_request_id.'/../unrelated.jpg'])->save();
+    $this->actingAs($member, 'sanctum')->get($url)->assertNotFound();
+
+    $other = 'verification-evidence/'.($evidence->verification_request_id + 1).'/other.jpg';
+    Storage::disk('local')->put($other, 'another-request');
+    $evidence->forceFill(['path' => $other])->save();
+    $this->actingAs($member, 'sanctum')->get($url)->assertNotFound();
+
+    Storage::disk('local')->put('verification-evidence/'.$evidence->verification_request_id.'/one/slash.jpg', 'normalized-file');
+    $evidence->forceFill(['path' => 'verification-evidence/'.$evidence->verification_request_id.'/one\\slash.jpg'])->save();
+    $this->actingAs($member, 'sanctum')->get($url)->assertNotFound();
 });
 
 // D06 — several approvals, no self review, one vote per reviewer; rejection ends it.

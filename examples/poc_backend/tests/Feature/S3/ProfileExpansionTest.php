@@ -9,6 +9,7 @@ use App\Support\Settings;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -167,9 +168,10 @@ it('marks a changed email unverified and requires verifying it again', function 
 
     Notification::assertSentTo($user->refresh(), VerifyEmail::class);
 
-    // Email policy: full access returns only after the new email is verified.
+    // Contact email needs re-verification, but verified membership persists in the database.
     $this->app['auth']->forgetGuards();
-    $this->withToken($token)->getJson('/api/v1/notices')->assertForbidden()->assertJsonPath('error.code', 'VERIFICATION_REQUIRED');
+    $this->withToken($token)->getJson('/api/v1/notices')->assertOk();
+    expect((int) $user->refresh()->verified_status)->toBe(2);
 });
 
 it('keeps phone-change codes apart from registration and reset codes', function () {
@@ -246,6 +248,37 @@ it('lists, searches and filters members in Filament', function () {
         ->assertCanNotSeeTableRecords([$incomplete]);
 });
 
+it('filters members by database qualification rather than verified email or phone', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $this->actingAs(makeAdmin());
+
+    $verified = profileMember([
+        'email' => 'persisted-verified@example.com',
+        'phone_e164' => '+886977001111',
+        'verified_status' => 2,
+        'email_verified_at' => null,
+        'phone_verified_at' => null,
+    ]);
+    $pending = profileMember([
+        'email' => 'contact-only@example.com',
+        'phone_e164' => '+886977002222',
+        'verified_status' => 1,
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+
+    Livewire::test(ListMembers::class)
+        ->assertCanSeeTableRecords([$verified, $pending])
+        ->filterTable('verified_status', '2')
+        ->assertCanSeeTableRecords([$verified])
+        ->assertCanNotSeeTableRecords([$pending]);
+
+    Livewire::test(ListMembers::class)
+        ->filterTable('verified_status', '1')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$verified]);
+});
+
 it('clears verification when an admin changes a member contact', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     $admin = makeAdmin();
@@ -263,6 +296,36 @@ it('clears verification when an admin changes a member contact', function () {
 
     $event = AuditEvent::query()->where('event', 'member.updated_by_admin')->firstOrFail();
     expect($event->actor_id)->toBe($admin->id)->and($event->details['fields'])->toContain('phone_e164');
+});
+
+it('rolls back an admin contact edit when the required audit write fails', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $member = profileMember(['verified_status' => 2]);
+    $oldEmail = $member->email;
+    $oldVerifiedAt = $member->email_verified_at;
+
+    Notification::fake();
+    // Simulate audit storage failure without touching production data/schema.
+    Event::listen('eloquent.creating: '.AuditEvent::class, static function (): void {
+        throw new RuntimeException('simulated audit persistence failure');
+    });
+
+    try {
+        expect(fn () => Livewire::test(EditMember::class, ['record' => $member->getRouteKey()])
+            ->fillForm(['email' => 'audit-failure@example.test'])
+            ->call('save'))->toThrow(RuntimeException::class);
+    } finally {
+        Event::forget('eloquent.creating: '.AuditEvent::class);
+    }
+
+    $member->refresh();
+    expect($member->email)->toBe($oldEmail)
+        ->and($member->email_verified_at?->equalTo($oldVerifiedAt))->toBeTrue()
+        ->and((int) $member->verified_status)->toBe(2)
+        ->and(AuditEvent::query()->where('event', 'member.updated_by_admin')->count())->toBe(0);
+    Notification::assertNothingSent();
 });
 
 it('hides member management from an admin without members.manage', function () {

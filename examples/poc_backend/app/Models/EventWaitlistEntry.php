@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * S9 M08 waitlist position of one whole group (strict FIFO by sequence).
+ * S9 M08 waitlist position of one verified member booking (strict FIFO by sequence).
  */
 class EventWaitlistEntry extends Model
 {

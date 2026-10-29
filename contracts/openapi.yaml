@@ -33,6 +33,7 @@ tags:
   - name: notifications
   - name: calendar
   - name: bookings
+  - name: courses
   - name: articles
   - name: checkin
   - name: discovery
@@ -42,6 +43,524 @@ tags:
 security:
   - bearer: []
 paths:
+  /admin/invoice-number-ranges:
+    post:
+      tags: [courses]
+      operationId: createInvoiceNumberRange
+      summary: Administrator creates a manual invoice number range
+      x-verification: required
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
+        '200': { description: Number range created }
+        '422': { description: Invalid number range }
+  /admin/invoices/{id}/allocate-number:
+    post:
+      tags: [courses]
+      operationId: allocateInvoiceNumber
+      summary: Administrator allocates an invoice number
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
+        '200': { description: Invoice number allocated }
+  /admin/invoices/{id}/confirm-cash:
+    post:
+      tags: [courses]
+      operationId: confirmInvoiceCash
+      summary: Administrator confirms actual cash payment
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
+        '200': { description: Cash payment confirmed }
+        '422': { description: Invoice expired or bookings incomplete }
+  /admin/invoices/{id}/correct-number:
+    post:
+      tags: [courses]
+      operationId: correctInvoiceNumber
+      summary: Administrator corrects an invoice number
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { description: Too many requests }
+        '200': { description: Invoice number corrected }
+  /admin/invoices/{id}/record-refund:
+    post:
+      tags: [courses]
+      operationId: recordInvoiceRefund
+      summary: Administrator records an actual manual cash refund
+      description: Only after the booking or term enrollment was cancelled through its own flow; the invoice must match that booking and have exactly one successful cash collection equal to its amount. A retry after the refund was recorded returns the same result (replayed=true) without a second refund transaction. Cancellation never refunds automatically.
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: 'Booking not cancelled, invoice not paid, mismatched invoice or no matching cash collection' }
+        '429': { description: Too many requests }
+        '200':
+          description: Refund recorded, or the recorded refund on retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: integer, enum: [5] }
+                      replayed: { type: boolean }
+
+  /me/course-enrollments/{id}/sessions:
+    get:
+      tags: [courses]
+      operationId: listCourseEnrollmentSessions
+      summary: List sessions and recorded leave requests for an enrollment
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Sessions of the enrollment, ordered by start time
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        starts_at: { type: string, format: date-time }
+                        ends_at: { type: string, format: date-time }
+                        leave_id: { type: integer, nullable: true }
+                        attendance_status: { type: string, enum: [leave, present, absent, upcoming], description: 'Leave overrides M11 attendance; otherwise checked-in/out is present, past session absent, future session upcoming.' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Enrollment not found or not visible to this member }
+  /me/course-enrollments/{id}/sessions/{sessionId}/leave:
+    post:
+      tags: [courses]
+      operationId: requestCourseSessionLeave
+      summary: Record a single-session leave request without cancelling the course enrollment
+      description: Original booker with current membership authority only. Active pending_payment or confirmed enrollment; request must precede the session by at least 48 hours. Repeated request returns the existing leave record without duplicate writes.
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: sessionId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 2, maxLength: 2000 }
+      responses:
+        '201':
+          description: New leave request recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      session_id: { type: integer }
+                      replayed: { type: boolean }
+        '200':
+          description: Existing leave request returned on retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      session_id: { type: integer }
+                      replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: 'Invalid request, unavailable session or insufficient authorization' }
+        '429': { description: Too many requests }
+
+  /me/course-enrollments/{id}/cancel:
+    post:
+      tags: [courses]
+      operationId: cancelCourseEnrollment
+      summary: Cancel an entire course enrollment and release derived session seats
+      description: Only the original booker with current family delegation may cancel before the term cutoff. Every derived session booking is released and the FIFO waitlist is filled in the same transaction. Paid invoices remain paid for separate administrator refund processing; pending invoices become cancelled. No automatic refund. A retry of an already cancelled enrollment returns the same result (replayed=true) without further effects.
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Enrollment cancelled (or already cancelled on retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [cancelled] }
+                      replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: 'Cancellation is not permitted or invoice is inconsistent' }
+        '429': { description: Too many requests }
+  /me/course-enrollments/{id}/cancel-waitlist:
+    post:
+      tags: [courses]
+      operationId: cancelCourseWaitlist
+      summary: Cancel a waitlisted course enrollment without touching payments
+      description: Original booker with current family delegation only. A retry of a completed waitlist cancellation returns the same result (replayed=true).
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Waitlisted enrollment cancelled (or already cancelled on retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [cancelled] }
+                      replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: 'Enrollment not waitlisted, unauthorized or inconsistent' }
+        '429': { description: Too many requests }
+
+  /me/course-enrollments:
+    get:
+      tags: [courses]
+      operationId: myCourseEnrollments
+      summary: List own and original-booker family term enrollment history
+      description: Verified member only; 20 per page. Own enrollment history has no cutoff; recent (two-month) family enrollments remain visible to the original booker after delegation or qualification changes. Mutations still require current authorization.
+      x-verification: required
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Enrollment page with course title, status and fee confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        course_term_id: { type: integer }
+                        user_id: { type: integer }
+                        status: { type: string, enum: [pending_payment, confirmed, waitlisted, cancelled] }
+                        waitlist_sequence: { type: integer, nullable: true }
+                        fee_confirmed_at: { type: string, format: date-time, nullable: true }
+                        course_title: { type: string }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+                      total: { type: integer }
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+
+  /admin/course-enrollments/{id}/confirm-fee:
+    post:
+      tags: [courses]
+      operationId: adminConfirmCourseEnrollmentFee
+      summary: Administrator confirms offline term fee and atomically books all sessions
+      x-verification: required
+      description: Only an active administrator may confirm a pending_payment enrollment. Repeated confirmation is idempotent. If any session is unavailable, all session bookings and the enrollment update roll back.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Confirmed enrollment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [confirmed, cancelled], description: Stored enrollment status; a replay for an invoice paid before the member cancelled reports cancelled }
+                      invoice_id: { type: integer }
+                      replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Enrollment not found }
+        '422': { description: 'Enrollment is not pending payment or a course session is unavailable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /course-terms:
+    get:
+      tags: [courses]
+      operationId: listCourseTerms
+      summary: List course terms with published upcoming sessions
+      x-verification: required
+      responses:
+        '200':
+          description: Available course terms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        location: { type: string, nullable: true }
+                        enrollment_capacity: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /course-terms/{id}/enrollments:
+    post:
+      tags: [courses]
+      operationId: courseTermEnroll
+      summary: Enroll a verified member or authorized family member in a term
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                member_user_id: { type: integer, description: Omit for self enrollment; family delegation required for another member }
+      responses:
+        '201':
+          description: Enrollment created as pending_payment or waitlisted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseEnrollmentResult' }
+        '200':
+          description: Retry by the same booker for the same member returns the existing active place (replayed=true); no second seat, invoice or session booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseEnrollmentResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Term or member not found }
+        '422': { description: 'Enrollment ineligible, duplicate, or capacity exceeded' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /av/tracks/{id}/access:
+    get:
+      tags: [av]
+      operationId: avTrackAccess
+      summary: Recheck music track entitlement on each open
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { description: Access granted without exposing storage path }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /av/tracks/{id}/content:
+    get:
+      tags: [av]
+      operationId: avTrackContent
+      summary: Stream encrypted private music payload after entitlement recheck
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Private payload unavailable }
+  /av/videos/{id}/access:
+    get:
+      tags: [av]
+      operationId: avVideoAccess
+      summary: Recheck current video entitlement on each open
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { description: Video access granted }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+  /attachments/{id}/access:
+    get:
+      tags: [articles]
+      operationId: articleAttachmentAccess
+      summary: Revalidate private attachment article, comment, and expiry
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { description: Private attachment readable }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Attachment unavailable or expired }
+  /attachments/{id}/content:
+    get:
+      tags: [articles]
+      operationId: articleAttachmentContent
+      summary: Serve private attachment after fresh access check
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Attachment unavailable or expired }
+  /article-comments/{id}/attachments:
+    get:
+      tags: [articles]
+      operationId: listArticleCommentAttachments
+      summary: Discover readable attachment IDs and expiry without private file metadata
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: IDs and expiry of currently viewable attachments; each open rechecks authorization
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, view_expires_at]
+                      properties:
+                        id: { type: integer }
+                        view_expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Comment hidden or article unavailable }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [articles]
+      operationId: uploadArticleCommentAttachment
+      summary: Upload a private PDF or image within administrator weekly count and byte limits
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: Private attachment created without exposing storage path }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '404': { description: Comment not found }
+        '422': { description: Invalid file type or size }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /av/tracks:
+    get:
+      tags: [av]
+      summary: List published music tracks the verified member may access
+      operationId: avTracks
+      x-verification: required
+      responses:
+        '200':
+          description: Authorized music track catalog, without encrypted storage paths
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, category]
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        category: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /av/videos:
+    get:
+      tags: [av]
+      summary: List published YouTube videos the verified member may access
+      operationId: avVideos
+      x-verification: required
+      responses:
+        '200':
+          description: Authorized video catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, youtube_id]
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        youtube_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /health:
     get:
       tags: [system]
@@ -1335,7 +1854,170 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /me/family-applications:
+    get:
+      tags: [bookings]
+      operationId: listOwnFamilyApplications
+      x-verification: required
+      responses:
+        '200': { description: Own family applications and statuses }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [bookings]
+      operationId: submitFamilyApplication
+      x-verification: required
+      description: First member free; additional members require previously verified paid credit. Each application requires manual approval.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, relationship, birth_date, address, relationship_evidence]
+              properties:
+                name: { type: string }
+                relationship: { type: string }
+                birth_date: { type: string, format: date }
+                address: { type: string }
+                contact_phone: { type: string }
+                contact_email: { type: string }
+                relationship_evidence: { type: string, format: binary }
+      responses:
+        '201': { description: Pending application created }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /admin/family-applications/pending:
+    get:
+      tags: [bookings]
+      operationId: adminPendingFamilyApplications
+      x-verification: required
+      responses:
+        '200': { description: Pending applications }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /admin/family-applications/{id}/evidence:
+    get:
+      tags: [bookings]
+      operationId: adminFamilyEvidence
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /admin/family-applications/{id}/review:
+    post:
+      tags: [bookings]
+      operationId: adminReviewFamilyApplication
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                note: { type: string }
+      responses:
+        '200': { description: Reviewed exactly once }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /admin/family-settings:
+    get:
+      tags: [bookings]
+      operationId: adminGetFamilySettings
+      x-verification: required
+      responses:
+        '200': { description: Family member cap and counts of members per manager }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    put:
+      tags: [bookings]
+      operationId: adminSetFamilySettings
+      x-verification: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [max_members]
+              properties:
+                max_members: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200': { description: Updated maximum family members }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /admin/family-payments/verify:
+    post:
+      tags: [bookings]
+      operationId: adminVerifyFamilyPayment
+      x-verification: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manager_user_id, payment_reference]
+              properties:
+                manager_user_id: { type: integer }
+                payment_reference: { type: string }
+      responses:
+        '201': { description: One verified paid credit recorded }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /me/family-memberships:
+    post:
+      tags: [bookings]
+      operationId: createFamilyMember
+      x-verification: required
+      description: Create a separate verified FamilyUser with no independent login, profile and active delegation in one transaction. Family contacts are not login credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [application_id]
+              properties:
+                application_id: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: Family member and active delegation created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, member_user_id, verified_status, FamilyUser]
+                    properties:
+                      id: { type: integer }
+                      member_user_id: { type: integer }
+                      verified_status: { type: integer, enum: [2] }
+                      FamilyUser: { type: boolean, enum: [true] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/VerificationRequired' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     get:
       tags: [bookings]
       operationId: myFamilyMemberships
@@ -1363,17 +2045,29 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/VerificationRequired' }
 
-  /me/family-memberships/{id}/revoke:
-    post:
+  /me/family-members/{memberId}/profile:
+    put:
       tags: [bookings]
-      operationId: revokeFamilyMembership
+      operationId: saveFamilyMemberProfile
       x-verification: required
-      description: Revoke an active delegation owned by the authenticated manager; historical bookings remain but cancellation authority is removed.
+      description: Update profile contact details of an existing verified family member with active delegation. Does not alter credentials, users.id, or membership verification status.
       parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: memberId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birth_date, address]
+              properties:
+                birth_date: { type: string, format: date }
+                address: { type: string, maxLength: 500 }
+                contact_phone: { type: [string, 'null'], maxLength: 40 }
+                contact_email: { type: [string, 'null'], format: email, maxLength: 255 }
       responses:
         '200':
-          description: Delegation revoked
+          description: Family member profile saved
           content:
             application/json:
               schema:
@@ -1382,13 +2076,16 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [id, status]
                     properties:
                       id: { type: integer }
-                      status: { type: string, enum: [revoked] }
+                      member_user_id: { type: integer }
+                      birth_date: { type: string, format: date }
+                      address: { type: string }
+                      contact_phone: { type: [string, 'null'] }
+                      contact_email: { type: [string, 'null'] }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/VerificationRequired' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /me/booking-groups:
@@ -1397,7 +2094,7 @@ paths:
       operationId: myBookingGroups
       x-verification: required
       x-dart: BookingGroupApi.mine -> BookingGroupPage
-      description: 'S9 M08 groups I booked, newest first, 20 per page.'
+      description: 'S9 M08 groups booked by the original booker, newest first, 20 per page. Own-member history has no cutoff; family-member history is visible for two months even if delegation or verification is later revoked. Cancellation still requires current authorization.'
       parameters:
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1 } }
         - { name: status, in: query, required: false, schema: { type: string, enum: [active, confirmed, waitlisted, cancelled] } }
@@ -1532,7 +2229,7 @@ paths:
       operationId: checkIn
       x-verification: required
       x-dart: CheckinApi.checkIn -> List<CheckinResult>
-      description: 'S9 M11 member check-in by event QR (60 s + 10 s grace) or Location QR (+ GPS when required). Body {attendee_ids, event_token | location_token, lat?, lng?, accuracy?}.'
+      description: 'S9 M11 member check-in by event QR (60 s + 10 s grace) or Location QR (+ GPS when required). Body {attendee_id, event_token | location_token, lat?, lng?, accuracy?}; one registered member per request.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultList' }
@@ -1549,7 +2246,7 @@ paths:
       operationId: checkOut
       x-verification: required
       x-dart: CheckinApi.checkOut -> List<CheckinResult>
-      description: 'S9 M11 checkout with the same QR entry; no self re-check-in afterwards.'
+      description: 'S9 M11 checkout with {attendee_id, event_token | location_token}; one member per request, no self re-check-in afterwards.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultList' }
@@ -1609,7 +2306,7 @@ paths:
       operationId: staffCheckIn
       x-verification: required
       x-dart: CheckinApi.staffScan -> CheckinResult
-      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?, contact?}. Manual check-in of an unclaimed guest needs the booking Email or phone in contact (D11): 422 CONTACT_REQUIRED / CONTACT_MISMATCH.'
+      description: 'S9 M11 staff scan of an attendee pass or manual check-in / checkout. Body {attendee_token | attendee_id, action?, contact?}. Guest bookings are prohibited; manual check-in must reference an existing registered-member attendee.'
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/CheckinResultResponse' }
@@ -1793,6 +2490,16 @@ components:
       required: true
       schema: { type: string, format: uuid }
   schemas:
+    CourseEnrollmentResult:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            status: { type: string, enum: [pending_payment, confirmed, waitlisted] }
+            waitlist_sequence: { type: integer, nullable: true }
+            replayed: { type: boolean }
     VerificationPolicy:
       type: string
       enum: [email_required, phone_required]

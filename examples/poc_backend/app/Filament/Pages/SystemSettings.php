@@ -22,9 +22,9 @@ class SystemSettings extends Page
 {
     protected static string|UnitEnum|null $navigationGroup = '系統設定';
 
-    protected static ?string $navigationLabel = '登入與簡訊設定';
+    protected static ?string $navigationLabel = '登入、簡訊與付款設定';
 
-    protected static ?string $title = '系統設定 › 登入與簡訊設定';
+    protected static ?string $title = '系統設定 › 登入、簡訊與付款設定';
 
     protected static ?string $slug = 'system-settings';
 
@@ -41,6 +41,7 @@ class SystemSettings extends Page
         'sms_test_mode', 'sms_provider', 'sms_global_hourly_limit', 'sms_phone_hourly_limit',
         'sms_resend_cooldown_minutes', 'otp_ttl_minutes', 'otp_max_attempts',
         'article_like_weight', 'article_view_dedupe_minutes', 'comment_report_threshold',
+        'payment_hold_hours',
     ];
 
     public static function canAccess(): bool
@@ -90,6 +91,12 @@ class SystemSettings extends Page
                             ->numeric()->integer()->minValue(1)->required(),
                         TextInput::make('otp_max_attempts')->label('OTP 錯誤次數上限')
                             ->numeric()->integer()->minValue(1)->required(),
+                    ]),
+                    Tab::make('現金付款')->schema([
+                        TextInput::make('payment_hold_hours')
+                            ->label('預約付款保留時間（小時，預設 38）')
+                            ->numeric()->integer()->minValue(1)->maxValue(8760)->required()
+                            ->helperText('僅影響新預約及未覆寫的活動；已建立帳單的付款截止時間不追溯修改。'),
                     ]),
                     Tab::make('文章互動')->schema([
                         TextInput::make('article_like_weight')->label('人氣：每個讚等於幾次瀏覽')

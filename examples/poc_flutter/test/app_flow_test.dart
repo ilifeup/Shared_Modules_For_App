@@ -997,8 +997,16 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-profile')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('profile-change-phone')));
+    final phoneAction = find.byKey(const Key('profile-change-phone'));
+    await tester.scrollUntilVisible(
+      phoneAction,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
+    await tester.tap(phoneAction);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('change-phone')), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('change-phone')), '0922333444');
     await tester.enterText(

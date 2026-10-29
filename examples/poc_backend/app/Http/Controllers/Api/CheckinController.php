@@ -41,13 +41,13 @@ class CheckinController extends Controller
     }
 
     /**
-     * POST /api/v1/events/{id}/checkin {attendee_ids, event_token | location_token, lat?, lng?, accuracy?}
+     * POST /api/v1/events/{id}/checkin {attendee_id, event_token | location_token, lat?, lng?, accuracy?}
      */
     public function checkIn(Request $request, int $id): JsonResponse
     {
         $data = $this->validateScan($request);
         $event = CalendarEvent::query()->listed()->findOrFail($id);
-        $results = $this->checkins->memberCheckIn($event, $request->user(), $data['attendee_ids'], $data['event_token'] ?? null, $data['location_token'] ?? null, [
+        $results = $this->checkins->memberCheckIn($event, $request->user(), (int) $data['attendee_id'], $data['event_token'] ?? null, $data['location_token'] ?? null, [
             'lat' => $data['lat'] ?? null, 'lng' => $data['lng'] ?? null, 'accuracy' => $data['accuracy'] ?? null,
         ]);
 
@@ -55,7 +55,7 @@ class CheckinController extends Controller
     }
 
     /**
-     * POST /api/v1/events/{id}/checkout {attendee_ids, event_token | location_token} — same QR entry (D23).
+     * POST /api/v1/events/{id}/checkout {attendee_id, event_token | location_token} — same QR entry (D23).
      */
     public function checkOut(Request $request, int $id): JsonResponse
     {
@@ -63,28 +63,21 @@ class CheckinController extends Controller
         $event = CalendarEvent::query()->listed()->findOrFail($id);
         $this->assertScanToken($event, $data);
 
-        $mine = $this->checkins->attendeesOf($event, $request->user())->keyBy('id');
-        $ids = array_values(array_unique($data['attendee_ids']));
-        // Reject mixed-ownership batches before committing any individual checkout.
-        foreach ($ids as $attendeeId) {
-            if (! $mine->has($attendeeId)) {
-                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            }
+        // Member checkout is strictly one attendee per request.
+        $attendeeId = (int) $data['attendee_id'];
+        $attendee = $this->checkins->attendeesOf($event, $request->user())->firstWhere('id', $attendeeId);
+        if ($attendee === null) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
         }
-        // Batch atomicity: a later 409/error rolls back earlier attendance + audits.
-        $results = DB::transaction(function () use ($ids, $mine, $event, $request): array {
-            // Match check-in's deterministic lock order for reversed batches.
-            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
-                ->lockForUpdate()->get(['id']);
-            $results = [];
-            foreach ($ids as $attendeeId) {
-                $results[] = $this->result($this->checkins->checkOut($event, $mine->get($attendeeId), $request->user()));
-            }
 
-            return $results;
+        $result = DB::transaction(function () use ($attendeeId, $attendee, $event, $request): array {
+            EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
+            $this->checkins->assertMemberMayManageAttendee($request->user(), $attendee);
+
+            return $this->result($this->checkins->checkOut($event, $attendee, $request->user()));
         });
 
-        return new JsonResponse(['data' => $results]);
+        return new JsonResponse(['data' => [$result]]);
     }
 
     /**
@@ -189,7 +182,6 @@ class CheckinController extends Controller
                 'contact_name' => $a->group->contact_name,
                 'contact_email' => $a->group->contact_email !== null ? self::maskEmail($a->group->contact_email) : null,
                 'contact_phone' => $a->group->contact_phone !== null ? Phone::mask($a->group->contact_phone) : null,
-                'is_guest' => $a->group->is_guest && $a->group->booker_user_id === null, // unclaimed guest: contact check (D11)
             ])->values()->all(),
         ]]);
     }
@@ -200,8 +192,8 @@ class CheckinController extends Controller
     private function validateScan(Request $request, bool $validateGps = true): array
     {
         $rules = [
-            'attendee_ids' => ['required', 'array', 'min:1', 'max:50'],
-            'attendee_ids.*' => ['integer', 'min:1'],
+            'attendee_id' => ['required', 'integer', 'min:1'],
+            'attendee_ids' => ['prohibited'],
             'event_token' => ['required_without:location_token', 'nullable', 'string', 'max:100'],
             'location_token' => ['required_without:event_token', 'nullable', 'string', 'max:64'],
         ];

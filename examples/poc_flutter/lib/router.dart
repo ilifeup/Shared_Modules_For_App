@@ -14,6 +14,9 @@ import 'features/auth/verify_account_screen.dart';
 import 'features/auth/verify_phone_screen.dart';
 import 'features/bookings/my_bookings_screen.dart';
 import 'features/calendar/calendar_screen.dart';
+import 'features/family/family_screen.dart';
+import 'features/family/family_application_screen.dart';
+import 'features/course/course_screen.dart';
 import 'features/calendar/event_detail_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/notices/notice_detail_screen.dart';
@@ -26,7 +29,6 @@ import 'features/profile/change_phone_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/s9/checkin_screens.dart';
 import 'features/s9/discovery_screens.dart';
-import 'features/s9/group_booking_screen.dart';
 import 'features/s9/my_calendar_screen.dart';
 import 'features/s9/verification_marketing.dart';
 
@@ -120,6 +122,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CalendarScreen(),
       ),
       GoRoute(
+        path: '/me/family/apply',
+        builder: (context, state) => const FamilyApplicationScreen(),
+      ),
+      GoRoute(
+        path: '/me/family',
+        builder: (context, state) => const FamilyScreen(),
+      ),
+      GoRoute(
+        path: '/me/courses',
+        builder: (context, state) => const CourseScreen(),
+      ),
+      GoRoute(
         path: '/me/bookings',
         builder: (context, state) => const MyBookingsScreen(),
       ),
@@ -129,11 +143,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             EventDetailScreen(id: state.pathParameters['id']!),
       ),
       // ---- S9 ----
-      GoRoute(
-        path: '/events/:id/group-booking',
-        builder: (context, state) =>
-            GroupBookingScreen(eventId: state.pathParameters['id']!),
-      ),
       GoRoute(
         path: '/events/:id/checkin',
         builder: (context, state) =>
@@ -153,10 +162,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/checkin/location/:token',
         builder: (context, state) =>
             CheckinLocationScreen(token: state.pathParameters['token']!),
-      ),
-      GoRoute(
-        path: '/me/booking-groups',
-        builder: (context, state) => const MyBookingGroupsScreen(),
       ),
       GoRoute(
         path: '/me/calendar',

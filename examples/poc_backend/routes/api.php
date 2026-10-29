@@ -2,11 +2,15 @@
 
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AvCatalogController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BookingGroupController;
 use App\Http\Controllers\Api\CalendarEventController;
+use App\Http\Controllers\Api\CashInvoiceController;
 use App\Http\Controllers\Api\CheckinController;
 use App\Http\Controllers\Api\ContentDiscoveryController;
+use App\Http\Controllers\Api\CourseEnrollmentController;
+use App\Http\Controllers\Api\FamilyApplicationController;
 use App\Http\Controllers\Api\FamilyMembershipController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\LinkAnalyticsController;
@@ -21,6 +25,15 @@ use App\Http\Controllers\Api\VerificationController;
 use Illuminate\Support\Facades\Route;
 
 // Prefix /api/v1 is set in bootstrap/app.php (apiPrefix).
+
+// S10: AV catalogs require authenticated, verified and active membership.
+Route::middleware(['auth:sanctum', 'member.verified', 'throttle:auth-60'])->prefix('av')->group(function () {
+    Route::get('/tracks', [AvCatalogController::class, 'tracks']);
+    Route::get('/tracks/{id}/access', [AvCatalogController::class, 'trackAccess'])->whereNumber('id');
+    Route::get('/tracks/{id}/content', [AvCatalogController::class, 'trackContent'])->whereNumber('id');
+    Route::get('/videos', [AvCatalogController::class, 'videos']);
+    Route::get('/videos/{id}/access', [AvCatalogController::class, 'videoAccess'])->whereNumber('id');
+});
 
 Route::get('/health', HealthController::class)->name('api.health');
 Route::get('/membership-levels', [MembershipController::class, 'index']);
@@ -97,6 +110,21 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/events', [CalendarEventController::class, 'index']);
     Route::get('/events/{id}', [CalendarEventController::class, 'show'])->whereNumber('id');
 
+    // Course MVP: verified member enrolls self or an authorized family member.
+    Route::get('/course-terms', [CourseEnrollmentController::class, 'index']);
+    Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/me/course-enrollments', [CourseEnrollmentController::class, 'mine']);
+    Route::get('/me/course-enrollments/{id}/sessions', [CourseEnrollmentController::class, 'sessions'])->whereNumber('id');
+    Route::post('/me/course-enrollments/{id}/sessions/{sessionId}/leave', [CourseEnrollmentController::class, 'leave'])->whereNumber('id')->whereNumber('sessionId')->middleware('throttle:auth-60');
+    Route::post('/me/course-enrollments/{id}/cancel', [CourseEnrollmentController::class, 'cancel'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::post('/me/course-enrollments/{id}/cancel-waitlist', [CourseEnrollmentController::class, 'cancelWaitlist'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::post('/admin/invoice-number-ranges', [CashInvoiceController::class, 'addRange'])->middleware('throttle:auth-10');
+    Route::post('/admin/invoices/{id}/correct-number', [CashInvoiceController::class, 'correct'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/admin/invoices/{id}/allocate-number', [CashInvoiceController::class, 'allocate'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/admin/invoices/{id}/record-refund', [CashInvoiceController::class, 'refund'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/admin/invoices/{id}/confirm-cash', [CashInvoiceController::class, 'confirm'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/admin/course-enrollments/{id}/confirm-fee', [CourseEnrollmentController::class, 'confirmFee'])->whereNumber('id')->middleware('throttle:auth-10');
+
     // S6 M08 bookings (own bookings only).
     Route::get('/events/{id}/booking', [BookingController::class, 'show'])->whereNumber('id');
     Route::post('/events/{id}/bookings', [BookingController::class, 'store'])->whereNumber('id');
@@ -108,6 +136,10 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::delete('/articles/{id}/like', [ArticleController::class, 'unlike'])->whereNumber('id');
     Route::post('/articles/{id}/comments', [ArticleController::class, 'storeComment'])->whereNumber('id')->middleware('throttle:auth-10');
     Route::post('/article-comments/{id}/reports', [ArticleController::class, 'report'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::get('/attachments/{id}/access', [ArticleController::class, 'attachmentAccess'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/attachments/{id}/content', [ArticleController::class, 'attachmentContent'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::get('/article-comments/{id}/attachments', [ArticleController::class, 'commentAttachments'])->whereNumber('id')->middleware('throttle:auth-60');
+    Route::post('/article-comments/{id}/attachments', [ArticleController::class, 'uploadCommentAttachment'])->whereNumber('id')->middleware('throttle:auth-10');
 
     // S4 M04 in-app notifications (own notifications only).
     Route::get('/me/notifications', [NotificationController::class, 'index']);
@@ -116,9 +148,18 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/me/notifications/{id}', [NotificationController::class, 'show'])->whereUuid('id');
     Route::post('/me/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereUuid('id');
 
-    // Family delegation: current manager may list or voluntarily revoke authority.
+    // Family manager may create/list/edit profiles; client-side unlink is forbidden.
+    Route::get('/admin/family-settings', [FamilyApplicationController::class, 'settings']);
+    Route::put('/admin/family-settings', [FamilyApplicationController::class, 'updateSettings']);
+    Route::post('/admin/family-payments/verify', [FamilyApplicationController::class, 'verifyPayment'])->middleware('throttle:auth-10');
+    Route::get('/admin/family-applications/pending', [FamilyApplicationController::class, 'pending']);
+    Route::get('/admin/family-applications/{id}/evidence', [FamilyApplicationController::class, 'evidence'])->whereNumber('id');
+    Route::post('/admin/family-applications/{id}/review', [FamilyApplicationController::class, 'review'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::get('/me/family-applications', [FamilyApplicationController::class, 'index']);
+    Route::post('/me/family-applications', [FamilyApplicationController::class, 'store'])->middleware('throttle:auth-10');
     Route::get('/me/family-memberships', [FamilyMembershipController::class, 'index']);
-    Route::post('/me/family-memberships/{id}/revoke', [FamilyMembershipController::class, 'revoke'])->whereNumber('id')->middleware('throttle:auth-10');
+    Route::post('/me/family-memberships', [FamilyMembershipController::class, 'store'])->middleware('throttle:auth-10');
+    Route::put('/me/family-members/{memberId}/profile', [FamilyMembershipController::class, 'saveProfile'])->whereNumber('memberId')->middleware('throttle:auth-10');
 
     // S9 M08 members-only group bookings and waitlist (one seat engine with S6).
     Route::post('/events/{id}/booking-groups', [BookingGroupController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');

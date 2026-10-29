@@ -21,13 +21,25 @@ class EnsureMemberVerified
     {
         $user = $request->user();
 
-        if ($user !== null && ! $this->policy->isSatisfiedBy($user)) {
+        if ($user === null) {
+            throw new ApiException(401, 'UNAUTHENTICATED', '請先登入。');
+        }
+        // A managed family member has a real membership record but cannot
+        // exercise an independent session, including pre-existing tokens.
+        if ($user->FamilyUser) {
+            throw new ApiException(403, 'FAMILY_LOGIN_FORBIDDEN', '家庭代管會員不可獨立登入。');
+        }
+
+        if (! $user->is_active) {
+            throw new ApiException(403, 'ACCOUNT_DISABLED', '此帳號已停用。');
+        }
+        if ((int) $user->verified_status !== 2) {
             $missing = $this->policy->missing($user);
 
             throw new ApiException(
                 403,
                 'VERIFICATION_REQUIRED',
-                $missing === 'phone' ? '請先完成手機驗證。' : '請先完成 Email 驗證。',
+                '尚未取得已驗證會員資格，請完成會員驗證。',
                 ['verification' => [(string) $missing]],
             );
         }

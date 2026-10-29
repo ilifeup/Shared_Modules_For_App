@@ -9,6 +9,7 @@ use App\Models\EventAttendance;
 use App\Models\EventBookingAttendee;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Database\QueryException;
@@ -46,22 +47,37 @@ class CheckinService
      */
     public function attendeesOf(CalendarEvent $event, User $member): Collection
     {
-        return EventBookingAttendee::query()->with('attendance', 'group')
+        if (! $member->is_active || ! $member->isVerifiedMember() || $member->FamilyUser) {
+            return collect();
+        }
+
+        return EventBookingAttendee::query()->with('attendance', 'group', 'member')
             ->where('calendar_event_id', $event->id)
             ->where(fn ($q) => $q->where('member_user_id', $member->id)
                 ->orWhereIn('event_booking_group_id', EventBookingGroup::query()->select('id')->where('calendar_event_id', $event->id)->where('booker_user_id', $member->id)))
             ->whereIn('status', [EventBookingAttendee::STATUS_CONFIRMED, EventBookingAttendee::STATUS_WAITLISTED])
-            ->orderBy('id')->get();
+            ->orderBy('id')->get()
+            ->filter(fn (EventBookingAttendee $attendee): bool => $attendee->member !== null
+                && app(BookingEngine::class)->canManageFamily($member, $attendee->member))
+            ->values();
+    }
+
+    /** Recheck current delegation under the attendance transaction lock. */
+    public function assertMemberMayManageAttendee(User $member, EventBookingAttendee $attendee): void
+    {
+        $subject = User::query()->find($attendee->member_user_id);
+        if ($subject === null || ! app(BookingEngine::class)->canManageFamily($member, $subject, true)) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
+        }
     }
 
     /**
      * Member self check-in with the event QR (D07) or a Location QR (D09, D19).
      *
-     * @param  list<int>  $attendeeIds
      * @param  array{lat?: float|null, lng?: float|null, accuracy?: float|null}  $gps
      * @return list<array{attendee_id: string, result: string, attendance: EventAttendance}>
      */
-    public function memberCheckIn(CalendarEvent $event, User $member, array $attendeeIds, ?string $eventToken, ?string $locationToken, array $gps = []): array
+    public function memberCheckIn(CalendarEvent $event, User $member, int $attendeeId, ?string $eventToken, ?string $locationToken, array $gps = []): array
     {
         if ($eventToken !== null) {
             if ($this->tokens->verify($eventToken, 'e') !== $event->id) {
@@ -79,30 +95,17 @@ class CheckinService
             throw new ApiException(422, 'VALIDATION_FAILED', '請掃描活動或地點 QR Code。');
         }
 
-        $mine = $this->attendeesOf($event, $member)->keyBy('id');
-        $ids = array_values(array_unique($attendeeIds));
-        // Validate the entire requested ownership set before changing any attendance.
-        foreach ($ids as $id) {
-            if (! $mine->has($id)) {
-                throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
-            }
+        $attendee = $this->attendeesOf($event, $member)->firstWhere('id', $attendeeId);
+        if ($attendee === null) {
+            throw new ApiException(404, 'NOT_FOUND', '找不到這位參加者。');
         }
 
-        // All attendee state changes and their audit entries share one transaction.
-        // Any failure rolls back the entire HTTP batch (M11-D07, #36 decision A).
-        return DB::transaction(function () use ($ids, $mine, $event, $member, $source): array {
-            // Lock existing parent rows in one stable order before inserting missing
-            // attendance rows. Reverse-order concurrent batches otherwise deadlock
-            // on MySQL gap/unique-key locks and return an unexpected HTTP 500.
-            EventBookingAttendee::query()->whereIn('id', $ids)->orderBy('id')
-                ->lockForUpdate()->get(['id']);
-            $results = [];
-            foreach ($ids as $id) {
-                $results[] = $this->checkIn($event, $mine->get($id), $member, $source);
-            }
+        return DB::transaction(function () use ($attendeeId, $attendee, $event, $member, $source): array {
+            EventBookingAttendee::query()->whereKey($attendeeId)->lockForUpdate()->firstOrFail();
+            $this->assertMemberMayManageAttendee($member, $attendee);
 
-            return $results;
-        });
+            return [$this->checkIn($event, $attendee, $member, $source)];
+        }, 3);
     }
 
     /**
@@ -146,7 +149,8 @@ class CheckinService
         [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor): array {
             // Single staff scans and member batches must lock in the same order.
             EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
-            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+            // The attendee parent lock serializes this key; avoid gap-locking a missing attendance row.
+            $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
             if ($row === null || $row->status === EventAttendance::REVOKED) {
                 throw new ApiException(409, 'NOT_CHECKED_IN', '尚未簽到，無法簽退。');
             }
@@ -189,7 +193,10 @@ class CheckinService
         // reason or audit). The current row is read under the lock, so "before" and
         // the reason requirement cannot race with a parallel scan or correction.
         return DB::transaction(function () use ($event, $attendee, $status, $admin, $reason, $outsideWindow): EventAttendance {
-            $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+            // All attendance writers lock the same existing attendee parent row first.
+            // Locking an absent attendance row would take a MySQL gap lock instead.
+            EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
+            $existing = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
             if (($outsideWindow || $existing !== null) && trim((string) $reason) === '') {
                 throw new ApiException(422, 'REASON_REQUIRED', '逾時補登、撤銷或更正必須填寫原因。', ['reason' => ['請填寫原因。']]);
             }
@@ -352,7 +359,8 @@ class CheckinService
             [$attendance, $result] = DB::transaction(function () use ($event, $attendee, $actor, $source): array {
                 // Serialize concurrent first scans before the attendance row exists.
                 EventBookingAttendee::query()->whereKey($attendee->id)->lockForUpdate()->firstOrFail();
-                $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->lockForUpdate()->first();
+                // The attendee parent lock serializes this key; avoid gap-locking a missing attendance row.
+                $row = EventAttendance::query()->where('calendar_event_id', $event->id)->where('event_booking_attendee_id', $attendee->id)->first();
                 if ($row !== null && $row->status === EventAttendance::CHECKED_IN) {
                     return [$row, 'already_checked_in'];
                 }

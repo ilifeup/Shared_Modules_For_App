@@ -20,7 +20,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 
     public const ADMIN_ROLE = 'admin';
 
-    /** @var list<string> */
+    /**
+     * Membership qualification and family-login identity are server-managed.
+     * Never permit either attribute through generic model mass assignment.
+     * Trusted creation and verification flows must use forceFill explicitly.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'name',
         'display_name',
@@ -36,6 +42,11 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'admin_identity_note',
+        'attachment_upload_enabled',
+        'attachment_upload_expires_at',
+        'attachment_weekly_upload_count',
+        'attachment_weekly_upload_bytes',
     ];
 
     /**
@@ -47,6 +58,10 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'email_verified_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'verified_status' => 'integer',
+            'attachment_upload_enabled' => 'boolean',
+            'attachment_upload_expires_at' => 'datetime',
+            'FamilyUser' => 'boolean',
             'show_in_like_list' => 'boolean',
             'password' => 'hashed',
         ];
@@ -57,12 +72,28 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->is_active && $this->hasRole(self::ADMIN_ROLE);
+        return $this->is_active && ! $this->FamilyUser && $this->hasRole(self::ADMIN_ROLE);
     }
 
     public function isAdmin(): bool
     {
         return $this->hasRole(self::ADMIN_ROLE);
+    }
+
+    /** Persisted membership status is the sole authority; contact timestamps are not membership. */
+    public function isVerifiedMember(): bool
+    {
+        return (int) $this->verified_status === 2;
+    }
+
+    /** Attachment uploads require explicit admin grant and verified active membership. */
+    public function canUploadArticleAttachments(): bool
+    {
+        return (bool) $this->is_active
+            && $this->isVerifiedMember()
+            && $this->attachment_upload_enabled === true
+            && ($this->attachment_upload_expires_at === null
+                || $this->attachment_upload_expires_at->isFuture());
     }
 
     public function hasVerifiedPhone(): bool

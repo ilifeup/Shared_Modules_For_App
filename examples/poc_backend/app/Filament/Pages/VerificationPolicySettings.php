@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\Checkbox;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\DB;
 use UnitEnum;
 
 /**
@@ -63,7 +64,7 @@ class VerificationPolicySettings extends Page
                 ->visible(fn (): bool => $this->currentPolicy() !== Settings::POLICY_EMAIL)
                 ->requiresConfirmation()
                 ->modalHeading('切換為 Email 驗證必要？')
-                ->modalDescription('已登入但尚未完成 Email 驗證的會員，下一次操作起將被要求先驗證 Email。')
+                ->modalDescription('已取得 verified_status = 2 的會員資格不因政策切換而撤銷；新會員依 Email 驗證流程取得資格。')
                 ->action(fn () => $this->switchTo(Settings::POLICY_EMAIL)),
             Action::make('usePhoneRequired')
                 ->label('切換為「手機驗證必要」')
@@ -71,8 +72,8 @@ class VerificationPolicySettings extends Page
                 ->requiresConfirmation()
                 ->modalHeading('切換為手機驗證必要？')
                 ->modalDescription(fn (): string => $this->smsAvailable()
-                    ? '已登入但尚未完成手機驗證的會員，下一次操作起將被要求先完成手機 OTP 驗證。'
-                    : '【警告】目前沒有可用的真實簡訊（測試模式或業者未設定）。切換後會員將無法收到驗證碼，可能無法使用 App。')
+                    ? '已取得 verified_status = 2 的會員資格不因政策切換而撤銷；新會員依手機 OTP 流程取得資格。'
+                    : '【警告】目前沒有可用的真實簡訊（測試模式或業者未設定）。既有 verified_status = 2 會員不受影響，但新會員可能無法取得資格。')
                 ->schema(fn (): array => $this->smsAvailable() ? [] : [
                     Checkbox::make('acknowledge')
                         ->label('我了解目前沒有真實簡訊，仍要切換')
@@ -93,8 +94,10 @@ class VerificationPolicySettings extends Page
             return;
         }
 
-        $settings->put(['verification_policy' => $policy]);
-        AuditEvent::record('member.verification_policy_changed', auth()->id(), null, ['old' => $old, 'new' => $policy]);
+        DB::transaction(function () use ($settings, $policy, $old): void {
+            $settings->put(['verification_policy' => $policy]);
+            AuditEvent::record('member.verification_policy_changed', auth()->id(), null, ['old' => $old, 'new' => $policy]);
+        });
 
         Notification::make()->title('會員驗證政策已切換，立即生效')->success()->send();
     }

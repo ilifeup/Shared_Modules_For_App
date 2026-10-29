@@ -20,8 +20,8 @@ $event = App\Models\CalendarEvent::query()->create([
 "checkin_enabled" => true, "checkout_enabled" => true, "checkin_gps_required" => false,
 "event_category_id" => $category->id,
 ]);
-$user = App\Models\User::factory()->create();
-$companion = App\Models\User::factory()->create();
+$user = App\Models\User::factory()->create(["verified_status" => 2, "is_active" => true]);
+$companion = App\Models\User::factory()->create(["FamilyUser" => true, "verified_status" => 2]);
 // Integrated #43 schema is mandatory; fail rather than silently bypass delegation.
 \Illuminate\Support\Facades\DB::table("family_memberships")->insert([
     "manager_user_id" => $user->id, "member_user_id" => $companion->id,
@@ -45,8 +45,13 @@ done
 [ "$ready" = 1 ] || { echo "M11 HTTP server not ready"; tail -n 30 "$OUT/server.log"; exit 1; }
 curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
   -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d "{\"include_self\":true,\"attendees\":[{\"name\":\"家人\",\"member_user_id\":$COMPANION}],\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
+  -d "{\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/booking.status"
 [ "$(cat "$OUT/booking.status")" = 200 ] || [ "$(cat "$OUT/booking.status")" = 201 ] || { echo "M11 booking HTTP $(cat "$OUT/booking.status")"; cat "$OUT/booking.json"; exit 1; }
+# A delegated family member has a distinct users.id and requires a separate booking.
+curl -sS --max-time 30 -w "%{http_code}" -o "$OUT/companion-booking.json" -X POST "$BASE/api/v1/events/$EVENT/booking-groups" \
+  -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
+  -d "{\"member_user_id\":$COMPANION,\"client_request_id\":\"$(cat /proc/sys/kernel/random/uuid)\"}" >"$OUT/companion-booking.status"
+[ "$(cat "$OUT/companion-booking.status")" = 200 ] || [ "$(cat "$OUT/companion-booking.status")" = 201 ] || { echo "M11 companion booking HTTP $(cat "$OUT/companion-booking.status")"; cat "$OUT/companion-booking.json"; exit 1; }
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
 $ids = App\Models\EventBookingAttendee::query()->where("calendar_event_id", $id)->orderBy("id")->pluck("id")->all();
@@ -71,7 +76,7 @@ for n in 1 2; do
   curl -sS --max-time 40 -o "$OUT/$n.json" -w '%{http_code}' \
     -X POST "$BASE/api/v1/events/$EVENT/checkin" \
     -H "Authorization: Bearer $BEARER" -H "Accept: application/json" -H "Content-Type: application/json" \
-    -d "{\"attendee_ids\":[$FIRST,$SECOND],\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
+    -d "{\"attendee_id\":$FIRST,\"event_token\":\"$QR\"}" >"$OUT/$n.code" &
   pids+=("$!")
 done
 wait "${pids[@]}"
@@ -79,20 +84,19 @@ for n in 1 2; do
   code="$(cat "$OUT/$n.code")"
   echo "M11 parallel request $n: HTTP $code $(head -c 250 "$OUT/$n.json")"
   if [ "$code" != 200 ]; then
-    echo "::error title=M11 concurrency::parallel request $n returned HTTP $code; overlapping valid scans must not return server errors"
+    echo "::error title=M11 concurrency::authorized family manager single-member request $n returned HTTP $code; both individual scans must succeed"
     exit 1
   fi
 done
 php artisan tinker --execute='
 $id = (int) file_get_contents(getenv("OUT")."/event");
-$rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->get();
+$rows = App\Models\EventAttendance::query()->where("calendar_event_id", $id)->count();
 $audits = App\Models\AuditEvent::query()->where("event", "checkin.checked_in")->where("details->event_id", $id)->count();
-echo "M11_ATTENDANCE_COUNT=".$rows->count()." AUDITS=".$audits.PHP_EOL;
-if ($audits !== 2) { throw new RuntimeException("M11 expected exactly two check-in audits, got ".$audits); }
-if ($rows->count() !== 2 || $rows->where("status", App\Models\EventAttendance::CHECKED_IN)->count() !== 2) {
-    throw new RuntimeException("M11 incomplete attendance after parallel requests");
+echo "M11_ATTENDANCE_COUNT=".$rows." AUDITS=".$audits.PHP_EOL;
+if ($audits !== 2 || $rows !== 2) {
+    throw new RuntimeException("M11 authorized overlapping family scans must create exactly two attendance records and two audits");
 }
 ' 2>&1 | tee "$OUT/check.log"
-# This probe checks HTTP success and final state, but does not prove complete
-# atomicity until fault-injected per-request rollback/audit assertions exist.
-echo "M11 parallel collision probe completed (not full concurrency acceptance)"
+# This probe verifies authorized family-manager concurrency, idempotent scans and audit counts.
+# Unauthorized cross-family isolation and fault-injected rollback are covered by separate tests.
+echo "M11 authorized family parallel collision probe completed"

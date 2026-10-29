@@ -41,6 +41,8 @@ class CalendarEventResource extends JsonResource
             ],
             'series_id' => $this->event_series_id !== null ? (string) $this->event_series_id : null,
             'checkin_enabled' => (bool) $this->checkin_enabled,
+            'waitlist_enabled' => (bool) $this->waitlist_enabled,
+            'waitlist_capacity' => (int) ($this->waitlist_capacity ?? 5),
             'share_url' => app(ContentRegistry::class)->webUrl('event', (int) $this->id),
         ];
     }

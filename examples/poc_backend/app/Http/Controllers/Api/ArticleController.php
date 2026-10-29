@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleCategory;
 use App\Models\ArticleComment;
+use App\Models\ArticleCommentAttachment;
 use App\Models\ArticleLike;
 use App\Models\Bookmark;
 use App\Models\MemberVerification;
@@ -20,6 +21,7 @@ use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -189,7 +191,7 @@ class ArticleController extends Controller
         $this->authorizeRead($article, $viewer);
 
         $page = $article->comments()->where('status', ArticleComment::STATUS_VISIBLE)
-            ->with('user:id,nickname')->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
+            ->with('user:id,nickname')->withCount(['attachments as attachment_count' => fn (Builder $q) => $q->whereNull('removed_at')->where('view_expires_at', '>', now())])->orderByDesc('created_at')->orderByDesc('id')->paginate(20);
 
         return new JsonResponse([
             'data' => collect($page->items())->map(fn (ArticleComment $c) => $this->comment($c, $viewer))->all(),
@@ -207,6 +209,138 @@ class ArticleController extends Controller
         $comment = $this->interactions->comment($article, $request->user(), (string) $request->input('body'));
 
         return new JsonResponse(['data' => $this->comment($comment->load('user:id,nickname'), $request->user())], 201);
+    }
+
+    /** Discover only IDs and expiry of private files on a readable, visible comment. */
+    public function commentAttachments(Request $request, int $id): JsonResponse
+    {
+        $comment = ArticleComment::query()
+            ->with('article.accessRules')
+            ->where('status', ArticleComment::STATUS_VISIBLE)
+            ->findOrFail($id);
+        $article = $comment->article;
+        abort_unless($article !== null && $article->isLive(), 404);
+        $this->authorizeRead($article, $request->user());
+
+        // This discovery response is not a file grant. Every open must still
+        // pass attachmentAccess/attachmentContent with fresh authorization.
+        $items = $comment->attachments()
+            ->whereNull('removed_at')
+            ->where('view_expires_at', '>', now())
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (ArticleCommentAttachment $attachment): bool => $attachment->isViewable())
+            ->map(fn (ArticleCommentAttachment $attachment): array => [
+                'id' => (int) $attachment->id,
+                'view_expires_at' => $attachment->view_expires_at->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
+        return new JsonResponse(['data' => $items]);
+    }
+
+    /** Recheck permissions and expiry for each private attachment open. */
+    public function attachmentAccess(Request $request, int $id): JsonResponse
+    {
+        $attachment = ArticleCommentAttachment::query()
+            ->with('comment.article.accessRules')->findOrFail($id);
+        abort_unless($attachment->isViewable(), 404);
+        $comment = $attachment->comment;
+        abort_unless($comment !== null && $comment->status === ArticleComment::STATUS_VISIBLE, 404);
+        $article = $comment->article;
+        abort_unless($article !== null && $article->isLive(), 404);
+        $this->authorizeRead($article, $request->user());
+
+        return new JsonResponse(['data' => [
+            'id' => $attachment->id,
+            'allowed' => true,
+            'view_expires_at' => $attachment->view_expires_at,
+        ]]);
+    }
+
+    /** Private bytes; repeat all authorization checks on every request. */
+    public function attachmentContent(Request $request, int $id): StreamedResponse
+    {
+        $this->attachmentAccess($request, $id);
+        $attachment = ArticleCommentAttachment::query()->findOrFail($id);
+        abort_unless($attachment->isViewable(), 404);
+        $comment = $attachment->comment()->with('article.accessRules')->firstOrFail();
+        abort_unless($comment->status === ArticleComment::STATUS_VISIBLE && $comment->article !== null && $comment->article->isLive(), 404);
+        $this->authorizeRead($comment->article, $request->user());
+        abort_unless(Storage::disk('local')->exists($attachment->storage_path), 404);
+
+        return Storage::disk('local')->response($attachment->storage_path, 'attachment-'.$attachment->id, [
+            'Content-Type' => $attachment->mime_type,
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => 'inline',
+        ]);
+    }
+
+    /** Upload a private PDF/image within the administrator's weekly limits. */
+    public function uploadCommentAttachment(Request $request, int $id): JsonResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'max:5120', 'mimetypes:application/pdf,image/jpeg,image/png,image/webp']]);
+        $user = $request->user();
+        $comment = ArticleComment::query()->where('status', ArticleComment::STATUS_VISIBLE)->findOrFail($id);
+        abort_unless((int) $comment->user_id === (int) $user->id, 403);
+        $this->interactive($request, (int) $comment->article_id);
+        $file = $request->file('file');
+        $path = null;
+
+        try {
+            $attachment = DB::transaction(function () use ($user, $comment, $file, &$path) {
+                $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                abort_unless($locked->canUploadArticleAttachments(), 403);
+                // Revalidate the comment under the upload transaction. An admin may
+                // hide it after the initial controller lookup.
+                $lockedComment = ArticleComment::query()->whereKey($comment->id)->lockForUpdate()->firstOrFail();
+                abort_unless($lockedComment->status === ArticleComment::STATUS_VISIBLE
+                    && (int) $lockedComment->user_id === (int) $locked->id, 403);
+                $weekStart = now('Asia/Taipei')->startOfWeek();
+                $weekEnd = $weekStart->copy()->addWeek();
+                // Locking the member row serializes concurrent uploads.
+                // The administrator's persisted limits control both count and bytes.
+                $usage = DB::table('article_comment_attachments')
+                    ->where('user_id', $locked->id)
+                    ->where('created_at', '>=', $weekStart->utc())
+                    ->where('created_at', '<', $weekEnd->utc())
+                    ->selectRaw('COUNT(*) AS total_count, COALESCE(SUM(size_bytes), 0) AS total_bytes')
+                    ->first();
+                $countLimit = (int) ($locked->attachment_weekly_upload_count ?? 1);
+                $bytesLimit = (int) ($locked->attachment_weekly_upload_bytes ?? 5 * 1024 * 1024);
+                $nextSize = (int) $file->getSize();
+                abort_if(
+                    (int) $usage->total_count >= $countLimit
+                    || (int) $usage->total_bytes + $nextSize > $bytesLimit,
+                    429,
+                    'Weekly attachment quota exceeded.',
+                );
+                $path = $file->store('private/article-comment-attachments', 'local');
+                abort_unless($path !== false, 500);
+
+                return ArticleCommentAttachment::query()->create([
+                    'article_comment_id' => $comment->id,
+                    'user_id' => $locked->id,
+                    'storage_path' => $path,
+                    'original_name' => basename($file->getClientOriginalName()),
+                    'mime_type' => $file->getMimeType(),
+                    'size_bytes' => $file->getSize(),
+                    'view_expires_at' => now()->addMonthsNoOverflow(3),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            if ($path !== null) {
+                Storage::disk('local')->delete($path);
+            }
+            throw $e;
+        }
+
+        return new JsonResponse(['data' => [
+            'id' => $attachment->id,
+            'view_expires_at' => $attachment->view_expires_at,
+        ]], 201);
     }
 
     /**
@@ -322,6 +456,7 @@ class ArticleController extends Controller
             'body' => $c->body,
             'created_at' => $c->created_at?->toIso8601ZuluString(),
             'is_mine' => $viewer !== null && $c->user_id === $viewer->id,
+            'attachment_count' => (int) ($c->attachment_count ?? $c->attachments()->whereNull('removed_at')->where('view_expires_at', '>', now())->count()),
         ];
     }
 }

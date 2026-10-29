@@ -10,7 +10,8 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 
 /**
- * S9 M08 one booking (one or more registered attendees, booked together).
+ * S9 M08 one booking for exactly one registered member. The legacy group table
+ * name remains until the coordinated schema migration is verified.
  *
  * @property Carbon $booked_at
  * @property Carbon|null $confirmed_at
@@ -74,6 +75,19 @@ class EventBookingGroup extends Model
     }
 
     /**
+     * Single-member booking contract: one participant per booking.
+     *
+     * @return HasOne<EventBookingAttendee, $this>
+     */
+    public function attendee(): HasOne
+    {
+        return $this->hasOne(EventBookingAttendee::class, 'event_booking_group_id');
+    }
+
+    /**
+     * Legacy relation retained temporarily for existing callers and data audits.
+     * Remove only after the one-to-one migration and API refactor are verified.
+     *
      * @return HasMany<EventBookingAttendee, $this>
      */
     public function attendees(): HasMany

@@ -87,7 +87,7 @@ it('reschedules future occurrences, keeps bookings and flags fixed deadlines', f
     $series = weeklySeries([], ['booking_close_offset_minutes' => 60]);
     [$a, $b] = $series->occurrences()->get()->all();
     $member = User::factory()->create();
-    groupBook($b, $member, ['同修'])->assertCreated();
+    groupBook($b, $member)->assertCreated();
     $b->forceFill(['cancel_closes_at' => $b->starts_at->copy()->subDay()])->save(); // fixed deadline set by an admin
     $fixed = $b->cancel_closes_at->copy();
 

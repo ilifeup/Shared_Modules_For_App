@@ -94,7 +94,7 @@ it('syncs a booking once per member and occurrence and removes it after cancelli
     $connection = connectGoogle($member);
     $event = s9Event(['location' => '道場', 'floor' => '2F']);
 
-    groupBook($event, $member, ['家人一', '家人二'])->assertCreated();
+    groupBook($event, $member)->assertCreated();
     $put = googleEventCalls('PUT');
     $eventId = GoogleCalendarSync::googleEventId($connection, 'booking', $event->id);
     expect($put)->toHaveCount(1)

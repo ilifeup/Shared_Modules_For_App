@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Sms\SmsGatewayFactory;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
+use App\Support\VerificationPolicy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -151,6 +152,7 @@ final class PhoneOtpService
 
             if ($purpose === PhoneOtp::PURPOSE_VERIFY) {
                 $user->forceFill(['phone_verified_at' => now()])->save();
+                app(VerificationPolicy::class)->grantIfEligible($user);
             }
 
             if ($onVerified !== null) {

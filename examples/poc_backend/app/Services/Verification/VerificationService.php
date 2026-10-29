@@ -214,7 +214,17 @@ class VerificationService
 
     public function evidenceExists(VerificationEvidence $evidence): bool
     {
-        return Storage::disk('local')->exists($evidence->path);
+        // Both the member API and signed admin download use this guard.
+        // Never trust a persisted path to reference another local-disk file.
+        $path = $evidence->path;
+        $prefix = 'verification-evidence/'.$evidence->verification_request_id.'/';
+
+        return is_string($path)
+            && str_starts_with($path, $prefix)
+            && strlen($path) > strlen($prefix)
+            && ! str_contains($path, '..')
+            && ! str_contains($path, '\\')
+            && Storage::disk('local')->exists($path);
     }
 
     private function tell(?User $member, string $title, string $body): void

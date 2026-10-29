@@ -44,14 +44,31 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = DB::transaction(fn (): User => User::query()->create([
-            'name' => $request->string('name')->toString(),
-            'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
-            'email' => $request->input('email'),
-            'phone_e164' => $request->input('phone_e164'),
-            'password' => $request->string('password')->toString(),
-            'is_active' => true,
-        ]));
+        $user = DB::transaction(function () use ($request): User {
+            // Registration sets identity flags explicitly; generic mass assignment cannot.
+            $user = new User;
+            $user->forceFill([
+                'name' => $request->string('name')->toString(),
+                'display_name' => mb_substr($request->string('name')->toString(), 0, 80),
+                'email' => $request->input('email'),
+                'phone_e164' => $request->input('phone_e164'),
+                'password' => $request->string('password')->toString(),
+                'is_active' => true,
+                'verified_status' => 1,
+                'FamilyUser' => false,
+            ])->save();
+            if (filled($request->input('family_name'))) {
+                DB::table('registration_family_info')->insert([
+                    'user_id' => $user->id,
+                    'family_name' => trim((string) $request->input('family_name')),
+                    'relationship' => $request->input('family_relationship'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return $user;
+        });
 
         AuditEvent::record('member.registered', $user->id, $user);
 
@@ -93,6 +110,10 @@ class AuthController extends Controller
             throw new ApiException(401, 'INVALID_CREDENTIALS', '帳號或密碼錯誤。');
         }
 
+        if ($user->FamilyUser) {
+            throw new ApiException(403, 'FAMILY_LOGIN_FORBIDDEN', '家庭代管會員不可獨立登入。');
+        }
+
         if (! $user->is_active) {
             throw new ApiException(403, 'ACCOUNT_DISABLED', '此帳號已停用。');
         }
@@ -127,9 +148,9 @@ class AuthController extends Controller
     {
         $request->validate(['email' => ['required', 'email', 'max:255']]);
 
-        $user = User::query()->where('email', mb_strtolower(trim((string) $request->input('email'))))->first();
+        $user = $this->uniqueAccountByContact('email', mb_strtolower(trim((string) $request->input('email'))));
 
-        if ($user !== null && ! $user->hasVerifiedEmail()) {
+        if ($user !== null && ! $user->FamilyUser && ! $user->hasVerifiedEmail()) {
             $user->sendEmailVerificationNotification();
         }
 
@@ -145,9 +166,9 @@ class AuthController extends Controller
         $request->validate(['phone' => ['required', 'string', 'max:30']]);
 
         $phone = $this->normalizePhone((string) $request->input('phone'));
-        $user = User::query()->where('phone_e164', $phone)->first();
+        $user = $this->uniqueAccountByContact('phone_e164', $phone);
 
-        if ($user !== null && ! $user->hasVerifiedPhone()) {
+        if ($user !== null && ! $user->FamilyUser && ! $user->hasVerifiedPhone()) {
             $this->sendQuietly($user, PhoneOtp::PURPOSE_VERIFY);
         } else {
             $this->otp->throttleWithoutSending($phone, PhoneOtp::PURPOSE_VERIFY);
@@ -166,9 +187,9 @@ class AuthController extends Controller
             'code' => ['required', 'string', 'regex:/^\d{6}$/'],
         ]);
 
-        $user = User::query()->where('phone_e164', $this->normalizePhone((string) $request->input('phone')))->first();
+        $user = $this->uniqueAccountByContact('phone_e164', $this->normalizePhone((string) $request->input('phone')));
 
-        if ($user === null || $user->hasVerifiedPhone()) {
+        if ($user === null || $user->FamilyUser || $user->hasVerifiedPhone()) {
             throw PhoneOtpService::invalidCode();
         }
 
@@ -200,12 +221,23 @@ class AuthController extends Controller
     private function findByIdentifier(string $identifier): ?User
     {
         if (str_contains($identifier, '@')) {
-            return User::query()->where('email', mb_strtolower($identifier))->first();
+            return $this->uniqueAccountByContact('email', mb_strtolower($identifier));
         }
 
         $phone = Phone::normalize($identifier);
 
-        return $phone !== null ? User::query()->where('phone_e164', $phone)->first() : null;
+        return $phone !== null ? $this->uniqueAccountByContact('phone_e164', $phone) : null;
+    }
+
+    /**
+     * Never pick an arbitrary account when a contact is shared. Contact fields
+     * are mutable and may become non-unique; ambiguous login must fail closed.
+     */
+    private function uniqueAccountByContact(string $column, string $value): ?User
+    {
+        $matches = User::query()->where($column, $value)->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function normalizePhone(string $input): string

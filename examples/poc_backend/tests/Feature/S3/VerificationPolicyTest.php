@@ -4,6 +4,7 @@ use App\Filament\Pages\VerificationPolicySettings;
 use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\Settings;
+use App\Support\VerificationPolicy;
 use Filament\Facades\Filament;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
@@ -44,7 +45,7 @@ it('lets an unverified member log in but only reach verification endpoints', fun
     $this->withToken(memberToken($user))->getJson('/api/v1/notices')->assertForbidden();
 });
 
-it('applies a policy switch to members who are already logged in', function () {
+it('preserves verified membership when contact verification policy changes', function () {
     $user = User::factory()->create(['phone_e164' => '+886911222333', 'phone_verified_at' => null]);
     $token = memberToken($user);
 
@@ -53,9 +54,8 @@ it('applies a policy switch to members who are already logged in', function () {
     app(Settings::class)->put(['verification_policy' => Settings::POLICY_PHONE]);
     $this->app['auth']->forgetGuards();
 
-    $this->withToken($token)->getJson('/api/v1/notices')
-        ->assertForbidden()
-        ->assertJsonPath('error.fields.verification.0', 'phone');
+    $this->withToken($token)->getJson('/api/v1/notices')->assertOk();
+    expect((int) $user->refresh()->verified_status)->toBe(2);
 
     // Verifying the phone (the policy never marks contacts as verified by itself).
     expect($user->refresh()->phone_verified_at)->toBeNull();
@@ -122,4 +122,20 @@ it('does not reveal whether a phone is registered when sending codes', function 
 
     // Only the registered number actually received an SMS.
     expect(fakeSms()->sent)->toHaveCount(1);
+});
+
+it('grants verified membership once and does not infer it from a contact timestamp alone', function () {
+    $user = User::factory()->unverified()->create([
+        'email_verified_at' => now(),
+        'verified_status' => 1,
+    ]);
+
+    expect((int) $user->refresh()->verified_status)->toBe(1);
+
+    app(VerificationPolicy::class)->grantIfEligible($user);
+    expect((int) $user->refresh()->verified_status)->toBe(2);
+
+    // Retrying a completed grant must not change the verified qualification.
+    app(VerificationPolicy::class)->grantIfEligible($user);
+    expect((int) $user->refresh()->verified_status)->toBe(2);
 });

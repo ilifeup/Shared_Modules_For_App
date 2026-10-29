@@ -10,6 +10,7 @@ use App\Models\MembershipLevel;
 use App\Models\User;
 use App\Notifications\MemberNotification;
 use App\Services\MemberNotifier;
+use App\Services\MemberQualificationService;
 use App\Services\MembershipService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
@@ -24,6 +25,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -74,6 +76,12 @@ class MemberResource extends Resource
                 ->unique(ignoreRecord: true)
                 ->regex('/^\+8869\d{8}$/')
                 ->helperText('格式 +886912345678。修改後此手機會變成「未驗證」。'),
+            Toggle::make('attachment_upload_enabled')->label('允許附件上傳（管理員手動開通）')
+                ->helperText('僅已驗證且啟用會員可使用，與會員等級及付款無關。'),
+            DateTimePicker::make('attachment_upload_expires_at')->label('附件上傳權限到期（留空＝無期限）'),
+            TextInput::make('attachment_weekly_upload_count')->label('每週上傳次數上限（空白＝全站預設）')->numeric()->minValue(0),
+            TextInput::make('attachment_weekly_upload_bytes')->label('每週上傳容量上限（Bytes；空白＝全站預設）')->numeric()->minValue(0),
+            Textarea::make('admin_identity_note')->label('身份備註（僅管理員）')->maxLength(1000)->rows(3),
             Toggle::make('is_active')->label('啟用（關閉後無法登入，現有登入也會失效）'),
         ]);
     }
@@ -106,6 +114,10 @@ class MemberResource extends Resource
                     ->state(fn (User $record): string => $record->email === null ? '— 未填' : ($record->email_verified_at ? '✔ 已驗證' : '✖ 未驗證')),
                 TextColumn::make('phone_verified_at')->label('手機驗證')
                     ->state(fn (User $record): string => $record->phone_e164 === null ? '— 未填' : ($record->phone_verified_at ? '✔ 已驗證' : '✖ 未驗證')),
+                // Contact verification is a process, not membership qualification.
+                // Only the persisted users.verified_status is authoritative.
+                TextColumn::make('verified_status')->label('會員資格')
+                    ->state(fn (User $record): string => (int) $record->verified_status === 2 ? '已驗證會員' : '註冊未驗證'),
                 TextColumn::make('level')->label('會員等級')
                     ->state(fn (User $record): string => static::currentLevel($record)),
                 TextColumn::make('is_active')->label('狀態')
@@ -118,6 +130,8 @@ class MemberResource extends Resource
                     ->trueLabel('已驗證')->falseLabel('未驗證'),
                 TernaryFilter::make('phone_verified_at')->label('手機驗證')->nullable()
                     ->trueLabel('已驗證')->falseLabel('未驗證'),
+                SelectFilter::make('verified_status')->label('會員資格')
+                    ->options(['0' => '註冊未驗證（資格已撤銷）', '1' => '註冊未驗證', '2' => '已驗證會員']),
                 TernaryFilter::make('is_active')->label('帳號狀態')
                     ->trueLabel('啟用')->falseLabel('停用'),
                 Filter::make('vip')->label('有效 VIP')
@@ -129,6 +143,24 @@ class MemberResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
+                Action::make('grantMembership')
+                    ->label('核准會員資格')
+                    ->visible(fn (User $record): bool => (int) $record->verified_status !== 2 && (auth()->user()?->can('members.manage') ?? false))
+                    ->requiresConfirmation()
+                    ->action(function (User $record): void {
+                        app(MemberQualificationService::class)->setVerified($record, auth()->user(), true);
+
+                        Notification::make()->title('已核准會員資格')->success()->send();
+                    }),
+                Action::make('revokeMembership')
+                    ->label('撤銷會員資格')
+                    ->visible(fn (User $record): bool => (int) $record->verified_status === 2 && (auth()->user()?->can('members.manage') ?? false))
+                    ->requiresConfirmation()
+                    ->action(function (User $record): void {
+                        app(MemberQualificationService::class)->setVerified($record, auth()->user(), false);
+
+                        Notification::make()->title('已撤銷會員資格')->success()->send();
+                    }),
                 Action::make('assignLevel')
                     ->label('指派等級')
                     ->schema([

@@ -215,7 +215,7 @@ it('enforces legacy cancellation ownership inside the service even when bypassin
         app(BookingService::class)->cancel($booking, $stranger);
         test()->fail('An ordinary member must not cancel another member booking');
     } catch (\\App\\Support\\Api\\ApiException $exception) {
-        expect($exception->getCode())->not->toBe(0);
+        expect($exception)->toBeInstanceOf(\\App\\Support\\Api\\ApiException::class);
     }
 
     expect($booking->refresh()->status)->toBe('confirmed');

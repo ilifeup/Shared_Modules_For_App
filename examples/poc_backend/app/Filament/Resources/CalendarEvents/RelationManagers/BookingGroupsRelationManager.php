@@ -11,7 +11,6 @@ use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;
 use Filament\Actions\Action;
-use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -69,11 +68,9 @@ class BookingGroupsRelationManager extends RelationManager
                         Select::make('member_id')->label('預約會員')->required()->searchable()
                             ->getSearchResultsUsing(fn (string $search): array => User::query()->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%')->limit(20)->pluck('name', 'id')->all())
                             ->getOptionLabelUsing(fn ($value): ?string => User::query()->find($value)?->name),
-                        Repeater::make('attendees')->label('參加會員（每人一席）')->schema([
-                            Select::make('member_user_id')->label('會員 ID')->required()->searchable()
-                                ->getSearchResultsUsing(fn (string $search): array => User::query()->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%')->limit(20)->pluck('name', 'id')->all())
-                                ->getOptionLabelUsing(fn ($value): ?string => User::query()->find($value)?->name),
-                        ])->minItems(1)->maxItems(50)->defaultItems(1),
+                        Select::make('member_user_id')->label('參加會員（每筆一人）')->required()->searchable()
+                            ->getSearchResultsUsing(fn (string $search): array => User::query()->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%')->limit(20)->pluck('name', 'id')->all())
+                            ->getOptionLabelUsing(fn ($value): ?string => User::query()->find($value)?->name),
                     ])
                     ->action(function (array $data): void {
                         /** @var CalendarEvent $event */
@@ -84,15 +81,12 @@ class BookingGroupsRelationManager extends RelationManager
 
                             return;
                         }
-                        $ids = array_map(fn (array $a): int => (int) ($a['member_user_id'] ?? 0), $data['attendees'] ?? []);
-                        if (in_array(0, $ids, true) || count($ids) !== count(array_unique($ids))) {
-                            Notification::make()->title('參加者會員 ID 不可空白或重複')->danger()->send();
-
-                            return;
-                        }
-                        $attendeeMembers = User::query()->whereIn('id', $ids)->get()->keyBy('id');
-                        if ($attendeeMembers->count() !== count($ids)) {
-                            Notification::make()->title('參加者會員 ID 無效')->danger()->send();
+                        $attendeeId = (int) ($data['member_user_id'] ?? 0);
+                        $attendee = $attendeeId > 0
+                            ? User::query()->whereKey($attendeeId)->where('is_active', true)->where('verified_status', 2)->first()
+                            : null;
+                        if ($attendee === null) {
+                            Notification::make()->title('參加者必須是已驗證且啟用的正式會員')->danger()->send();
 
                             return;
                         }
@@ -103,7 +97,7 @@ class BookingGroupsRelationManager extends RelationManager
                                 contactName: $member->name,
                                 contactEmail: $member->email !== null ? mb_strtolower(trim($member->email)) : null,
                                 contactPhone: $member->phone_e164,
-                                attendees: array_map(fn (int $id): array => ['name' => $attendeeMembers[$id]->name, 'member_user_id' => $id], $ids),
+                                attendees: [['name' => $attendee->name, 'member_user_id' => $attendee->id]],
                                 byAdmin: true,
                                 actor: auth()->user(),
                             ));

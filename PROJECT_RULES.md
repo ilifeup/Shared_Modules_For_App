@@ -9,6 +9,7 @@
 
 | ID | 生效規則 | 禁止／檢查 |
 |---|---|---|
+| DEV-LOCAL-006 | **使用者 2026-10-29 更正：舊 `ilifeup/tiandi-app` 的 Flutter／Laravel 是比 Shared Modules 更舊、錯誤更多的版本，禁止當作新 App 的程式基底或同步來源**；新天帝教 Android App 必須以 Shared Modules 最新已驗證程式為唯一技術基準，待本機確認後建立正式 App | 不得 clone 舊 Tiandi 作為開發工作樹、不得由其 mobile/backend 複製或覆寫 Shared 程式；舊 repo 僅歷史參考，不刪除；Shared `examples/` 是 PoC，正式 App 須另行產品化與驗證 |
 | DEV-LOCAL-001 | **使用者 2026-10-29 明確解除 iStudy Ubuntu 主機的全面禁用規則**：允許在該 Ubuntu 主機建立獨立的 Shared Modules 本機開發環境 | 只准使用隔離工作目錄、獨立 MySQL 8.4 InnoDB 開發資料庫／容器／埠；**不得**覆寫、停用、重設或混用 iStudy 服務、資料、Docker 容器、ZFS、PostgreSQL、憑證與埠；不得使用正式會員資料；先確認資源餘裕與衝突 |
 | DEV-LOCAL-002 | 本機快速開發為優先：**Claude Code 為單一寫入者**，ChatGPT／Codex 只審查；本機先跑 Pint、受影響 Pest、Flutter analyze/test、MySQL migration／交易測試，CI 留給階段驗證 | 同一分支不得多 AI 同時改寫；不可為了快而跳過身份、授權、交易與資料保護；未跑的測試記 NOT TESTED |
 | DEV-LOCAL-003 | **MVP 基準線僅盤點**會員 M01/M02/M03、預約 M08、現金收款、簽到 M11、必要公告／通知 M04/M06；其他 M01–M20 暫列「非本輪 MVP 交接驗收」，原規格與已實作程式保留 | 這是**交接盤點範圍**而非擅自刪除功能；已確認首發天帝教親和網 Android，iOS 後續；未核准不得擴大或改寫業務規則 |

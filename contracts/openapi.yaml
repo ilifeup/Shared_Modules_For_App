@@ -200,7 +200,7 @@ paths:
                       replayed: { type: boolean }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
-        '422': { description: Invalid request, unavailable session or insufficient authorization }
+        '422': { description: 'Invalid request, unavailable session or insufficient authorization' }
         '429': { description: Too many requests }
 
   /me/course-enrollments/{id}/cancel:

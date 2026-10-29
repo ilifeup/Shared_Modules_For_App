@@ -70,9 +70,9 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(isWaitlisted ? '退出候補' : '取消整期課程報名'),
-        content: Text(isWaitlisted
-            ? '確定退出這筆課程候補？'
-            : '確定取消整期課程報名？已付款的退款須由管理員另外處理。'),
+        content: Text(
+          isWaitlisted ? '確定退出這筆課程候補？' : '確定取消整期課程報名？已付款的退款須由管理員另外處理。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -92,9 +92,9 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
     });
     try {
       final action = isWaitlisted ? 'cancel-waitlist' : 'cancel';
-      await ref.read(dioProvider).post(
-        '/api/v1/me/course-enrollments/$enrollmentId/$action',
-      );
+      await ref
+          .read(dioProvider)
+          .post('/api/v1/me/course-enrollments/$enrollmentId/$action');
       ref.invalidate(myCourseEnrollmentsProvider);
       if (mounted) setState(() => _message = isWaitlisted ? '已退出候補' : '已取消報名');
     } catch (error) {
@@ -178,18 +178,22 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
                     subtitle: Text(
                       '會員 ID：${item['user_id']}　狀態：${item['status']}',
                     ),
-                    trailing: ['waitlisted', 'pending_payment', 'confirmed']
-                            .contains(item['status'])
+                    trailing:
+                        [
+                          'waitlisted',
+                          'pending_payment',
+                          'confirmed',
+                        ].contains(item['status'])
                         ? TextButton(
                             onPressed: _saving
                                 ? null
                                 : () => _cancelEnrollment(
-                                      item['id'] as int,
-                                      item['status'] as String,
-                                    ),
-                            child: Text(item['status'] == 'waitlisted'
-                                ? '退出候補'
-                                : '取消報名'),
+                                    item['id'] as int,
+                                    item['status'] as String,
+                                  ),
+                            child: Text(
+                              item['status'] == 'waitlisted' ? '退出候補' : '取消報名',
+                            ),
                           )
                         : null,
                   ),

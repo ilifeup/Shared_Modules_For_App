@@ -8,6 +8,14 @@
 
 ## 00｜進度更新規則與最新查核紀錄
 
+### 2026-10-29｜更正天帝教 Android 程式基準線（最高優先）
+- 使用者明確指出舊 `ilifeup/tiandi-app` 的 Flutter／Laravel 是 Shared Modules 的更舊且錯誤較多版本；**禁止使用舊 Tiandi 程式作為正式 App 基礎**，不合併、不複製、不回填。
+- Ubuntu 本機只需先 clone 最新 `Shared_Modules_For_App`；先驗證其 PHP/Flutter/MySQL PoC，再從已驗證共用模組建立新的天帝教 Android 正式 App。
+- 舊 Tiandi `scripts/local_baseline_check.sh` 及雙 repo shared/ 路徑映射方案**取消**；舊 repo 保留歷史參考。
+- 本次為規則更正，Ubuntu Build／MySQL／Android 實測仍 **NOT TESTED**。
+
+
+
 ### 2026-10-29｜第 2 輪正式 App 與平台確認
 - 已核准：天帝教親和網 tiandi-app 首發 Android；iOS 後續。Tiandi mobile/ 與 backend/ 已存在，Shared packages/ 為依賴，examples/ 僅 PoC。
 - Tiandi main 已新增 scripts/local_baseline_check.sh，更新 AGENTS.md 與現行主計畫；Ubuntu 實測 NOT TESTED。

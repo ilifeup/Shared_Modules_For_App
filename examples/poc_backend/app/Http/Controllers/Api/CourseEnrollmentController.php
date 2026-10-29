@@ -80,6 +80,36 @@ final class CourseEnrollmentController extends Controller
         return new JsonResponse(['data' => $this->enrollments->cancel($id, $request->user())]);
     }
 
+    /** GET /api/v1/me/course-enrollments/{id}/sessions. */
+    public function sessions(Request $request, int $id): JsonResponse
+    {
+        $actor = $request->user();
+        $entry = DB::table('course_enrollments')->where('id', $id)
+            ->where(function ($query) use ($actor) {
+                $query->where('user_id', $actor->id)->orWhere('booker_user_id', $actor->id);
+            })->firstOrFail();
+        $sessions = DB::table('course_sessions as s')
+            ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')
+            ->leftJoin('course_session_leaves as l', function ($join) use ($id) {
+                $join->on('l.course_session_id', '=', 's.id')
+                    ->where('l.course_enrollment_id', '=', $id);
+            })
+            ->where('s.course_term_id', $entry->course_term_id)
+            ->orderBy('e.starts_at')
+            ->get(['s.id', 'e.title', 'e.starts_at', 'e.ends_at', 'l.id as leave_id']);
+
+        return new JsonResponse(['data' => $sessions]);
+    }
+
+    /** POST /api/v1/me/course-enrollments/{id}/sessions/{sessionId}/leave. */
+    public function leave(Request $request, int $id, int $sessionId): JsonResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'min:2', 'max:2000']]);
+        $result = $this->enrollments->requestSessionLeave($id, $sessionId, $request->user(), $data['reason']);
+
+        return new JsonResponse(['data' => $result], $result['replayed'] ? 200 : 201);
+    }
+
     /** GET /api/v1/me/course-enrollments: own and original-booker family history. */
     public function mine(Request $request): JsonResponse
     {

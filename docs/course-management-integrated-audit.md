@@ -127,3 +127,9 @@
 - 已有 `pending_payment`／`confirmed` 正式報名時禁止直接新增課堂，避免破壞整期 Booking 數量。
 - 尚缺完整課堂移除/調整、補課指派、會員請假 API 與 Flutter 畫面，以及後端/前端實際執行驗收。
 - 此修改尚未取得同 SHA 的 Pint、Pest、Filament、Flutter CI 結果；狀態為 `NOT TESTED`，PR 保持 Draft。
+
+### 2026-10-29 單堂請假跨層實作紀錄（未驗收）
+
+- Service 已加入交易式單堂請假、原報名人權限與家庭代管檢查、48 小時期限、課程歸屬及冪等檢查；請假不自動取消整期、不自動退款。
+- Controller/Route 已加入會員課堂列表及單堂請假 API；目前仍待 Flutter 操作、管理員補課指派、M11 出缺席與測試驗收。
+- 上述功能未經執行測試，不得標示 PASS；整個模組仍為 NOT TESTED／未完成。

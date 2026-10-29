@@ -25,8 +25,8 @@ final myBookingGroupsProvider = FutureProvider.autoDispose<BookingGroupPage>(
   (ref) => ref.watch(bookingGroupApiProvider).mine(),
 );
 
-final manageableFamilyMemberIdsProvider = FutureProvider.autoDispose<List<int>>(
-  (ref) => ref.watch(bookingGroupApiProvider).manageableMemberIds(),
+final manageableFamilyMembersProvider = FutureProvider.autoDispose<List<ManageableFamilyMember>>(
+  (ref) => ref.watch(bookingGroupApiProvider).manageableMembers(),
 );
 
 /// Text for a group status (shown with words, not colour only).
@@ -59,8 +59,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     if (_busy) return;
     final selected = _hasPendingRequest ? _pendingMemberUserId : _memberUserId;
     if (!_hasPendingRequest && selected != null) {
-      final allowed = ref.read(manageableFamilyMemberIdsProvider).value;
-      if (allowed == null || !allowed.contains(selected)) {
+      final allowed = ref.read(manageableFamilyMembersProvider).value;
+      if (allowed == null || !allowed.any((member) => member.id == selected)) {
         setState(() => _error = '請選擇已授權的家庭會員。');
         return;
       }
@@ -108,8 +108,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   @override
   Widget build(BuildContext context) {
     final event = ref.watch(eventDetailProvider(widget.eventId));
-    final family = ref.watch(manageableFamilyMemberIdsProvider);
-    final availableIds = family.value;
+    final family = ref.watch(manageableFamilyMembersProvider);
+    final availableMembers = family.value;
     final result = _result;
 
     return Scaffold(
@@ -136,13 +136,13 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               initialValue: _memberUserId,
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
-                for (final id in availableIds ?? <int>[])
+                for (final member in availableMembers ?? <ManageableFamilyMember>[])
                   DropdownMenuItem<int?>(
-                    value: id,
-                    child: Text('家庭會員 ID $id'),
+                    value: member.id,
+                    child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || _hasPendingRequest || availableIds == null
+              onChanged: _busy || _hasPendingRequest || availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(
@@ -153,7 +153,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),
-                onRetry: () => ref.invalidate(manageableFamilyMemberIdsProvider),
+                onRetry: () => ref.invalidate(manageableFamilyMembersProvider),
               ),
             const SizedBox(height: 8),
             const Text('每筆預約一位正式會員；名額已滿且開放候補時依順序等候。'),

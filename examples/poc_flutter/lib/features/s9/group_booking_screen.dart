@@ -203,7 +203,7 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(g.isWaitlisted ? '取消候補？' : '取消整組報名？'),
+        title: Text(g.isWaitlisted ? '取消候補？' : '取消報名？'),
         content: const Text('取消後名額會依候補順序遞補給其他人。'),
         actions: [
           TextButton(

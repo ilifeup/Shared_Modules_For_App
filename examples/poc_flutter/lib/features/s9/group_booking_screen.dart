@@ -37,12 +37,9 @@ String groupStatusLabel(BookingGroup g) => switch (g.status) {
   _ => '【已取消】',
 };
 
-/// S9 M08 group booking: the member and/or authorized family members, booked or
-/// waitlisted together. One request id per attempt, reused on retry, so a
-/// double tap or a network retry never books twice.
+/// S9 M08: one verified member per booking, self or one delegated family member.
 class GroupBookingScreen extends ConsumerStatefulWidget {
   const GroupBookingScreen({super.key, required this.eventId});
-
   final String eventId;
 
   @override
@@ -50,72 +47,52 @@ class GroupBookingScreen extends ConsumerStatefulWidget {
 }
 
 class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
-  final _memberIds = <int?>[];
-  bool _includeSelf = true;
+  int? _memberUserId;
+  int? _pendingMemberUserId;
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
   String _requestId = newRequestId();
-  // Keep the exact original payload for retries whose server outcome is unknown.
-  List<int>? _pendingMemberIds;
-  bool? _pendingIncludeSelf;
 
   Future<void> _submit() async {
     if (_busy) return;
-    final memberIds = _pendingMemberIds ?? _memberIds.whereType<int>().toList();
-    final includeSelf = _pendingIncludeSelf ?? _includeSelf;
-    if (_pendingMemberIds == null) {
+    final selected = _pendingMemberUserId ?? _memberUserId;
+    if (_pendingMemberUserId == null && selected != null) {
       final allowed = ref.read(manageableFamilyMemberIdsProvider).value;
-      if (_memberIds.any((id) => id == null) ||
-          memberIds.toSet().length != memberIds.length ||
-          (memberIds.isNotEmpty &&
-              (allowed == null ||
-                  memberIds.any((id) => !allowed.contains(id))))) {
-        setState(() => _error = '請選擇不同且已授權的家庭會員。');
+      if (allowed == null || !allowed.contains(selected)) {
+        setState(() => _error = '請選擇已授權的家庭會員。');
         return;
       }
-    }
-    if (!includeSelf && memberIds.isEmpty) {
-      setState(() => _error = '請至少選擇一位會員參加。');
-      return;
     }
     setState(() {
       _busy = true;
       _error = null;
-      _pendingMemberIds ??= List<int>.unmodifiable(memberIds);
-      _pendingIncludeSelf ??= includeSelf;
+      _pendingMemberUserId = selected;
     });
     try {
-      final group = await ref
-          .read(bookingGroupApiProvider)
-          .book(
-            widget.eventId,
-            clientRequestId: _requestId,
-            includeSelf: _pendingIncludeSelf!,
-            attendeeMemberIds: _pendingMemberIds!,
-          );
+      final booking = await ref.read(bookingGroupApiProvider).book(
+        widget.eventId,
+        clientRequestId: _requestId,
+        memberUserId: selected,
+      );
       if (!mounted) return;
       setState(() {
-        _result = group;
-        _pendingMemberIds = null;
-        _pendingIncludeSelf = null;
-        _requestId = newRequestId(); // the next booking is a new request
+        _result = booking;
+        _pendingMemberUserId = null;
+        _requestId = newRequestId();
       });
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error;
-        // Only a definitive client rejection can release the old request ID.
-        // Timeout, disconnection, 5xx and malformed responses may follow a commit.
         if (error is ApiException &&
             error.statusCode != null &&
             error.statusCode! >= 400 &&
             error.statusCode! < 500 &&
             error.statusCode != 408 &&
             error.statusCode != 429) {
-          _pendingMemberIds = null;
-          _pendingIncludeSelf = null;
+          _pendingMemberUserId = null;
           _requestId = newRequestId();
         }
       });
@@ -132,106 +109,51 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     final result = _result;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('多人報名／候補')),
+      appBar: AppBar(title: const Text('單人報名／候補')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (event.value != null)
-            Text(
-              event.value!.title,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text(event.value!.title, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           if (result != null) ...[
             StatusBox(
               key: const Key('group-result'),
               label: groupStatusLabel(result),
-              detail:
-                  '共 ${result.seatCount} 位：'
-                  '${result.attendees.map((a) => a.name).join('、')}',
+              detail: result.attendees.map((a) => a.name).join('、'),
             ),
             TextButton(
               onPressed: () => context.push('/me/booking-groups'),
               child: const Text('查看我的報名'),
             ),
           ] else ...[
-            SwitchListTile(
-              key: const Key('group-include-self'),
-              title: const Text('我本人參加'),
-              value: _includeSelf,
-              onChanged: _busy || _pendingMemberIds != null
+            DropdownButtonFormField<int?>(
+              key: const Key('booking-member'),
+              initialValue: _memberUserId,
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
+                for (final id in availableIds ?? <int>[])
+                  DropdownMenuItem<int?>(
+                    value: id,
+                    child: Text('家庭會員 ID $id'),
+                  ),
+              ],
+              onChanged: _busy || _pendingMemberUserId != null || availableIds == null
                   ? null
-                  : (v) => setState(() => _includeSelf = v),
+                  : (id) => setState(() => _memberUserId = id),
+              decoration: const InputDecoration(
+                labelText: '本次參加會員（僅一位）',
+                border: OutlineInputBorder(),
+              ),
             ),
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),
-                onRetry: () =>
-                    ref.invalidate(manageableFamilyMemberIdsProvider),
+                onRetry: () => ref.invalidate(manageableFamilyMemberIdsProvider),
               ),
-            if (availableIds != null && availableIds.isEmpty)
-              const Text('目前沒有已授權可代訂的家庭會員。'),
-            for (var i = 0; i < _memberIds.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        key: Key('group-member-$i'),
-                        initialValue: _memberIds[i],
-                        items: [
-                          for (final id in availableIds ?? <int>[])
-                            DropdownMenuItem<int>(
-                              value: id,
-                              child: Text('會員 ID $id'),
-                            ),
-                        ],
-                        onChanged:
-                            _busy ||
-                                _pendingMemberIds != null ||
-                                availableIds == null
-                            ? null
-                            : (id) => setState(() => _memberIds[i] = id),
-                        decoration: InputDecoration(
-                          labelText: '同行會員 ${i + 1}（已授權）',
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      key: Key('group-remove-member-$i'),
-                      tooltip: '移除同行會員',
-                      onPressed: _busy || _pendingMemberIds != null
-                          ? null
-                          : () => setState(() => _memberIds.removeAt(i)),
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
-                  ],
-                ),
-              ),
-            OutlinedButton(
-              key: const Key('group-add-member'),
-              onPressed:
-                  _busy ||
-                      _pendingMemberIds != null ||
-                      availableIds == null ||
-                      _memberIds.length >= availableIds.length ||
-                      _memberIds.length >= 9
-                  ? null
-                  : () => setState(() => _memberIds.add(null)),
-              child: const Text('新增已授權家庭會員'),
-            ),
             const SizedBox(height: 8),
-            const Text('名額不足時整組進入候補，依順序遞補；遞補成功會通知您。'),
+            const Text('每筆預約一位正式會員；名額已滿且開放候補時依順序等候。'),
             const SizedBox(height: 8),
-            if (_pendingMemberIds != null && !_busy)
-              const StatusBox(
-                label: '【結果待確認】',
-                detail:
-                    '上次送出可能已成功。請重試原請求，或至「我的報名」確認；'
-                    '在結果確定前不可修改參加者資料。',
-              ),
             if (_error is String)
               StatusBox(label: '【提醒】', detail: _error as String)
             else if (_error != null)
@@ -239,13 +161,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             FilledButton(
               key: const Key('group-submit'),
               onPressed: _busy ? null : _submit,
-              child: Text(
-                _busy
-                    ? '處理中…'
-                    : _pendingMemberIds != null
-                    ? '重試原請求'
-                    : '送出報名',
-              ),
+              child: Text(_busy ? '處理中…' : '送出報名／重試'),
             ),
           ],
         ],

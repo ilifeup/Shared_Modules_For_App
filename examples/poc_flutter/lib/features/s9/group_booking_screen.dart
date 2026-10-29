@@ -29,6 +29,21 @@ final manageableFamilyMembersProvider = FutureProvider.autoDispose<List<Manageab
   (ref) => ref.watch(bookingGroupApiProvider).manageableMembers(),
 );
 
+
+/// In-memory pending idempotency keys survive route disposal. Keys are isolated
+/// by authenticated member and event; never reuse across different accounts.
+class PendingBookingRequest {
+  const PendingBookingRequest(this.requestId, this.memberUserId);
+  final String requestId;
+  final int? memberUserId;
+}
+
+final pendingBookingRequestsProvider =
+    StateProvider<Map<String, PendingBookingRequest>>((ref) => {});
+
+String bookingRequestScope(String memberId, String eventId) =>
+    '${Uri.encodeComponent(memberId)}:${Uri.encodeComponent(eventId)}';
+
 /// Text for a group status (shown with words, not colour only).
 String groupStatusLabel(BookingGroup g) => switch (g.status) {
   'confirmed' => '【正式報名】',
@@ -55,10 +70,31 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   BookingGroup? _result;
   String _requestId = newRequestId();
 
+  String? get _requestScope {
+    final auth = ref.read(authControllerProvider);
+    if (auth.status != AuthStatus.signedIn || auth.profile == null) return null;
+    return bookingRequestScope(auth.profile!.id, widget.eventId);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // The pending request is recovered in didChangeDependencies via the provider
+    // when this route is reconstructed.
+  }
+
+
   Future<void> _submit() async {
     if (_busy) return;
-    final selected = _hasPendingRequest ? _pendingMemberUserId : _memberUserId;
-    if (!_hasPendingRequest && selected != null) {
+    final scope = _requestScope;
+    if (scope == null) {
+      setState(() => _error = '請先登入會員帳號。');
+      return;
+    }
+    final saved = ref.read(pendingBookingRequestsProvider)[scope];
+    final selected = saved != null ? saved.memberUserId : _memberUserId;
+    final requestId = saved?.requestId ?? newRequestId();
+    if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
       if (allowed == null || !allowed.any((member) => member.id == selected)) {
         setState(() => _error = '請選擇已授權的家庭會員。');
@@ -70,11 +106,18 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _error = null;
       _pendingMemberUserId = selected;
       _hasPendingRequest = true;
+      _requestId = requestId;
     });
+    if (saved == null) {
+      ref.read(pendingBookingRequestsProvider.notifier).state = {
+        ...ref.read(pendingBookingRequestsProvider),
+        scope: PendingBookingRequest(requestId, selected),
+      };
+    }
     try {
       final booking = await ref.read(bookingGroupApiProvider).book(
         widget.eventId,
-        clientRequestId: _requestId,
+        clientRequestId: requestId,
         memberUserId: selected,
       );
       if (!mounted) return;
@@ -84,6 +127,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         _hasPendingRequest = false;
         _requestId = newRequestId();
       });
+      _clearPending(scope);
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
       if (!mounted) return;
@@ -98,11 +142,17 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           _pendingMemberUserId = null;
           _hasPendingRequest = false;
           _requestId = newRequestId();
+          _clearPending(scope);
         }
       });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _clearPending(String scope) {
+    final next = {...ref.read(pendingBookingRequestsProvider)}..remove(scope);
+    ref.read(pendingBookingRequestsProvider.notifier).state = next;
   }
 
   @override
@@ -111,6 +161,11 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     final family = ref.watch(manageableFamilyMembersProvider);
     final availableMembers = family.value;
     final result = _result;
+    final auth = ref.watch(authControllerProvider);
+    final scope = auth.status == AuthStatus.signedIn && auth.profile != null
+        ? bookingRequestScope(auth.profile!.id, widget.eventId)
+        : null;
+    final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
 
     return Scaffold(
       appBar: AppBar(title: const Text('單人報名／候補')),
@@ -133,7 +188,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           ] else ...[
             DropdownButtonFormField<int?>(
               key: const Key('booking-member'),
-              initialValue: _memberUserId,
+              initialValue: pending?.memberUserId ?? _memberUserId,
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
                 for (final member in availableMembers ?? <ManageableFamilyMember>[])
@@ -142,7 +197,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                     child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || _hasPendingRequest || availableMembers == null
+              onChanged: _busy || pending != null || _hasPendingRequest || availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(

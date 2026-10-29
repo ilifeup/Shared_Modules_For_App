@@ -171,6 +171,59 @@ final class CourseEnrollmentService
         }, 3);
     }
 
+    /** API owns enrollment cancellation; back-office owns any actual refund. */
+    public function cancel(int $enrollmentId, User $actor): array
+    {
+        return DB::transaction(function () use ($enrollmentId, $actor): array {
+            $hint = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
+            if ($hint === null || (int) $hint->booker_user_id !== (int) $actor->id) {
+                throw ValidationException::withMessages(['enrollment' => '找不到可取消的報名。']);
+            }
+            $term = DB::table('course_terms')->where('id', $hint->course_term_id)->lockForUpdate()->first();
+            if ($term === null) {
+                throw ValidationException::withMessages(['term' => '課程期別不存在。']);
+            }
+            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->lockForUpdate()->first();
+            if ($entry === null || (int) $entry->course_term_id !== (int) $term->id
+                || (int) $entry->booker_user_id !== (int) $actor->id
+                || ! in_array($entry->status, ['pending_payment', 'confirmed', 'waitlisted'], true)) {
+                throw ValidationException::withMessages(['enrollment' => '此報名不可取消。']);
+            }
+            $member = User::query()->find($entry->user_id);
+            if ($member === null || ! $this->bookings->canManageFamily($actor, $member, true)) {
+                throw ValidationException::withMessages(['member' => '目前無權取消此會員的課程報名。']);
+            }
+            $firstStart = DB::table('course_sessions')
+                ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
+                ->where('course_sessions.course_term_id', $term->id)->min('calendar_events.starts_at');
+            if ($firstStart === null || now()->gte(\Illuminate\Support\Carbon::parse($firstStart)
+                ->subDays((int) $term->cancel_cutoff_days))) {
+                throw ValidationException::withMessages(['enrollment' => '已超過整期課程取消期限，請洽管理員。']);
+            }
+            $invoice = DB::table('invoices')->where('booking_type', '02')
+                ->where('booking_id', $entry->id)->lockForUpdate()->first();
+            if ($entry->status === 'waitlisted' && $invoice !== null) {
+                throw ValidationException::withMessages(['invoice' => '候補報名帳單異常，請洽管理員。']);
+            }
+            if ($entry->status !== 'waitlisted' && ($invoice === null
+                || ! in_array((int) $invoice->invoice_status, [0, 1], true))) {
+                throw ValidationException::withMessages(['invoice' => '帳單狀態異常，請洽管理員。']);
+            }
+            DB::table('course_enrollments')->where('id', $entry->id)
+                ->update(['status' => 'cancelled', 'updated_at' => now()]);
+            if ($invoice !== null && (int) $invoice->invoice_status === 0) {
+                DB::table('invoices')->where('id', $invoice->id)
+                    ->update(['invoice_status' => 2, 'updated_at' => now()]);
+            }
+            if ($entry->status !== 'waitlisted') {
+                app(CashInvoiceService::class)->releaseCourseBookings($entry, 'course_enrollment_cancelled');
+                app(CashInvoiceService::class)->fillCourseWaitlistAfterCapacityChange((int) $term->id);
+            }
+
+            return ['id' => $entry->id, 'status' => 'cancelled'];
+        }, 3);
+    }
+
     /**
      * One term seat per verified member. Lock the term before capacity checks.
      * Guardian delegation is verified inside the same transaction.

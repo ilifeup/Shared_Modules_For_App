@@ -131,7 +131,7 @@ final class CashInvoiceService
      * Release the session seats held by an expired whole-term enrollment.
      * BookingEngine owns all seat and waitlist updates.
      */
-    private function releaseCourseBookings(object $entry): void
+    public function releaseCourseBookings(object $entry, string $reason = 'course_payment_expired'): void
     {
         $actor = User::query()->findOrFail($entry->booker_user_id);
         $events = DB::table('course_sessions')
@@ -147,7 +147,7 @@ final class CashInvoiceService
                 ->where('client_request_id', $requestId)
                 ->where('status', EventBookingGroup::STATUS_CONFIRMED)->first();
             if ($group !== null) {
-                app(BookingEngine::class)->cancelGroup($group, $actor, true, 'course_payment_expired');
+                app(BookingEngine::class)->cancelGroup($group, $actor, true, $reason);
             }
         }
     }

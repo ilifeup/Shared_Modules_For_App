@@ -705,6 +705,44 @@ class CourseEnrollmentServiceTest extends TestCase
             ->assertJsonPath('data.0.id', $own['id']);
     }
 
+    public function test_course_cancel_releases_sessions_without_automatically_refunding_paid_invoice(): void
+    {
+        $term = $this->term(2);
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)->value('calendar_event_id');
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => now()->addDays(30), 'ends_at' => now()->addDays(30)->addHour(),
+        ]);
+        $entry = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoice = DB::table('invoices')->where('booking_type', '02')->where('booking_id', $entry['id'])->first();
+        app(CashInvoiceService::class)->confirmCash((int) $invoice->id, $admin);
+
+        $result = app(CourseEnrollmentService::class)->cancel($entry['id'], $member);
+        $this->assertSame('cancelled', $result['status']);
+        $this->assertSame('cancelled', DB::table('course_enrollments')->where('id', $entry['id'])->value('status'));
+        $this->assertSame(1, (int) DB::table('invoices')->where('id', $invoice->id)->value('invoice_status'));
+        $this->assertSame(0, DB::table('event_booking_attendees')->where('member_user_id', $member->id)
+            ->where('status', 'confirmed')->count());
+        $this->assertSame(0, DB::table('invoice_refund_audits')->where('invoice_id', $invoice->id)->count());
+    }
+
+    public function test_course_cancel_rejects_other_booker_and_preserves_enrollment(): void
+    {
+        $term = $this->term(2);
+        $member = $this->verified();
+        $other = $this->verified();
+        $entry = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        try {
+            app(CourseEnrollmentService::class)->cancel($entry['id'], $other);
+            $this->fail('Unrelated member cannot cancel enrollment.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('enrollment', $e->errors());
+        }
+        $this->assertSame('pending_payment', DB::table('course_enrollments')->where('id', $entry['id'])->value('status'));
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

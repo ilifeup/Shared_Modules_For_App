@@ -109,6 +109,45 @@ paths:
         '429': { description: Too many requests }
         '200': { description: Refund recorded }
 
+  /me/course-enrollments/{id}/cancel:
+    post:
+      tags: [courses]
+      operationId: cancelCourseEnrollment
+      summary: Cancel an entire course enrollment and release derived session seats
+      description: Only the original booker with current family delegation may cancel before the term cutoff. Paid invoices remain paid for separate administrator refund processing; pending invoices become cancelled. No automatic refund.
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Enrollment cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [cancelled] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: Cancellation is not permitted or invoice is inconsistent }
+  /me/course-enrollments/{id}/cancel-waitlist:
+    post:
+      tags: [courses]
+      operationId: cancelCourseWaitlist
+      summary: Cancel a waitlisted course enrollment without touching payments
+      x-verification: required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Waitlisted enrollment cancelled }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: Enrollment not waitlisted, unauthorized or inconsistent }
+
   /me/course-enrollments:
     get:
       tags: [courses]

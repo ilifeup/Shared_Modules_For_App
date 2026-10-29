@@ -405,7 +405,7 @@ final class BookingEngine
                 ->where('calendar_event_id', $locked->calendar_event_id)->exists();
             if ($courseSession || $courseGroupSession) {
                 $releaseAllowed = false;
-                if ($courseSession && $byAdmin && $reason === 'course_payment_expired') {
+                if ($courseSession && $byAdmin && in_array($reason, ['course_payment_expired', 'course_enrollment_cancelled'], true)) {
                     // A caller-supplied reason is not authorization. The parent
                     // enrollment must already be cancelled and its cash invoice
                     // expired within the owning transaction.
@@ -417,7 +417,7 @@ final class BookingEngine
                         })
                         ->where('course_sessions.calendar_event_id', $locked->calendar_event_id)
                         ->where('course_enrollments.status', 'cancelled')
-                        ->where('invoices.invoice_status', 3)
+                        ->whereIn('invoices.invoice_status', $reason === 'course_payment_expired' ? [3] : [1, 2])
                         ->select('course_enrollments.id', 'course_enrollments.booker_user_id')->get();
                     foreach ($enrollments as $enrollment) {
                         $expected = (string) Uuid::uuid5(

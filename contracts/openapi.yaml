@@ -133,7 +133,8 @@ paths:
                       status: { type: string, enum: [cancelled] }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
-        '422': { description: Cancellation is not permitted or invoice is inconsistent }
+        '422': { description: 'Cancellation is not permitted or invoice is inconsistent' }
+        '429': { description: Too many requests }
   /me/course-enrollments/{id}/cancel-waitlist:
     post:
       tags: [courses]
@@ -146,7 +147,8 @@ paths:
         '200': { description: Waitlisted enrollment cancelled }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
-        '422': { description: Enrollment not waitlisted, unauthorized or inconsistent }
+        '422': { description: 'Enrollment not waitlisted, unauthorized or inconsistent' }
+        '429': { description: Too many requests }
 
   /me/course-enrollments:
     get:

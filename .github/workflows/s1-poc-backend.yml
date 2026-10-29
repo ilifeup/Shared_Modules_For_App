@@ -178,6 +178,13 @@ jobs:
           for f in pint audit pest e2e concurrency booking_concurrency s9_concurrency m11_concurrency course_concurrency rollback; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 400
           done
+          # Pest prints each failure's assertion and stack at the end of the run;
+          # publish that report on its own so it is not cut off by the parts limit.
+          if [ -s "$RUNNER_TEMP/pest.log" ]; then
+            sed -e 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/pest.log" \
+              | awk '/^ *(FAILED|ERROR) +Tests\\/ { p = 1 } p' | head -n 400 > "$RUNNER_TEMP/pest_failures.log"
+            [ -s "$RUNNER_TEMP/pest_failures.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/pest_failures.log" pest-failures 400 8 tail
+          fi
           if [ -f examples/poc_backend/storage/logs/laravel.log ]; then
             grep -E '^\[[0-9-]+ [0-9:]+\] [a-z]+\.(ERROR|CRITICAL)' examples/poc_backend/storage/logs/laravel.log | cut -c1-1200 | head -n 8 > "$RUNNER_TEMP/errors.log"
             [ -s "$RUNNER_TEMP/errors.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/errors.log" laravel-errors 8 3 tail

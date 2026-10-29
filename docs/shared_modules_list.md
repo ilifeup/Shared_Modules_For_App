@@ -1,10 +1,23 @@
 # 三大 App 共用模組完整功能與實作規格（Shared Modules List）
 
-> 文件版本：v2.0-review | 2026-10-23 | 目前：需求／實作規劃，所有程式功能 NOT TESTED  
+> 文件版本：v2.1-progress | 2026-10-29 | 原始 M01–M20 規劃表為 2026-10-23 歷史快照，**不得視為最新實作狀態**；最新證據見下方進度紀錄。  
 > Repository：`ilifeup/Shared_Modules_For_App`（**實際名稱**，不可沿用舊計畫的 `app-shared-modules`）  
 > 建議位置：`docs/shared_modules_list.md`  
 > 原始依據：`three_apps_shared_modules_spec_v1.md`、`three_apps_poc_acceptance_plan_v1.md`、`flutter_laravel_3app_share_modules_full_plan_v8.html`（v8 歷史完整計畫）。  
 > 來源優先序：最新使用者決策 > SPEC > POC > V8；原件不修改。本文為詳細工作規格，**不得把「建議」當作已核准或已完成**。
+
+## 00｜進度更新規則與最新查核紀錄
+
+**使用者核准規則（2026-10-29）**：每次開發、修復、合併、測試或驗收有實質進度，必須同步更新本文件對應模組與進度紀錄，附 SHA／PR／CI 證據、PASS／FAIL／BLOCKED／NOT TESTED 及未完成項目；未測試不得標示 PASS。下方 2026-10-23 模組索引為原始規劃快照，後續應依實際驗證逐項更新，不得以歷史 PLANNED 否定已存在的程式碼。
+
+### 2026-10-29｜main 整合及唯讀檢查
+- main 合併 SHA：`025ce3e12ccb439081cc1b2c096de207735a5f02`，PR [#62](https://github.com/ilifeup/Shared_Modules_For_App/pull/62) 已合併；M08 修復分支內容已進 main。
+- M08：後端 `BookingEngine.php`、`SingleMemberBookingContractTest.php`、Flutter 預約畫面存在；會員專屬 pending booking 清理呼叫已對齊；**NOT TESTED**（尚無本 SHA 乾淨 Build、完整 CI、MySQL 並發實測證據）。
+- M04／M06：Dart `notification_api.dart`／`notice_api.dart` 存在；**NOT TESTED**（未完成跨層驗收）。
+- M11：Flutter `checkin_screens.dart` 存在；**NOT TESTED**（未完成後端／實機驗收）。
+- 現金收款：後端 `CashInvoiceService.php` 存在；管理員 API 授權修復 PR [#59](https://github.com/ilifeup/Shared_Modules_For_App/pull/59) 尚未合併；**NOT TESTED**。
+- PR [#60](https://github.com/ilifeup/Shared_Modules_For_App/pull/60) 因與 #59 重複已關閉；未刪除分支／歷史。
+- 其他 M01–M20：尚未逐一完成程式／API／DB／CI 查核，**UNKNOWN / NOT TESTED**，不得宣稱已完成。
 
 ## 01｜專案使命、成功定義與禁止偏離的主軸
 

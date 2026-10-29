@@ -546,7 +546,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $url = '/api/v1/admin/course-enrollments/'.$enrollment['id'].'/confirm-fee';
 
         $this->postJson($url)->assertUnauthorized();
-        $this->actingAs($member, 'sanctum')->postJson($url)->assertUnprocessable();
+        $this->actingAs($member, 'sanctum')->postJson($url)->assertForbidden()->assertJsonPath('error.code', 'ADMIN_REQUIRED');
         $this->assertSame('pending_payment', DB::table('course_enrollments')->find($enrollment['id'])->status);
         $this->assertNull(DB::table('course_enrollments')->find($enrollment['id'])->fee_confirmed_at);
     }

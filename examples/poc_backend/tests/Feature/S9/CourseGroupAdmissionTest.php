@@ -67,6 +67,28 @@ final class CourseGroupAdmissionTest extends TestCase
             ->where('calendar_event_id', $eventId)->count());
     }
 
+    public function test_legacy_s6_cancel_cannot_bypass_course_group_cancellation(): void
+    {
+        $groupId = $this->group();
+        $eventId = (int) DB::table('course_group_events')
+            ->where('course_group_id', $groupId)->value('calendar_event_id');
+        $member = $this->member();
+        $booking = \App\Models\EventBooking::query()->create([
+            'calendar_event_id' => $eventId,
+            'user_id' => $member->id,
+            'status' => \App\Models\EventBooking::STATUS_CONFIRMED,
+            'active' => 1,
+            'booked_at' => now(),
+        ]);
+
+        $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/me/bookings/{$booking->id}/cancel")
+            ->assertStatus(409)->assertJsonPath('error.code', 'SERIES_BOOKING_REQUIRED');
+
+        $this->assertSame(1, (int) $booking->fresh()->active);
+        $this->assertSame(\App\Models\EventBooking::STATUS_CONFIRMED, $booking->fresh()->status);
+    }
+
     public function test_malformed_request_key_is_rejected_before_writing(): void
     {
         $group = $this->group();

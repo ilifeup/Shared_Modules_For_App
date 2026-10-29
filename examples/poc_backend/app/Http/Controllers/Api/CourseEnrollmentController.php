@@ -86,7 +86,11 @@ final class CourseEnrollmentController extends Controller
         $actor = $request->user();
         $entry = DB::table('course_enrollments')->where('id', $id)
             ->where(function ($query) use ($actor) {
-                $query->where('user_id', $actor->id)->orWhere('booker_user_id', $actor->id);
+                $query->where('user_id', $actor->id)
+                    ->orWhere(function ($history) use ($actor) {
+                        $history->where('booker_user_id', $actor->id)
+                            ->where('created_at', '>=', now()->subMonths(2));
+                    });
             })->firstOrFail();
         $sessions = DB::table('course_sessions as s')
             ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')

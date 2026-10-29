@@ -155,28 +155,28 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       setState(() => _error = '請先登入會員帳號。');
       return;
     }
+    setState(() { _busy = true; _error = null; });
     final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
     PendingBookingRequest? saved;
     try {
       saved = await pendingStore.load(scope);
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) setState(() { _busy = false; _error = error; });
       return;
     }
-    if (!mounted || _requestScope != scope) return;
+    if (!mounted || _requestScope != scope) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
     final selected = saved?.memberUserId ?? _memberUserId;
     final requestId = saved?.requestId ?? newRequestId();
     if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
       if (allowed == null || !allowed.any((member) => member.id == selected)) {
-        setState(() => _error = '請選擇已授權的家庭會員。');
+        setState(() { _busy = false; _error = '請選擇已授權的家庭會員。'; });
         return;
       }
     }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
     try {
       if (saved == null) {
         await pendingStore.save(scope, PendingBookingRequest(requestId, selected));

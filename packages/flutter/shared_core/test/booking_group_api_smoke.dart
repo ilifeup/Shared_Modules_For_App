@@ -57,7 +57,8 @@ Future<void> main() async {
     transport.calls.last == 'POST /api/v1/events/5/booking-groups',
     'Wrong booking endpoint',
   );
-  check(transport.bodies.last!['client_request_id'] == key,
+  check(
+    transport.bodies.last!['client_request_id'] == key,
     'Missing idempotency key',
   );
   check(
@@ -66,7 +67,7 @@ Future<void> main() async {
   );
   check(
     !transport.bodies.last!.containsKey('include_self') &&
-    !transport.bodies.last!.containsKey('attendees'),
+        !transport.bodies.last!.containsKey('attendees'),
     'Obsolete multi-attendee fields must not be sent',
   );
 
@@ -86,14 +87,16 @@ Future<void> main() async {
   } on ArgumentError {
     rejected = true;
   }
+  check(rejected, 'Invalid member ID must be rejected before transport');
   check(
-    rejected, 'Invalid member ID must be rejected before transport');
-  check(transport.calls.length == 2,
+    transport.calls.length == 2,
     'Invalid member ID must not reach transport',
   );
   final family = await api.manageableMembers();
   check(
-    family.length == 1 && family.single.id == 42 && family.single.name == '家人甲',
+    family.length == 1 &&
+        family.single.id == 42 &&
+        family.single.name == '家人甲',
     'Family member name and ID must be retained',
   );
   final ids = await api.manageableMemberIds();

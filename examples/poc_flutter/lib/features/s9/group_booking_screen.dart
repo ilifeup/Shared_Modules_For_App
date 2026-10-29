@@ -161,6 +161,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   String? _restoredScope;
   String? _restoringScope;
   Object? _restoreError;
+  String? _restoreErrorScope;
+  String? _selectionScope;
   Object? _error;
   BookingGroup? _result;
   String? _resultScope;
@@ -179,20 +181,28 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         setState(() {
           _restoredScope = scope;
           _restoreError = null;
+          _restoreErrorScope = null;
         });
       }
     } catch (error) {
       if (mounted && _requestScope == scope) {
-        setState(() => _restoreError = error);
+        setState(() {
+          _restoreError = error;
+          _restoreErrorScope = scope;
+        });
       }
     } finally {
-      if (mounted) setState(() => _restoringScope = null);
+      if (mounted && _restoringScope == scope) {
+        setState(() => _restoringScope = null);
+      }
     }
   }
 
   Future<void> _submit() async {
-    if (_busy || _restoringScope != null || _restoreError != null) return;
     final scope = _requestScope;
+    if (_busy || _restoringScope == scope ||
+        (scope != null && _restoredScope != scope) ||
+        _restoreErrorScope == scope) return;
     if (scope == null) {
       setState(() => _error = '請先登入會員帳號。');
       return;
@@ -286,12 +296,16 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     final scope = auth.status == AuthStatus.signedIn && auth.profile != null
         ? bookingRequestScope(auth.profile!.id, widget.eventId)
         : null;
+    if (_selectionScope != scope) {
+      _selectionScope = scope;
+      _memberUserId = null;
+    }
     final result = scope != null && scope == _resultScope ? _result : null;
     final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
     if (scope != null &&
         _restoredScope != scope &&
         _restoringScope != scope &&
-        _restoreError == null) {
+        _restoreErrorScope != scope) {
       _restoringScope = scope;
       Future.microtask(() => _restorePending(scope));
     }
@@ -340,7 +354,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ),
             ),
             if (restoring)
-              Text(_restoreError == null
+              Text(_restoreErrorScope != scope
                   ? '正在還原上次報名資料…'
                   : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError'),
             if (pending != null)

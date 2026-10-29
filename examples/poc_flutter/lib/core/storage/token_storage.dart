@@ -42,3 +42,13 @@ class MemoryTokenStorage implements TokenStorage {
   @override
   Future<void> clear() async => _token = null;
 }
+
+/// Remove only unresolved booking requests, leaving unrelated secure entries intact.
+/// Called on explicit logout or confirmed credential revocation (HTTP 401).
+Future<void> clearPendingBookingStorage([FlutterSecureStorage? storage]) async {
+  final secure = storage ?? const FlutterSecureStorage();
+  final values = await secure.readAll();
+  for (final key in values.keys.where((key) => key.startsWith('pending_booking_v1:'))) {
+    await secure.delete(key: key);
+  }
+}

@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,8 +33,9 @@ final manageableFamilyMembersProvider = FutureProvider.autoDispose<List<Manageab
 );
 
 
-/// In-memory pending idempotency keys survive route disposal. Keys are isolated
-/// by authenticated member and event; never reuse across different accounts.
+/// Persist unresolved booking attempts before sending HTTP, so a lost response
+/// followed by an app restart reuses the exact same idempotency key and member.
+/// Storage is scoped to the authenticated member and event.
 class PendingBookingRequest {
   const PendingBookingRequest(this.requestId, this.memberUserId);
   final String requestId;
@@ -40,24 +43,72 @@ class PendingBookingRequest {
 }
 
 class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final Set<String> _loaded = {};
+  final Set<String> _loading = {};
+
   @override
   Map<String, PendingBookingRequest> build() {
     ref.listen(authControllerProvider, (previous, next) {
-      if (previous != null && (next.status == AuthStatus.signedOut ||
-          (previous.profile?.id != null && next.profile?.id != null &&
-           previous.profile!.id != next.profile!.id))) {
-        clearAll();
+      // A transient offline restore is not an explicit logout. Keep persisted
+      // requests so the next successful login can recover the original key.
+      if (previous?.status == AuthStatus.signedIn &&
+          next.status == AuthStatus.signedOut) {
+        state = {};
+        _loaded.clear();
       }
     });
     return {};
   }
 
-  void save(String scope, PendingBookingRequest request) =>
-      state = {...state, scope: request};
+  String _key(String scope) => 'pending_booking_v1:$scope';
 
-  void clear(String scope) => state = {...state}..remove(scope);
+  Future<PendingBookingRequest?> load(String scope) async {
+    if (_loaded.contains(scope)) return state[scope];
+    if (!_loading.add(scope)) {
+      // Concurrent callers must not create a new request while restoration runs.
+      throw StateError('預約資料正在還原，請稍後重試。');
+    }
+    try {
+      final raw = await _storage.read(key: _key(scope));
+      if (raw != null) {
+        final parts = raw.split('|');
+        if (parts.length == 2 &&
+            RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(parts[0])) {
+          final member = parts[1] == 'self' ? null : int.tryParse(parts[1]);
+          if (parts[1] == 'self' || (member != null && member > 0)) {
+            final pending = PendingBookingRequest(parts[0], member);
+            state = {...state, scope: pending};
+          }
+        }
+      }
+      _loaded.add(scope);
+      return state[scope];
+    } finally {
+      _loading.remove(scope);
+    }
+  }
 
-  void clearAll() => state = {};
+  Future<void> save(String scope, PendingBookingRequest request) async {
+    // Durable write must finish before the booking HTTP request is sent.
+    await _storage.write(
+      key: _key(scope),
+      value: '${request.requestId}|${request.memberUserId ?? 'self'}',
+    );
+    _loaded.add(scope);
+    state = {...state, scope: request};
+  }
+
+  Future<void> clear(String scope) async {
+    await _storage.delete(key: _key(scope));
+    state = {...state}..remove(scope);
+    _loaded.add(scope);
+  }
+
+  void clearMemory() {
+    state = {};
+    _loaded.clear();
+  }
 }
 
 final pendingBookingRequestsProvider =
@@ -104,8 +155,16 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       setState(() => _error = '請先登入會員帳號。');
       return;
     }
-    final saved = ref.read(pendingBookingRequestsProvider)[scope];
-    final selected = saved != null ? saved.memberUserId : _memberUserId;
+    final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
+    PendingBookingRequest? saved;
+    try {
+      saved = await pendingStore.load(scope);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+      return;
+    }
+    if (!mounted || _requestScope != scope) return;
+    final selected = saved?.memberUserId ?? _memberUserId;
     final requestId = saved?.requestId ?? newRequestId();
     if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
@@ -118,10 +177,17 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _busy = true;
       _error = null;
     });
-    if (saved == null) {
-      ref.read(pendingBookingRequestsProvider.notifier).save(
-        scope, PendingBookingRequest(requestId, selected),
-      );
+    try {
+      if (saved == null) {
+        await pendingStore.save(scope, PendingBookingRequest(requestId, selected));
+      }
+    } catch (error) {
+      if (mounted) setState(() { _busy = false; _error = error; });
+      return;
+    }
+    if (!mounted || _requestScope != scope) {
+      if (mounted) setState(() => _busy = false);
+      return;
     }
     final api = ref.read(bookingGroupApiProvider);
     try {
@@ -131,7 +197,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         memberUserId: selected,
       );
       if (!mounted || _requestScope != scope) return;
-      _clearPending(scope);
+      await _clearPending(scope);
       setState(() {
         _result = booking;
         _resultScope = scope;
@@ -145,7 +211,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           error.statusCode! < 500 &&
           error.statusCode != 408 &&
           error.statusCode != 429) {
-        _clearPending(scope);
+        await _clearPending(scope);
       }
       setState(() => _error = error);
     } finally {
@@ -153,9 +219,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     }
   }
 
-  void _clearPending(String scope) {
-    ref.read(pendingBookingRequestsProvider.notifier).clear(scope);
-  }
+  Future<void> _clearPending(String scope) =>
+      ref.read(pendingBookingRequestsProvider.notifier).clear(scope);
 
   @override
   Widget build(BuildContext context) {

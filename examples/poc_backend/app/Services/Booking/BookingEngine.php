@@ -454,6 +454,24 @@ final class BookingEngine
                         }
                     }
                 }
+                // A makeup seat belongs to its original course enrollment, not to
+                // a standalone event reservation. Only the cancelled parent may
+                // release it, and the exact canonical group must match.
+                if (! $releaseAllowed && $courseSession && $byAdmin
+                    && $reason === 'course_makeup_released') {
+                    $releaseAllowed = DB::table('course_makeups as m')
+                        ->join('course_session_leaves as l', 'l.id', '=', 'm.course_session_leave_id')
+                        ->join('course_enrollments as ce', 'ce.id', '=', 'l.course_enrollment_id')
+                        ->join('invoices as i', function ($join) {
+                            $join->on('i.booking_id', '=', 'ce.id')
+                                ->where('i.booking_type', '=', '02');
+                        })
+                        ->where('m.event_booking_group_id', $locked->id)
+                        ->where('ce.status', 'cancelled')
+                        ->where('ce.booker_user_id', $actor->id)
+                        ->whereIn('i.invoice_status', [1, 2, 3])
+                        ->exists();
+                }
                 if (! $releaseAllowed) {
                     throw new ApiException(409, 'SERIES_BOOKING_MANAGED_BY_PARENT',
                         '系列活動／課程的從屬場次不可單獨取消，請由整系列管理流程處理。');

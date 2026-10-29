@@ -151,6 +151,22 @@ final class CashInvoiceService
                 app(BookingEngine::class)->cancelGroup($group, $actor, true, $reason);
             }
         }
+
+        // A whole-term cancellation also invalidates any separately assigned
+        // makeup seats. Keep this inside the parent's database transaction so
+        // the canonical M11 attendee ledger cannot retain an orphaned seat.
+        $makeupGroups = DB::table('course_makeups as m')
+            ->join('course_session_leaves as l', 'l.id', '=', 'm.course_session_leave_id')
+            ->join('event_booking_groups as g', 'g.id', '=', 'm.event_booking_group_id')
+            ->where('l.course_enrollment_id', $entry->id)
+            ->where('g.status', EventBookingGroup::STATUS_CONFIRMED)
+            ->orderBy('g.calendar_event_id')
+            ->pluck('g.id');
+
+        foreach ($makeupGroups as $groupId) {
+            $group = EventBookingGroup::query()->findOrFail($groupId);
+            app(BookingEngine::class)->cancelGroup($group, $actor, true, 'course_makeup_released');
+        }
     }
 
     /**

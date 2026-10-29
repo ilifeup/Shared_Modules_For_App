@@ -14,11 +14,12 @@ class RecordingTransport implements ApiTransport {
     calls.add('$method $path');
     bodies.add(body);
     if (path == '/api/v1/me/family-memberships') {
-      return familyResponse ?? {
-        'data': [
-          {'member_user_id': 42, 'name': '家人甲'},
-        ],
-      };
+      return familyResponse ??
+          {
+            'data': [
+              {'member_user_id': 42, 'name': '家人甲'},
+            ],
+          };
     }
     return {
       'data': {
@@ -30,15 +31,15 @@ class RecordingTransport implements ApiTransport {
         'cancel_deadline': '2026-12-31T00:00:00Z',
         'can_cancel': true,
         'attendees': [
-          {'id': '20', 'name': '會員', 'status': 'confirmed', 'is_me': true}
+          {'id': '20', 'name': '會員', 'status': 'confirmed', 'is_me': true},
         ],
         'event': {
           'id': '5',
           'title': '活動',
           'starts_at': '2026-12-31T01:00:00Z',
-          'ends_at': '2026-12-31T02:00:00Z'
-        }
-      }
+          'ends_at': '2026-12-31T02:00:00Z',
+        },
+      },
     };
   }
 }

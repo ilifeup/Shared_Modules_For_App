@@ -204,8 +204,9 @@ class BookingGroupApi {
         .toList(growable: false);
   }
 
-  Future<List<int>> manageableMemberIds() async =>
-      (await manageableMembers()).map((member) => member.id).toList(growable: false);
+  Future<List<int>> manageableMemberIds() async => (await manageableMembers())
+      .map((member) => member.id)
+      .toList(growable: false);
 
   /// [status]: `active`, `confirmed`, `waitlisted` or `cancelled`.
   Future<BookingGroupPage> mine({String? status, int page = 1}) async {

@@ -57,7 +57,7 @@ jobs:
           DB_DATABASE: ':memory:'
         run: |
           set -euo pipefail
-          php artisan test tests/Feature/S9/SingleMemberBookingContractTest.php tests/Feature/S6/BookingTest.php
+          php artisan test tests/Feature/S9/SingleMemberBookingContractTest.php tests/Feature/S6/BookingTest.php tests/Feature/S9/CourseEnrollmentServiceTest.php tests/Feature/S9/CourseGroupAdmissionTest.php
 
   dart:
     runs-on: ubuntu-24.04

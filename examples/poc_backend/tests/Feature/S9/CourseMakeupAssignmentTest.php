@@ -25,8 +25,10 @@ class CourseMakeupAssignmentTest extends TestCase
             'enrollment_capacity' => 2, 'waitlist_capacity' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        $original = s9Event(['booking_capacity' => 3, 'starts_at' => now()->addDays(7)]);
-        $target = s9Event(['booking_capacity' => $eventCapacity, 'starts_at' => now()->addDays(14)]);
+        $originalStart = now()->addDays(7);
+        $original = s9Event(['booking_capacity' => 3, 'starts_at' => $originalStart, 'ends_at' => $originalStart->copy()->addHour()]);
+        $targetStart = now()->addDays(14);
+        $target = s9Event(['booking_capacity' => $eventCapacity, 'starts_at' => $targetStart, 'ends_at' => $targetStart->copy()->addHour()]);
         // The original term enrollment already books all its own sessions.
         // A makeup therefore needs a different, unbooked target occurrence.
         $targetTerm = DB::table('course_terms')->insertGetId([

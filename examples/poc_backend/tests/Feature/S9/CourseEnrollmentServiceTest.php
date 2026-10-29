@@ -731,6 +731,7 @@ class CourseEnrollmentServiceTest extends TestCase
     public function test_course_cancel_also_releases_assigned_makeup_without_extra_invoice(): void
     {
         $term = $this->term();
+        DB::table('course_terms')->where('id', $term)->update(['cancel_cutoff_days' => 0]);
         $member = $this->verified();
         $admin = $this->verified();
         $admin->assignRole(User::ADMIN_ROLE);

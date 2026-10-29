@@ -68,7 +68,7 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
   Future<PendingBookingRequest?> load(String scope) async {
     if (_loaded.contains(scope)) return state[scope];
     if (!_loading.add(scope)) {
-      // Concurrent callers must not create a new request while restoration runs.
+      // Never generate a second key while another restore is in progress.
       throw StateError('預約資料正在還原，請稍後重試。');
     }
     try {
@@ -83,6 +83,15 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
             state = {...state, scope: pending};
           }
         }
+      }
+      // The account may have signed out while secure storage was reading.
+      // Never publish a restored request into another account's session.
+      final auth = ref.read(authControllerProvider);
+      if (auth.status != AuthStatus.signedIn ||
+          auth.profile == null ||
+          !scope.startsWith('${Uri.encodeComponent(auth.profile!.id)}:')) {
+        state = {...state}..remove(scope);
+        throw StateError('登入會員已變更，請重新開啟預約畫面。');
       }
       _loaded.add(scope);
       return state[scope];

@@ -20,9 +20,11 @@ if (DB::getDriverName() !== 'mysql'
     throw new RuntimeException('Expected MySQL with same-DB database queue and after_commit=false');
 }
 
-$queue = DB::table('jobs');
+config(['database.connections.mysql_queue_observer' => config('database.connections.'.DB::getDefaultConnection())]);
+DB::purge('mysql_queue_observer');
 $marker = 'mysql-atomicity-'.bin2hex(random_bytes(8));
 $find = static fn (): int => DB::table('jobs')->where('queue', $marker)->count();
+$observed = static fn (): int => DB::connection('mysql_queue_observer')->table('jobs')->where('queue', $marker)->count();
 
 try {
     DB::beginTransaction();
@@ -30,15 +32,21 @@ try {
     if ($find() !== 1) {
         throw new RuntimeException('Job not inserted inside transaction');
     }
+    if ($observed() !== 0) {
+        throw new RuntimeException('Uncommitted job visible from separate MySQL connection');
+    }
     DB::rollBack();
-    if ($find() !== 0) {
+    if ($find() !== 0 || $observed() !== 0) {
         throw new RuntimeException('Rolled-back job survived');
     }
 
     DB::beginTransaction();
     DispatchBookingGoogleSync::dispatch(1, 1)->onConnection('database')->onQueue($marker);
+    if ($observed() !== 0) {
+        throw new RuntimeException('Uncommitted job visible from separate MySQL connection');
+    }
     DB::commit();
-    if ($find() !== 1) {
+    if ($find() !== 1 || $observed() !== 1) {
         throw new RuntimeException('Committed job missing');
     }
     echo "PASS MySQL database queue atomic commit/rollback\n";
@@ -47,4 +55,5 @@ try {
         DB::rollBack();
     }
     DB::table('jobs')->where('queue', $marker)->delete();
+    DB::disconnect('mysql_queue_observer');
 }

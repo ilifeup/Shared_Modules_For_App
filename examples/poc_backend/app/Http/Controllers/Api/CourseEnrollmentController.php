@@ -103,9 +103,27 @@ final class CourseEnrollmentController extends Controller
             ->leftJoin('calendar_events as makeup_event', 'makeup_event.id', '=', 'target.calendar_event_id')
             ->where('s.course_term_id', $entry->course_term_id)
             ->orderBy('e.starts_at')
-            ->get(['s.id', 'e.title', 'e.starts_at', 'e.ends_at', 'l.id as leave_id',
+            ->get(['s.id', 's.calendar_event_id', 'e.title', 'e.starts_at', 'e.ends_at', 'l.id as leave_id',
                 'm.id as makeup_id', 'makeup_event.title as makeup_title',
                 'makeup_event.starts_at as makeup_starts_at']);
+
+        // One M11 attendance lookup for all sessions; leave takes precedence over
+        // attendance and an ended session without either is an absence.
+        $presentEventIds = DB::table('event_attendances as a')
+            ->join('event_booking_attendees as attendee', 'attendee.id', '=', 'a.event_booking_attendee_id')
+            ->where('attendee.member_user_id', $entry->user_id)
+            ->whereIn('a.calendar_event_id', $sessions->pluck('calendar_event_id'))
+            ->whereIn('a.status', ['checked_in', 'checked_out'])
+            ->distinct()->pluck('a.calendar_event_id')->map(fn ($eventId): int => (int) $eventId)->all();
+        $present = array_fill_keys($presentEventIds, true);
+        $sessions->transform(function ($session) use ($present) {
+            $session->attendance_status = $session->leave_id !== null ? 'leave'
+                : (isset($present[(int) $session->calendar_event_id]) ? 'present'
+                    : (now()->gte($session->ends_at) ? 'absent' : 'upcoming'));
+            unset($session->calendar_event_id);
+
+            return $session;
+        });
 
         return new JsonResponse(['data' => $sessions]);
     }

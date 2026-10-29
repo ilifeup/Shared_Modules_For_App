@@ -149,6 +149,7 @@ paths:
                         starts_at: { type: string, format: date-time }
                         ends_at: { type: string, format: date-time }
                         leave_id: { type: integer, nullable: true }
+                        attendance_status: { type: string, enum: [leave, present, absent, upcoming], description: 'Leave overrides M11 attendance; otherwise checked-in/out is present, past session absent, future session upcoming.' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Enrollment not found or not visible to this member }

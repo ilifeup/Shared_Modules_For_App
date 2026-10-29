@@ -67,6 +67,32 @@ class CourseSessionHistoryVisibilityTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'data');
     }
 
+    public function test_course_session_attendance_distinguishes_leave_absent_and_upcoming(): void
+    {
+        $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $id = $this->createEnrollment($member, $member, 0);
+        $session = DB::table('course_sessions')->first();
+        $eventId = $session->calendar_event_id;
+        $url = "/api/v1/me/course-enrollments/{$id}/sessions";
+
+        $this->actingAs($member)->getJson($url)
+            ->assertOk()->assertJsonPath('data.0.attendance_status', 'upcoming');
+
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => now()->subDays(2), 'ends_at' => now()->subDay(),
+        ]);
+        $this->actingAs($member)->getJson($url)
+            ->assertOk()->assertJsonPath('data.0.attendance_status', 'absent');
+
+        DB::table('course_session_leaves')->insert([
+            'course_enrollment_id' => $id, 'course_session_id' => $session->id,
+            'reason' => '事先請假', 'requested_at' => now()->subDays(4),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($member)->getJson($url)
+            ->assertOk()->assertJsonPath('data.0.attendance_status', 'leave');
+    }
+
     public function test_unrelated_user_cannot_read_enrollment_sessions(): void
     {
         $booker = User::factory()->create(['is_active' => true, 'verified_status' => 2]);

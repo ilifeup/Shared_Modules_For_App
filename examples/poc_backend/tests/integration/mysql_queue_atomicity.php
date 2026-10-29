@@ -22,7 +22,7 @@ if (DB::getDriverName() !== 'mysql'
 
 $queue = DB::table('jobs');
 $marker = 'mysql-atomicity-'.bin2hex(random_bytes(8));
-$find = static fn (): int => DB::table('jobs')->where('payload', 'like', '%'.$marker.'%')->count();
+$find = static fn (): int => DB::table('jobs')->where('queue', $marker)->count();
 
 try {
     DB::beginTransaction();

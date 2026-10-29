@@ -81,7 +81,11 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
           if (parts[1] == 'self' || (member != null && member > 0)) {
             final pending = PendingBookingRequest(parts[0], member);
             state = {...state, scope: pending};
+          } else {
+            throw const FormatException('已保存的預約對象資料異常，停止重新送出以避免重複報名。');
           }
+        } else {
+          throw const FormatException('已保存的預約識別碼資料異常，停止重新送出以避免重複報名。');
         }
       }
       // The account may have signed out while secure storage was reading.

@@ -14,6 +14,7 @@ use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class InvoiceResource extends Resource
 {
@@ -47,6 +48,30 @@ class InvoiceResource extends Resource
 
     public static function canDeleteAny(): bool
     {
+        return false;
+    }
+
+    /**
+     * Refund is a back-office financial action, never an implicit API booking cancellation.
+     * Match the service's eligibility check so staff do not see an unusable action.
+     * The service revalidates under row locks when the action is submitted.
+     */
+    private static function canRecordRefund(Invoice $invoice): bool
+    {
+        if ((int) $invoice->invoice_status !== 1) {
+            return false;
+        }
+
+        if ($invoice->booking_type === '01') {
+            return DB::table('event_booking_groups')->where('id', $invoice->booking_id)
+                ->whereIn('status', ['cancelled', 'event_cancelled'])->exists();
+        }
+
+        if ($invoice->booking_type === '02') {
+            return DB::table('course_enrollments')->where('id', $invoice->booking_id)
+                ->where('status', 'cancelled')->exists();
+        }
+
         return false;
     }
 
@@ -88,7 +113,7 @@ class InvoiceResource extends Resource
                     Notification::make()->title('發票號碼已更正')->success()->send();
                 }),
             Action::make('refund')->label('記錄現金退款')
-                ->visible(fn (Invoice $record) => (int) $record->invoice_status === 1)
+                ->visible(fn (Invoice $record): bool => static::canRecordRefund($record))
                 ->schema([Textarea::make('reason')->label('退款原因')->required()->maxLength(2000)])
                 ->requiresConfirmation()
                 ->action(function (Invoice $record, array $data): void {

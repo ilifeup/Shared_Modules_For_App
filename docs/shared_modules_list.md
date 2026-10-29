@@ -8,6 +8,11 @@
 
 ## 00｜進度更新規則與最新查核紀錄
 
+### 2026-10-29｜第 2 輪正式 App 與平台確認
+- 已核准：天帝教親和網 tiandi-app 首發 Android；iOS 後續。Tiandi mobile/ 與 backend/ 已存在，Shared packages/ 為依賴，examples/ 僅 PoC。
+- Tiandi main 已新增 scripts/local_baseline_check.sh，更新 AGENTS.md 與現行主計畫；Ubuntu 實測 NOT TESTED。
+- 第 3 輪待辦：clone 兩 repo、映射 shared/、確認 PHP 8.4、Flutter、MySQL 8.4、migration、Android Build、Secrets 掃描、ZIP 快照。
+
 ### 2026-10-29｜轉移 Ubuntu 本機快速開發基準線（規則已更新，實機尚未驗證）
 - 已核准：原 iStudy Ubuntu 主機可用於**隔離的** Shared Modules 開發，不得干擾既有 iStudy 服務、資料、ZFS、PostgreSQL、Docker；獨立 MySQL 8.4 InnoDB 開發環境。
 - 本輪交接只驗證會員 M01/M02/M03、預約 M08、現金收款、簽到 M11、必要公告通知 M04/M06；其他 M01–M20 **OUT OF HANDOFF SCOPE**，保留原規格與程式。

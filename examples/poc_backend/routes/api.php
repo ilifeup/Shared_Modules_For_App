@@ -114,6 +114,8 @@ Route::middleware(['auth:sanctum', 'member.verified'])->group(function () {
     Route::get('/course-terms', [CourseEnrollmentController::class, 'index']);
     Route::post('/course-terms/{id}/enrollments', [CourseEnrollmentController::class, 'store'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::get('/me/course-enrollments', [CourseEnrollmentController::class, 'mine']);
+    Route::get('/me/course-enrollments/{id}/sessions', [CourseEnrollmentController::class, 'sessions'])->whereNumber('id');
+    Route::post('/me/course-enrollments/{id}/sessions/{sessionId}/leave', [CourseEnrollmentController::class, 'leave'])->whereNumber('id')->whereNumber('sessionId')->middleware('throttle:auth-60');
     Route::post('/me/course-enrollments/{id}/cancel', [CourseEnrollmentController::class, 'cancel'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::post('/me/course-enrollments/{id}/cancel-waitlist', [CourseEnrollmentController::class, 'cancelWaitlist'])->whereNumber('id')->middleware('throttle:auth-60');
     Route::post('/admin/invoice-number-ranges', [CashInvoiceController::class, 'addRange'])->middleware('throttle:auth-10');

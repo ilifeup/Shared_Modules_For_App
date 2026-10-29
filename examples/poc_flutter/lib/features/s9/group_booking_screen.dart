@@ -46,6 +46,8 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
       state = {...state, scope: request};
 
   void clear(String scope) => state = {...state}..remove(scope);
+
+  void clearAll() => state = {};
 }
 
 final pendingBookingRequestsProvider =
@@ -75,8 +77,6 @@ class GroupBookingScreen extends ConsumerStatefulWidget {
 
 class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   int? _memberUserId;
-  int? _pendingMemberUserId;
-  bool _hasPendingRequest = false;
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
@@ -106,8 +106,6 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _pendingMemberUserId = selected;
-      _hasPendingRequest = true;
     });
     if (saved == null) {
       ref.read(pendingBookingRequestsProvider.notifier).save(
@@ -120,29 +118,21 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         clientRequestId: requestId,
         memberUserId: selected,
       );
-      if (!mounted) return;
-      setState(() {
-        _result = booking;
-        _pendingMemberUserId = null;
-        _hasPendingRequest = false;
-      });
       _clearPending(scope);
+      if (!mounted || _requestScope != scope) return;
+      setState(() => _result = booking);
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _error = error;
-        if (error is ApiException &&
-            error.statusCode != null &&
-            error.statusCode! >= 400 &&
-            error.statusCode! < 500 &&
-            error.statusCode != 408 &&
-            error.statusCode != 429) {
-          _pendingMemberUserId = null;
-          _hasPendingRequest = false;
-          _clearPending(scope);
-        }
-      });
+      if (error is ApiException &&
+          error.statusCode != null &&
+          error.statusCode! >= 400 &&
+          error.statusCode! < 500 &&
+          error.statusCode != 408 &&
+          error.statusCode != 429) {
+        _clearPending(scope);
+      }
+      if (!mounted || _requestScope != scope) return;
+      setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -157,8 +147,8 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     final event = ref.watch(eventDetailProvider(widget.eventId));
     final family = ref.watch(manageableFamilyMembersProvider);
     final availableMembers = family.value;
-    final result = _result;
     final auth = ref.watch(authControllerProvider);
+    final result = auth.status == AuthStatus.signedIn ? _result : null;
     final scope = auth.status == AuthStatus.signedIn && auth.profile != null
         ? bookingRequestScope(auth.profile!.id, widget.eventId)
         : null;
@@ -194,7 +184,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
                     child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || pending != null || _hasPendingRequest || availableMembers == null
+              onChanged: _busy || pending != null || availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(

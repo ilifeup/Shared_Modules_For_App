@@ -91,3 +91,32 @@
 - 仍須保留基本交易正確性、冪等及最少必要測試；「不過度設計」不等於允許部分扣款、幽靈名額或假付款。
 - 先完成可操作 MVP：期別 CRUD、課堂安排、會員報名與候補、整期一張帳單、現金確認、基本名單。請假/補課與進階自動化只實作已核准的必要最小功能。
 - 若既有文件出現「必須先開發完整例外狀態機／補償流程才可做 MVP」的解讀，以本節最新決策為準。
+
+## 八、2026-10-29 最新程式核對與整批交付清單
+
+> 本節依 PR #53 當前實際程式核對，取代上文「靜態審查發現」中已過時的完成狀態；原始歷史發現保留作為追溯，**不得把歷史缺口當成目前仍未實作**。本節是程式碼靜態查核，未取得實機端到端驗收，不得標示整個課程模組完成。
+
+### 已有程式實作（仍須整合驗收）
+
+- `CourseEnrollmentService::enroll()`：整期報名於交易中建立各堂 Booking，使用固定請求鍵，並建立唯一整期帳單；舊版「報名未建立 Booking」敘述已過時。
+- `CashInvoiceService`：現金確認、逾期釋位、候補遞補、人工退款紀錄已存在；取消報名由 API 控制，實際退款及記錄由管理員另外處理。
+- `CourseEnrollmentController` + `routes/api.php`：課程清單、報名、我的報名、取消、退出候補、管理員確認收款入口已存在。
+- Flutter `features/course/course_screen.dart`：課程清單、報名、我的報名、取消與退出候補已有基本操作；不代表已通過真實 Laravel↔Flutter E2E。
+- `CourseTermResource`、`EditCourseTerm`：基本 CRUD、名額調整保護；`SessionsRelationManager` 目前只提供課堂列表及活動編輯連結；`EnrollmentsRelationManager` 已新增報名狀態篩選。
+- `InvoiceResource`：現金確認、手動退款後記錄等後台操作已存在。
+- `CourseEnrollmentServiceTest`、`CourseTermCancellationTest`：涵蓋部分整期 Booking、帳單、FIFO、取消及退款；CI 通過不代表所有操作入口已完成。
+
+### 尚未完成／尚未證實的整體模組項目（不得逐檔結案）
+
+1. **課程管理 ADD／編輯課堂安排**：管理員從同一入口選取未被其他課程使用的活動、建立/調整課堂關聯、排序、補課名額與已報名課堂修改保護。UI 下拉選項與後端儲存檢查需一起實作；不得只從單一資料表推斷現有 UI 有問題。
+2. **課程管理列表／報名與候補**：正式/候補/待付款統計、開課與結束時間、課程狀態、報名截止與可報名狀態、管理員必要操作及清楚錯誤提示，與現有 Service 保持一致。
+3. **單堂請假／補課**：會員課前取消單堂（請假）的原因、48 小時預設截止與 API/UI 驗證；管理員補課指派、每堂獨立補課名額、唯一會員 Booking、M11 名單及出缺席整合。不得把已有 `course_session_leaves`／`course_makeups` 資料表視為完成。
+4. **完整資料契約**：同步核對 Route → Controller → Service → Model → Database → API 契約 → Filament／Flutter，含權限、狀態、交易、通知與舊資料相容性；更新 `docs/course-mvp-v2.4-contract.md` 中過時的付款/Booking 敘述。
+5. **完整驗收證據**：Pint、Laravel/Pest/MySQL、Filament CRUD、Flutter、真實 API 串接、M11、12 堂整期、FIFO、取消、退款與失敗回滾；記錄同一 HEAD SHA 的結果。未實際執行者標記 NOT TESTED。
+
+### 執行紀律與結案條件
+
+- **完整模組一次盤點、整批設計、相關前後端與資料庫集中修改及測試**；不得一個 PHP 檔案就回報模組完成，不得為單點問題反覆產生微型 Commit/PR。
+- 沿用 PR #53，保持 Draft；Claude/ChatGPT 必須先確認分支 SHA 及檔案責任，避免並行覆寫；禁止自動合併或部署。
+- 驗收矩陣每項標記 `VERIFIED` / `PASS` / `FAIL` / `BLOCKED` / `NOT TESTED`，附程式位置、測試與實際操作證據；只有所有必要流程通過才可提請使用者核准。
+- 本節更新是**審查基線更新**，不是宣稱上述未完成項目已修好。

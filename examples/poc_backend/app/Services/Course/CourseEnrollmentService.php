@@ -235,6 +235,47 @@ final class CourseEnrollmentService
     }
 
     /**
+     * Record a single-session leave without cancelling the term or refunding.
+     * The term and enrollment are locked in the same order as cancellation.
+     */
+    public function requestSessionLeave(int $enrollmentId, int $sessionId, User $actor, string $reason): array
+    {
+        return DB::transaction(function () use ($enrollmentId, $sessionId, $actor, $reason): array {
+            [$term, $entry] = $this->lockOwnEnrollment($enrollmentId, $actor, '目前無權為此會員請假。');
+            if (! in_array($entry->status, ['pending_payment', 'confirmed'], true)) {
+                throw ValidationException::withMessages(['enrollment' => '只有有效整期報名可以申請單堂請假。']);
+            }
+            $session = DB::table('course_sessions as s')
+                ->join('calendar_events as e', 'e.id', '=', 's.calendar_event_id')
+                ->where('s.id', $sessionId)->where('s.course_term_id', $term->id)
+                ->select('s.id', 'e.starts_at')->first();
+            if ($session === null) {
+                throw ValidationException::withMessages(['session' => '此課堂不屬於本期課程。']);
+            }
+            $existing = DB::table('course_session_leaves')
+                ->where('course_enrollment_id', $entry->id)->where('course_session_id', $sessionId)->first();
+            if ($existing !== null) {
+                return ['id' => (int) $existing->id, 'session_id' => $sessionId, 'replayed' => true];
+            }
+            if (now()->gte(Carbon::parse($session->starts_at)->subHours(48))) {
+                throw ValidationException::withMessages(['session' => '距離開課不足 48 小時，無法自行請假。']);
+            }
+            $id = DB::table('course_session_leaves')->insertGetId([
+                'course_enrollment_id' => $entry->id,
+                'course_session_id' => $sessionId,
+                'reason' => $reason,
+                'requested_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            AuditEvent::record('course.session_leave_requested', $actor->id,
+                CourseEnrollment::query()->findOrFail($entry->id), ['session_id' => $sessionId]);
+
+            return ['id' => (int) $id, 'session_id' => $sessionId, 'replayed' => false];
+        }, 3);
+    }
+
+    /**
      * Lock the term then the enrollment (shared lock order) and require the
      * original booker with current database authority over the member. The same
      * check guards retries, so a revoked delegation cannot replay either.

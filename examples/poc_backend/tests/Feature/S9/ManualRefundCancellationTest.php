@@ -75,6 +75,8 @@ class ManualRefundCancellationTest extends TestCase
         DB::table('course_enrollments')->where('id', $enrollment)->update(['status' => 'cancelled']);
         $result = app(CashInvoiceService::class)->recordManualRefund($invoice, $admin, 'Manual refund');
         $this->assertSame(5, $result['status']);
+        // Back-office refund records money movement only; the API owns cancellation.
+        $this->assertSame('cancelled', DB::table('course_enrollments')->where('id', $enrollment)->value('status'));
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
         $this->assertSame(1, DB::table('invoice_refund_audits')->where('invoice_id', $invoice)->count());
 
@@ -117,6 +119,7 @@ class ManualRefundCancellationTest extends TestCase
         DB::table('event_booking_groups')->where('id', $group)->update(['status' => 'cancelled']);
         $result = app(CashInvoiceService::class)->recordManualRefund($invoice, $admin, 'After cancellation');
         $this->assertSame(5, $result['status']);
+        $this->assertSame('cancelled', DB::table('event_booking_groups')->where('id', $group)->value('status'));
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoice)->count());
         $this->assertSame(1, DB::table('invoice_refund_audits')->where('invoice_id', $invoice)->count());
     }

@@ -358,3 +358,41 @@ it('preserves recent original-booker family history after delegation or verifica
         ->postJson("/api/v1/me/booking-groups/{$group->id}/cancel")
         ->assertStatus(403);
 });
+
+it('rejects legacy S6 booking on series-owned course occurrences', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $category = DB::table('course_categories')->insertGetId([
+        'name' => 'Series guard test', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $group = DB::table('course_groups')->insertGetId([
+        'course_category_id' => $category, 'name' => 'Series guard',
+        'capacity' => 2, 'waitlist_capacity' => 2, 'expected_event_count' => 1,
+        'price_amount' => '100.00', 'payment_hold_hours' => 24,
+        'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $term = DB::table('course_terms')->insertGetId([
+        'title' => 'Term guard', 'price_amount' => 1,
+        'enrollment_capacity' => 2, 'waitlist_capacity' => 2,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $groupEvent = s9Event(['booking_capacity' => 2]);
+    $termEvent = s9Event(['booking_capacity' => 2]);
+    DB::table('course_group_events')->insert([
+        'course_group_id' => $group, 'calendar_event_id' => $groupEvent->id,
+        'position' => 1, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('course_sessions')->insert([
+        'course_term_id' => $term, 'calendar_event_id' => $termEvent->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    foreach ([$groupEvent, $termEvent] as $event) {
+        $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/bookings")
+            ->assertStatus(409)->assertJsonPath('error.code', 'SERIES_BOOKING_REQUIRED');
+        expect(DB::table('event_booking_attendees')
+            ->where('calendar_event_id', $event->id)->count())->toBe(0);
+        expect(DB::table('event_bookings')
+            ->where('calendar_event_id', $event->id)->count())->toBe(0);
+    }
+});

@@ -66,18 +66,18 @@ class BookingGroupsRelationManager extends RelationManager
                     ->label('代報名／現場補報名')
                     ->schema([
                         Select::make('member_id')->label('預約會員')->required()->searchable()
-                            ->getSearchResultsUsing(fn (string $search): array => User::query()->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%')->limit(20)->pluck('name', 'id')->all())
+                            ->getSearchResultsUsing(fn (string $search): array => User::query()->where('is_active', true)->where('verified_status', 2)->where(fn ($query) => $query->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%'))->limit(20)->pluck('name', 'id')->all())
                             ->getOptionLabelUsing(fn ($value): ?string => User::query()->find($value)?->name),
                         Select::make('member_user_id')->label('參加會員（每筆一人）')->required()->searchable()
-                            ->getSearchResultsUsing(fn (string $search): array => User::query()->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%')->limit(20)->pluck('name', 'id')->all())
+                            ->getSearchResultsUsing(fn (string $search): array => User::query()->where('is_active', true)->where('verified_status', 2)->where(fn ($query) => $query->where('name', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%'))->limit(20)->pluck('name', 'id')->all())
                             ->getOptionLabelUsing(fn ($value): ?string => User::query()->find($value)?->name),
                     ])
                     ->action(function (array $data): void {
                         /** @var CalendarEvent $event */
                         $event = $this->getOwnerRecord();
                         $member = isset($data['member_id']) ? User::query()->find($data['member_id']) : null;
-                        if ($member === null) {
-                            Notification::make()->title('必須選擇正式會員')->danger()->send();
+                        if ($member === null || ! $member->is_active || (int) $member->verified_status !== 2) {
+                            Notification::make()->title('預約會員必須已驗證且啟用')->danger()->send();
 
                             return;
                         }

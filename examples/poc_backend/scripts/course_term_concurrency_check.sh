@@ -93,7 +93,10 @@ assert d["sequences"] == list(range(1, n)), d
 assert d["invoices"] == 1 and d["seats"] == 1 and d["invoice"] > 0, d
 PY
 INVOICE="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["invoice"])' "$ledger")"
-HEAD_TOKEN_INDEX="$(for i in "${!TOKENS[@]}"; do [ "$(field "enroll$i" waitlist_sequence)" = 1 ] && echo "$i"; done)"
+HEAD_TOKEN_INDEX="$(for i in "${!TOKENS[@]}"; do
+  if [ "$(field "enroll$i" waitlist_sequence)" = 1 ]; then echo "$i"; fi
+done)"
+[ -n "$HEAD_TOKEN_INDEX" ] || fail "FIFO head (waitlist_sequence=1) not found"
 
 # ---- 2. cancel retries race the administrator's cash confirmation ----------------
 pids=()

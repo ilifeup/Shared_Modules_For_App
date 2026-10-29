@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Payment\CashInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -55,7 +56,6 @@ class ManualRefundCancellationTest extends TestCase
             'course_term_id' => $term,
             'user_id' => $member->id,
             'booker_user_id' => $member->id,
-            'contact_name' => $member->name,
             'status' => 'confirmed',
             'created_at' => now(),
             'updated_at' => now(),
@@ -95,9 +95,10 @@ class ManualRefundCancellationTest extends TestCase
         $group = DB::table('event_booking_groups')->insertGetId([
             'calendar_event_id' => $event->id,
             'booker_user_id' => $member->id,
+            'contact_name' => $member->name,
             'status' => 'confirmed',
             'seat_count' => 1,
-            'client_request_id' => (string) \Illuminate\Support\Str::uuid(),
+            'client_request_id' => (string) Str::uuid(),
             'booked_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),

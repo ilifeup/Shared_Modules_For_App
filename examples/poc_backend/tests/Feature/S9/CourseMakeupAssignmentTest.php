@@ -92,6 +92,29 @@ class CourseMakeupAssignmentTest extends TestCase
     public function test_assignment_rejects_full_event_capacity_even_with_makeup_quota(): void
     {
         $f = $this->fixture(makeupCapacity: 2, eventCapacity: 1);
+        $other = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+        $groupId = DB::table('event_booking_groups')->insertGetId([
+            'calendar_event_id' => $f['target']->id,
+            'booker_user_id' => $other->id,
+            'contact_name' => $other->name,
+            'contact_email' => $other->email,
+            'status' => 'confirmed',
+            'seat_count' => 1,
+            'booked_at' => now(),
+            'confirmed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('event_booking_attendees')->insert([
+            'event_booking_group_id' => $groupId,
+            'calendar_event_id' => $f['target']->id,
+            'member_user_id' => $other->id,
+            'name' => $other->name,
+            'status' => 'confirmed',
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         try {
             app(CourseMakeupAssignmentService::class)->assign($f['leave'], $f['targetSession'], $f['admin']);
             $this->fail('A full target event must not accept a makeup booking.');

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
+import '../auth/auth_controller.dart';
 import '../../ui/status_box.dart';
 import '../calendar/calendar_providers.dart';
 
@@ -40,7 +41,16 @@ class PendingBookingRequest {
 
 class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
   @override
-  Map<String, PendingBookingRequest> build() => {};
+  Map<String, PendingBookingRequest> build() {
+    ref.listen(authControllerProvider, (previous, next) {
+      if (previous != null && (next.status == AuthStatus.signedOut ||
+          (previous.profile?.id != null && next.profile?.id != null &&
+           previous.profile!.id != next.profile!.id))) {
+        clearAll();
+      }
+    });
+    return {};
+  }
 
   void save(String scope, PendingBookingRequest request) =>
       state = {...state, scope: request};

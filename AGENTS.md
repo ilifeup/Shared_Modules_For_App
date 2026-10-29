@@ -3,6 +3,9 @@
 > **每次工作第一步：先讀 [PROJECT_RULES.md](PROJECT_RULES.md) 的「一、有效決策」。** 該文件是唯一的已核准業務規則權威；本文件只管理 AI 工作方法，**不另行建立第二套業務規則**。
 > 永久問題與 Debug 追蹤：[Shared Issue #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35)。跨 App 依賴參考 [Tiandi Issue #38](https://github.com/ilifeup/tiandi-app/issues/38)。`FAST-DEVELOP.md` 已刪除，其完整歷史內容封存於 PROJECT_RULES.md。
 
+## 進度同步硬性規則（2026-10-29 使用者核准）
+每次開發、修復、合併、測試、驗收或模組狀態有進展，必須在同一工作批次同步更新 `docs/shared_modules_list.md` 的對應 M01–M20 狀態、變更摘要、證據 SHA／PR／CI、PASS／FAIL／BLOCKED／NOT TESTED 與剩餘事項。只找到程式碼不得標示 PASS；沒有新進度不需空轉提交。若文件未同步，不得宣稱該批工作已完成。`PROJECT_RULES.md` 的有效決策優先，不得以狀態文件更改業務規則。
+
 ## 每次必做（ChatGPT / Claude / Codex / Copilot）
 1. **讀最新真值**：取得 main SHA、PROJECT_RULES.md 有效決策、Issue #35 最新正文與歷史、相關 SPEC/ADR、Open/Closed Issues、PR、Commit、CI；讀不到就說明，不能靠記憶補足。
 2. **先比對衝突**：逐條核對使用者最新核准規則；舊測試、舊註解、舊 PR 與已取消功能不得重新成為權威。

@@ -90,6 +90,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
+  String? _resultScope;
   String? get _requestScope {
     final auth = ref.read(authControllerProvider);
     if (auth.status != AuthStatus.signedIn || auth.profile == null) return null;
@@ -131,7 +132,10 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       );
       if (!mounted || _requestScope != scope) return;
       _clearPending(scope);
-      setState(() => _result = booking);
+      setState(() {
+        _result = booking;
+        _resultScope = scope;
+      });
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
       if (!mounted || _requestScope != scope) return;
@@ -159,10 +163,10 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     final family = ref.watch(manageableFamilyMembersProvider);
     final availableMembers = family.value;
     final auth = ref.watch(authControllerProvider);
-    final result = auth.status == AuthStatus.signedIn ? _result : null;
     final scope = auth.status == AuthStatus.signedIn && auth.profile != null
         ? bookingRequestScope(auth.profile!.id, widget.eventId)
         : null;
+    final result = scope != null && scope == _resultScope ? _result : null;
     final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
 
     return Scaffold(

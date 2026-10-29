@@ -55,7 +55,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('course_session_leave_id')->unique()->constrained()->cascadeOnDelete();
             $table->foreignId('target_course_session_id')->constrained('course_sessions')->restrictOnDelete();
-            $table->foreignId('event_booking_id')->unique()->constrained('event_bookings')->restrictOnDelete();
+            $table->foreignId('event_booking_group_id')->unique()->constrained('event_booking_groups')->restrictOnDelete();
             $table->timestamps();
             $table->index('target_course_session_id');
         });

@@ -18,6 +18,6 @@ class CourseMakeup extends Model
 
     public function booking(): BelongsTo
     {
-        return $this->belongsTo(EventBooking::class, 'event_booking_id');
+        return $this->belongsTo(EventBookingGroup::class, 'event_booking_group_id');
     }
 }

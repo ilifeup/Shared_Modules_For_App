@@ -122,8 +122,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         scope, PendingBookingRequest(requestId, selected),
       );
     }
+    final api = ref.read(bookingGroupApiProvider);
     try {
-      final booking = await ref.read(bookingGroupApiProvider).book(
+      final booking = await api.book(
         widget.eventId,
         clientRequestId: requestId,
         memberUserId: selected,

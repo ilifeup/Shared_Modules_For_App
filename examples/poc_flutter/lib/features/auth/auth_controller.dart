@@ -49,9 +49,13 @@ class AuthController extends Notifier<AuthState> {
       state = AuthState.signedIn(profile);
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
-        await storage.clear();
-        await clearPendingBookingStorage();
-        state = const AuthState.signedOut();
+        try {
+          await storage.clear();
+        } finally {
+          // Credential revocation must sign out even if secure storage fails.
+          state = const AuthState.signedOut();
+          await clearPendingBookingStorage();
+        }
       } else {
         // Offline or server error: keep the token, let the member retry.
         state = const AuthState.signedOut();
@@ -68,7 +72,11 @@ class AuthController extends Notifier<AuthState> {
       final profile = await ref.read(memberApiProvider).myProfile();
       state = AuthState.signedIn(profile);
     } catch (_) {
-      await storage.clear();
+      try {
+        await storage.clear();
+      } finally {
+        state = const AuthState.signedOut();
+      }
       rethrow;
     }
   }

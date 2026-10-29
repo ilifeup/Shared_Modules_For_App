@@ -139,6 +139,38 @@ final class CourseEnrollmentService
         ];
     }
 
+    /** Cancel a waitlisted course enrollment through the member API. */
+    public function cancelWaitlist(int $enrollmentId, User $actor): array
+    {
+        return DB::transaction(function () use ($enrollmentId, $actor): array {
+            $hint = DB::table('course_enrollments')->where('id', $enrollmentId)->first();
+            if ($hint === null || (int) $hint->booker_user_id !== (int) $actor->id) {
+                throw ValidationException::withMessages(['enrollment' => '找不到可取消的報名。']);
+            }
+            $term = DB::table('course_terms')->where('id', $hint->course_term_id)->lockForUpdate()->first();
+            if ($term === null) {
+                throw ValidationException::withMessages(['term' => '課程期別不存在。']);
+            }
+            $entry = DB::table('course_enrollments')->where('id', $enrollmentId)->lockForUpdate()->first();
+            if ($entry === null || (int) $entry->course_term_id !== (int) $term->id
+                || (int) $entry->booker_user_id !== (int) $actor->id
+                || $entry->status !== 'waitlisted') {
+                throw ValidationException::withMessages(['enrollment' => '目前僅支援取消候補中的課程報名。']);
+            }
+            $member = User::query()->find($entry->user_id);
+            if ($member === null || ! $this->bookings->canManageFamily($actor, $member, true)) {
+                throw ValidationException::withMessages(['member' => '目前無權取消此會員的報名。']);
+            }
+            if (DB::table('invoices')->where('booking_type', '02')->where('booking_id', $entry->id)->exists()) {
+                throw ValidationException::withMessages(['invoice' => '候補報名存在帳單，請管理員檢查。']);
+            }
+            DB::table('course_enrollments')->where('id', $entry->id)
+                ->update(['status' => 'cancelled', 'updated_at' => now()]);
+
+            return ['id' => $entry->id, 'status' => 'cancelled'];
+        }, 3);
+    }
+
     /**
      * One term seat per verified member. Lock the term before capacity checks.
      * Guardian delegation is verified inside the same transaction.

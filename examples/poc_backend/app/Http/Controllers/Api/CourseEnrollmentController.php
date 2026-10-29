@@ -67,6 +67,12 @@ final class CourseEnrollmentController extends Controller
         return new JsonResponse(['data' => $result]);
     }
 
+    /** POST /api/v1/me/course-enrollments/{id}/cancel-waitlist. */
+    public function cancelWaitlist(Request $request, int $id): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->enrollments->cancelWaitlist($id, $request->user())]);
+    }
+
     /** GET /api/v1/me/course-enrollments: own and original-booker family history. */
     public function mine(Request $request): JsonResponse
     {

@@ -128,11 +128,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         clientRequestId: requestId,
         memberUserId: selected,
       );
-      _clearPending(scope);
       if (!mounted || _requestScope != scope) return;
+      _clearPending(scope);
       setState(() => _result = booking);
       ref.invalidate(myBookingGroupsProvider);
     } catch (error) {
+      if (!mounted || _requestScope != scope) return;
       if (error is ApiException &&
           error.statusCode != null &&
           error.statusCode! >= 400 &&
@@ -141,7 +142,6 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           error.statusCode != 429) {
         _clearPending(scope);
       }
-      if (!mounted || _requestScope != scope) return;
       setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _busy = false);

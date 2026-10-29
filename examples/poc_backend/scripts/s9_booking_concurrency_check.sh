@@ -82,6 +82,14 @@ for i in $(seq 1 "$g"); do
     if [ "$code" = 201 ] || [ "$code" = 200 ]; then group_ok=$((group_ok + 1))
     else other=$((other + 1)); echo "  unexpected group: $code $(head -c 300 "${f%.code}.json")"; fi
   done
+  if [ "$i" -le "$RETRIES" ]; then
+    first_status="$(cat "$OUT/g$i-1.code")"
+    retry_status="$(cat "$OUT/g$i-2.code")"
+    if ! { [ "$first_status" = 201 ] && [ "$retry_status" = 200 ]; } && ! { [ "$first_status" = 200 ] && [ "$retry_status" = 201 ]; }; then
+      echo "::error title=s9 booking concurrency::same-key retry $i must return exactly one 201 and one 200 (got $first_status and $retry_status)"
+      exit 1
+    fi
+  fi
   if [ -f "$OUT/g$i-2.json" ]; then
     a="$(grep -o '"id":"[0-9]*"' "$OUT/g$i-1.json" | head -n 1)"; b="$(grep -o '"id":"[0-9]*"' "$OUT/g$i-2.json" | head -n 1)"
     [ -n "$a" ] && [ "$a" = "$b" ] || { echo "::error title=s9 booking concurrency::retry $i returned different groups ($a vs $b)"; exit 1; }

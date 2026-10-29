@@ -43,7 +43,7 @@ class PendingBookingRequest {
 }
 
 class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  FlutterSecureStorage get _storage => ref.read(pendingBookingStorageProvider);
   final Set<String> _loaded = {};
   final Set<String> _loading = {};
 
@@ -110,6 +110,10 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
     _loaded.clear();
   }
 }
+
+final pendingBookingStorageProvider = Provider<FlutterSecureStorage>(
+  (ref) => const FlutterSecureStorage(),
+);
 
 final pendingBookingRequestsProvider =
     NotifierProvider<PendingBookingRequests, Map<String, PendingBookingRequest>>(
@@ -197,8 +201,17 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         memberUserId: selected,
       );
       if (!mounted || _requestScope != scope) return;
-      await _clearPending(scope);
+      // Booking succeeded: do not reinterpret a local storage cleanup error
+      // as an HTTP failure. The server already accepted the request.
+      Object? cleanupError;
+      try {
+        await _clearPending(scope);
+      } catch (error) {
+        cleanupError = error;
+      }
+      if (!mounted || _requestScope != scope) return;
       setState(() {
+        _error = cleanupError == null ? null : '報名已成功，但本機重試資料清理失敗。';
         _result = booking;
         _resultScope = scope;
       });
@@ -211,9 +224,13 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
           error.statusCode! < 500 &&
           error.statusCode != 408 &&
           error.statusCode != 429) {
-        await _clearPending(scope);
+        try {
+          await _clearPending(scope);
+        } catch (_) {
+          // Keep the original API error; cleanup will be retried later.
+        }
       }
-      setState(() => _error = error);
+      if (mounted && _requestScope == scope) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

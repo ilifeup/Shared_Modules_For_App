@@ -5,6 +5,7 @@ namespace App\Services\Payment;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Support\Api\ApiException;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Settings;
@@ -286,7 +287,7 @@ final class CashInvoiceService
     public function recordManualRefund(int $invoiceId, User $admin, string $reason): array
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {
-            throw ValidationException::withMessages(['admin' => '僅管理員可記錄退款。']);
+            throw new ApiException(403, 'ADMIN_REQUIRED', '僅管理員可記錄退款。');
         }
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => '請填寫退款原因。']);
@@ -398,7 +399,7 @@ final class CashInvoiceService
     public function confirmCash(int $invoiceId, User $admin): array
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {
-            throw ValidationException::withMessages(['admin' => '僅管理員可確認現金收款。']);
+            throw new ApiException(403, 'ADMIN_REQUIRED', '僅管理員可確認現金收款。');
         }
 
         return DB::transaction(function () use ($invoiceId, $admin): array {

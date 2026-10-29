@@ -43,7 +43,7 @@ Map<String, dynamic> _group(String status) => {
   'id': '3',
   'event_id': '7',
   'status': status,
-  'seat_count': 2,
+  'seat_count': 1,
   'contact_name': '會員',
   'is_guest': false,
   'booked_at': '2026-11-01T00:00:00Z',
@@ -53,8 +53,7 @@ Map<String, dynamic> _group(String status) => {
   'cancel_deadline': '2026-12-01T02:00:00Z',
   'can_cancel': true,
   'attendees': [
-    {'id': '10', 'name': '會員', 'status': status, 'is_me': true},
-    {'id': '11', 'name': '家人', 'status': status, 'is_me': false},
+    {'id': '10', 'name': '會員', 'status': status, 'is_me': false},
   ],
   'event': _event,
 };
@@ -62,29 +61,27 @@ Map<String, dynamic> _group(String status) => {
 Future<void> main() async {
   final fake = FakeTransport();
 
-  // M08 group booking.
+  // M08 single-member booking (delegated family member).
   fake.responses['POST /api/v1/events/7/booking-groups'] = {
     'data': _group('waitlisted'),
   };
   fake.responses['GET /api/v1/me/family-memberships'] = {
     'data': [
-      {'member_user_id': 17},
+      {'member_user_id': 17, 'name': '家人'},
     ],
   };
   final familyIds = await BookingGroupApi(fake).manageableMemberIds();
   check(familyIds.length == 1 && familyIds.single == 17, 'family IDs');
   final group = await BookingGroupApi(fake)
-      .book('7', clientRequestId: 'uuid-1', attendeeMemberIds: familyIds);
+      .book('7', clientRequestId: 'uuid-1', memberUserId: familyIds.single);
   check(group.isWaitlisted && group.waitlistPosition == 1, 'waitlist');
-  check(group.venue == '道場 2F A' && group.attendees.length == 2, 'group');
+  check(group.venue == '道場 2F A' && group.attendees.length == 1, 'group');
   check(fake.bodies.last!['client_request_id'] == 'uuid-1', 'idempotency');
-  final sentAttendees = fake.bodies.last!['attendees'] as List<dynamic>;
   check(
-    sentAttendees.length == 1 &&
-        (sentAttendees.single as Map<String, dynamic>)['member_user_id'] ==
-            17 &&
-        !sentAttendees.single.containsKey('name'),
-    'member-only request contract',
+    fake.bodies.last!['member_user_id'] == 17 &&
+        !fake.bodies.last!.containsKey('attendees') &&
+        fake.bodies.last!.length == 2,
+    'single-member request contract',
   );
   fake.responses['GET /api/v1/me/booking-groups'] = {
     'data': [_group('confirmed')],

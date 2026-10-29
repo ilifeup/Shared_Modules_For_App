@@ -19,10 +19,13 @@ final myCourseEnrollmentsProvider = FutureProvider.autoDispose<List<dynamic>>((
   return response.data['data'] as List<dynamic>;
 });
 
-final courseSessionsProvider = FutureProvider.autoDispose.family<List<dynamic>, int>((ref, id) async {
-  final response = await ref.watch(dioProvider).get('/api/v1/me/course-enrollments/$id/sessions');
-  return response.data['data'] as List<dynamic>;
-});
+final courseSessionsProvider = FutureProvider.autoDispose
+    .family<List<dynamic>, int>((ref, id) async {
+      final response = await ref
+          .watch(dioProvider)
+          .get('/api/v1/me/course-enrollments/$id/sessions');
+      return response.data['data'] as List<dynamic>;
+    });
 
 class CourseScreen extends ConsumerStatefulWidget {
   const CourseScreen({super.key});
@@ -117,68 +120,88 @@ class _CourseScreenState extends ConsumerState<CourseScreen> {
         builder: (context, sheetRef, child) => SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: sheetRef.watch(courseSessionsProvider(enrollmentId)).when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Text('課堂讀取失敗：$error'),
-              data: (sessions) => ListView(
-                shrinkWrap: true,
-                children: [
-                  const Text('課堂與請假'),
-                  for (final session in sessions)
-                    ListTile(
-                      title: Text(session['title']?.toString() ?? '課堂'),
-                      subtitle: Text('${session['starts_at'] ?? ''}'),
-                      trailing: session['leave_id'] != null
-                          ? const Text('已請假')
-                          : TextButton(
-                              onPressed: () async {
-                                final controller = TextEditingController();
-                                try {
-                                  final reason = await showDialog<String>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text('單堂請假'),
-                                      content: TextField(
-                                        controller: controller,
-                                        maxLength: 2000,
-                                        maxLines: 3,
-                                        decoration: const InputDecoration(labelText: '請假原因'),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(dialogContext),
-                                          child: const Text('返回'),
+            child: sheetRef
+                .watch(courseSessionsProvider(enrollmentId))
+                .when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, _) => Text('課堂讀取失敗：$error'),
+                  data: (sessions) => ListView(
+                    shrinkWrap: true,
+                    children: [
+                      const Text('課堂與請假'),
+                      for (final session in sessions)
+                        ListTile(
+                          title: Text(session['title']?.toString() ?? '課堂'),
+                          subtitle: Text('${session['starts_at'] ?? ''}'),
+                          trailing: session['leave_id'] != null
+                              ? const Text('已請假')
+                              : TextButton(
+                                  onPressed: () async {
+                                    final controller = TextEditingController();
+                                    try {
+                                      final reason = await showDialog<String>(
+                                        context: context,
+                                        builder: (dialogContext) => AlertDialog(
+                                          title: const Text('單堂請假'),
+                                          content: TextField(
+                                            controller: controller,
+                                            maxLength: 2000,
+                                            maxLines: 3,
+                                            decoration: const InputDecoration(
+                                              labelText: '請假原因',
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(dialogContext),
+                                              child: const Text('返回'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () => Navigator.pop(
+                                                dialogContext,
+                                                controller.text.trim(),
+                                              ),
+                                              child: const Text('送出'),
+                                            ),
+                                          ],
                                         ),
-                                        FilledButton(
-                                          onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-                                          child: const Text('送出'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                  if (reason == null) return;
-                                  if (reason.length < 2) {
-                                    if (mounted) setState(() => _message = '請假原因至少 2 個字');
-                                    return;
-                                  }
-                                  await ref.read(dioProvider).post(
-                                    '/api/v1/me/course-enrollments/$enrollmentId/sessions/${session['id']}/leave',
-                                    data: {'reason': reason},
-                                  );
-                                  sheetRef.invalidate(courseSessionsProvider(enrollmentId));
-                                  if (mounted) setState(() => _message = '單堂請假已記錄');
-                                } catch (error) {
-                                  if (mounted) setState(() => _message = '請假失敗：$error');
-                                } finally {
-                                  controller.dispose();
-                                }
-                              },
-                              child: const Text('請假'),
-                            ),
-                    ),
-                ],
-              ),
-            ),
+                                      );
+                                      if (reason == null) return;
+                                      if (reason.length < 2) {
+                                        if (mounted)
+                                          setState(
+                                            () => _message = '請假原因至少 2 個字',
+                                          );
+                                        return;
+                                      }
+                                      await ref
+                                          .read(dioProvider)
+                                          .post(
+                                            '/api/v1/me/course-enrollments/$enrollmentId/sessions/${session['id']}/leave',
+                                            data: {'reason': reason},
+                                          );
+                                      sheetRef.invalidate(
+                                        courseSessionsProvider(enrollmentId),
+                                      );
+                                      if (mounted)
+                                        setState(() => _message = '單堂請假已記錄');
+                                    } catch (error) {
+                                      if (mounted)
+                                        setState(
+                                          () => _message = '請假失敗：$error',
+                                        );
+                                    } finally {
+                                      controller.dispose();
+                                    }
+                                  },
+                                  child: const Text('請假'),
+                                ),
+                        ),
+                    ],
+                  ),
+                ),
           ),
         ),
       ),

@@ -53,7 +53,11 @@ final class BookingService
      */
     public function cancel(EventBooking $booking, User $actor): EventBooking
     {
-        return $this->engine->cancelLegacy($booking, $actor, $actor->id !== $booking->user_id);
+        // Only a verified administrator can bypass ownership and the cancellation deadline.
+        // A different user ID is never evidence of administrator authority.
+        $byAdmin = $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
+
+        return $this->engine->cancelLegacy($booking, $actor, $byAdmin);
     }
 
     public static function unavailable(string $reason): ApiException

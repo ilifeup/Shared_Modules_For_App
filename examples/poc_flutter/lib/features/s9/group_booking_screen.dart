@@ -334,7 +334,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             ),
           ] else ...[
             DropdownButtonFormField<int?>(
-              key: const Key('booking-member'),
+              key: ValueKey('booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}'),
               initialValue: availableMembers == null ||
                       !(availableMembers.any((m) => m.id == (pending?.memberUserId ?? _memberUserId)))
                   ? null
@@ -375,8 +375,10 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ErrorBox(error: _error!),
             FilledButton(
               key: const Key('group-submit'),
-              onPressed: _busy ? null : _submit,
-              child: Text(_busy ? '處理中…' : '送出報名／重試'),
+              onPressed: _busy || restoring || scope == null || availableMembers == null
+                  ? null
+                  : _submit,
+              child: Text(_busy ? '處理中…' : restoring ? '還原報名資料中…' : '送出報名／重試'),
             ),
           ],
         ],

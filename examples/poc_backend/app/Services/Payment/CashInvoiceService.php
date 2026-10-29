@@ -264,8 +264,51 @@ final class CashInvoiceService
         }
 
         return DB::transaction(function () use ($invoiceId, $admin, $reason): array {
+            // Match cash confirmation's parent-first lock order to prevent
+            // refund/cancellation races and cross-service deadlocks.
+            $hint = DB::table('invoices')->where('id', $invoiceId)->first();
+            if ($hint === null) {
+                throw ValidationException::withMessages(['invoice' => '帳單不存在。']);
+            }
+
+            if ($hint->booking_type === '01') {
+                $groupHint = DB::table('event_booking_groups')->where('id', $hint->booking_id)->first();
+                if ($groupHint === null || DB::table('calendar_events')
+                    ->where('id', $groupHint->calendar_event_id)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '預約或活動不存在。']);
+                }
+                $group = DB::table('event_booking_groups')->where('id', $hint->booking_id)
+                    ->lockForUpdate()->first();
+                if ($group === null || (int) $group->calendar_event_id !== (int) $groupHint->calendar_event_id
+                    || ! in_array($group->status, [
+                        EventBookingGroup::STATUS_CANCELLED,
+                        EventBookingGroup::STATUS_EVENT_CANCELLED,
+                    ], true)) {
+                    throw ValidationException::withMessages(['invoice' => '必須先取消預約，才能記錄退款。']);
+                }
+            } elseif ($hint->booking_type === '02') {
+                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
+                    ->value('course_term_id');
+                if ($termId === null || DB::table('course_terms')->where('id', $termId)
+                    ->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '整期課程報名不存在。']);
+                }
+                $enrollment = DB::table('course_enrollments')->where('id', $hint->booking_id)
+                    ->lockForUpdate()->first();
+                if ($enrollment === null || (int) $enrollment->course_term_id !== (int) $termId
+                    || $enrollment->status !== 'cancelled') {
+                    throw ValidationException::withMessages(['invoice' => '必須先取消整期課程報名，才能記錄退款。']);
+                }
+            } else {
+                throw ValidationException::withMessages(['invoice' => '帳單預約類型不受支援。']);
+            }
+
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
-            if ($invoice === null || (int) $invoice->invoice_status !== 1) {
+            if ($invoice === null || $invoice->booking_type !== $hint->booking_type
+                || (int) $invoice->booking_id !== (int) $hint->booking_id) {
+                throw ValidationException::withMessages(['invoice' => '帳單資料已變更，請重新操作。']);
+            }
+            if ((int) $invoice->invoice_status !== 1) {
                 throw ValidationException::withMessages(['invoice' => '僅已付款且尚未退款的帳單可以退款。']);
             }
             DB::table('payment_transactions')->insert([

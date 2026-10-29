@@ -100,27 +100,41 @@ paths:
       tags: [courses]
       operationId: recordInvoiceRefund
       summary: Administrator records an actual manual cash refund
+      description: Only after the booking or term enrollment was cancelled through its own flow; the invoice must match that booking and have exactly one successful cash collection equal to its amount. A retry after the refund was recorded returns the same result (replayed=true) without a second refund transaction. Cancellation never refunds automatically.
       x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
+        '422': { description: 'Booking not cancelled, invoice not paid, mismatched invoice or no matching cash collection' }
         '429': { description: Too many requests }
-        '200': { description: Refund recorded }
+        '200':
+          description: Refund recorded, or the recorded refund on retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: integer, enum: [5] }
+                      replayed: { type: boolean }
 
   /me/course-enrollments/{id}/cancel:
     post:
       tags: [courses]
       operationId: cancelCourseEnrollment
       summary: Cancel an entire course enrollment and release derived session seats
-      description: Only the original booker with current family delegation may cancel before the term cutoff. Paid invoices remain paid for separate administrator refund processing; pending invoices become cancelled. No automatic refund.
+      description: Only the original booker with current family delegation may cancel before the term cutoff. Every derived session booking is released and the FIFO waitlist is filled in the same transaction. Paid invoices remain paid for separate administrator refund processing; pending invoices become cancelled. No automatic refund. A retry of an already cancelled enrollment returns the same result (replayed=true) without further effects.
       x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         '200':
-          description: Enrollment cancelled
+          description: Enrollment cancelled (or already cancelled on retry)
           content:
             application/json:
               schema:
@@ -131,6 +145,7 @@ paths:
                     properties:
                       id: { type: integer }
                       status: { type: string, enum: [cancelled] }
+                      replayed: { type: boolean }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '422': { description: 'Cancellation is not permitted or invoice is inconsistent' }
@@ -140,11 +155,24 @@ paths:
       tags: [courses]
       operationId: cancelCourseWaitlist
       summary: Cancel a waitlisted course enrollment without touching payments
+      description: Original booker with current family delegation only. A retry of a completed waitlist cancellation returns the same result (replayed=true).
       x-verification: required
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
-        '200': { description: Waitlisted enrollment cancelled }
+        '200':
+          description: Waitlisted enrollment cancelled (or already cancelled on retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string, enum: [cancelled] }
+                      replayed: { type: boolean }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '422': { description: 'Enrollment not waitlisted, unauthorized or inconsistent' }
@@ -213,7 +241,9 @@ paths:
                     type: object
                     properties:
                       id: { type: integer }
-                      status: { type: string, enum: [confirmed] }
+                      status: { type: string, enum: [confirmed, cancelled], description: Stored enrollment status; a replay for an invoice paid before the member cancelled reports cancelled }
+                      invoice_id: { type: integer }
+                      replayed: { type: boolean }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Enrollment not found }
@@ -261,7 +291,16 @@ paths:
               properties:
                 member_user_id: { type: integer, description: Omit for self enrollment; family delegation required for another member }
       responses:
-        '201': { description: Enrollment created as pending_payment or waitlisted }
+        '201':
+          description: Enrollment created as pending_payment or waitlisted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseEnrollmentResult' }
+        '200':
+          description: Retry by the same booker for the same member returns the existing active place (replayed=true); no second seat, invoice or session booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseEnrollmentResult' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrVerification' }
         '404': { description: Term or member not found }
@@ -2370,6 +2409,16 @@ components:
       required: true
       schema: { type: string, format: uuid }
   schemas:
+    CourseEnrollmentResult:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            status: { type: string, enum: [pending_payment, confirmed, waitlisted] }
+            waitlist_sequence: { type: integer, nullable: true }
+            replayed: { type: boolean }
     VerificationPolicy:
       type: string
       enum: [email_required, phone_required]

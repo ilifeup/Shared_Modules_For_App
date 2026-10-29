@@ -41,10 +41,22 @@ final class BookingEngine
 
     public function __construct(private readonly BookingSideEffects $effects) {}
 
-    /** Current database authorization for self or a delegated family member. */
+    /**
+     * Current database authorization for self or a delegated family member.
+     * The caller's User models may be stale: qualification is re-read from the
+     * database, with a locking read when $lock is set so that a revocation
+     * committed after this transaction started is still seen (InnoDB consistent
+     * reads would return the older snapshot).
+     */
     public function canManageFamily(User $manager, User $member, bool $lock = false): bool
     {
-        if (! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser
+        $users = User::query()->whereKey(array_unique([$manager->id, $member->id]))
+            ->when($lock, fn ($query) => $query->sharedLock())
+            ->get()->keyBy('id');
+        $manager = $users->get($manager->id);
+        $member = $users->get($member->id);
+        if ($manager === null || $member === null
+            || ! $manager->is_active || (int) $manager->verified_status !== 2 || $manager->FamilyUser
             || ! $member->is_active || (int) $member->verified_status !== 2) {
             return false;
         }
@@ -277,6 +289,17 @@ final class BookingEngine
                     });
                     if (! $valid) {
                         throw new ApiException(422, 'INVALID_COURSE_BOOKING', '整期課程預約關聯無效。');
+                    }
+                    // Term capacity is the authority, but a derived seat still
+                    // needs a live occurrence (never a cancelled or draft one).
+                    $sessionReason = match (true) {
+                        $locked->status === CalendarEvent::STATUS_CANCELLED => 'event_cancelled',
+                        $locked->status !== CalendarEvent::STATUS_PUBLISHED => 'event_not_published',
+                        ! $locked->booking_enabled => 'disabled',
+                        default => null,
+                    };
+                    if ($sessionReason !== null) {
+                        throw self::unavailable($sessionReason);
                     }
                     $status = EventBookingGroup::STATUS_CONFIRMED;
                 } else {

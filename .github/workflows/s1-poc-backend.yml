@@ -81,7 +81,9 @@ jobs:
       - name: Composer audit (diagnostic, checked by Gate)
         id: audit
         continue-on-error: true
-        run: composer audit
+        run: |
+          set -o pipefail
+          composer audit 2>&1 | tee "$RUNNER_TEMP/audit.log"
 
       - name: Prepare environment
         run: bash scripts/ci_env.sh
@@ -106,15 +108,20 @@ jobs:
         id: pint
         continue-on-error: true
         run: |
-          if ! vendor/bin/pint --test -v; then
-            # Print the formatter's exact proposed patch for reproducible CI
-            # diagnostics. Do not alter the checked-out source or weaken Gate.
-            vendor/bin/pint --quiet
-            echo 'PINT_PATCH_BEGIN'
-            git diff --no-ext-diff --unified=3 -- .
-            echo 'PINT_PATCH_END'
-            exit 1
-          fi
+          set -o pipefail
+          # The log (failing files + exact patch) is published as annotations,
+          # because job logs are not always reachable. Gate still fails on it.
+          {
+            if ! vendor/bin/pint --test -v; then
+              vendor/bin/pint --quiet
+              echo 'PINT_PATCH_BEGIN'
+              git diff --no-ext-diff --unified=3 -- .
+              echo 'PINT_PATCH_END'
+              # Restore the checked-out source so later steps test the commit.
+              git checkout -- .
+              exit 1
+            fi
+          } 2>&1 | tee "$RUNNER_TEMP/pint.log"
 
       - name: Pest (MySQL)
         id: pest
@@ -144,6 +151,11 @@ jobs:
         timeout-minutes: 8
         run: bash scripts/m11_checkin_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/m11_concurrency.log"
 
+      - name: Course term concurrency (last seat, FIFO, cancel replay vs cash confirmation)
+        id: course_concurrency
+        timeout-minutes: 8
+        run: bash scripts/course_term_concurrency_check.sh 2>&1 | tee "$RUNNER_TEMP/course_concurrency.log"
+
       - name: Verify irreversible guest-purge migration and member-only schema
         id: rollback
         run: |
@@ -157,12 +169,13 @@ jobs:
           } 2>&1 | tee "$RUNNER_TEMP/rollback.log"
 
       - name: Publish failure details as annotations
-        if: failure() || steps.pint.outcome == 'failure'
+        if: failure() || steps.pint.outcome == 'failure' || steps.audit.outcome == 'failure'
         working-directory: .
         run: |
           set +e
-          [ "${{ steps.pint.outcome }}" = failure ] && (cd examples/poc_backend && vendor/bin/pint --test -v > "$RUNNER_TEMP/pint.log" 2>&1; true)
-          for f in pint pest e2e concurrency booking_concurrency s9_concurrency m11_concurrency rollback; do
+          # pint.log comes from the Pint step itself; re-running Pint here would
+          # check the already reformatted tree and wrongly report PASS.
+          for f in pint audit pest e2e concurrency booking_concurrency s9_concurrency m11_concurrency course_concurrency rollback; do
             [ -s "$RUNNER_TEMP/$f.log" ] && bash .github/scripts/annotate_failure.sh "$RUNNER_TEMP/$f.log" "$f" 400
           done
           if [ -f examples/poc_backend/storage/logs/laravel.log ]; then
@@ -194,6 +207,7 @@ jobs:
             echo "| Booking concurrency | ${{ steps.booking_concurrency.outcome }} |"
             echo "| S9 booking concurrency | ${{ steps.s9_concurrency.outcome }} |"
             echo "| M11 check-in concurrency | ${{ steps.m11_concurrency.outcome }} |"
+            echo "| Course term concurrency | ${{ steps.course_concurrency.outcome }} |"
             echo "| S9 rollback drill | ${{ steps.rollback.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -215,6 +229,7 @@ jobs:
             booking_concurrency=${{ steps.booking_concurrency.outcome }}
             s9_concurrency=${{ steps.s9_concurrency.outcome }}
             m11_concurrency=${{ steps.m11_concurrency.outcome }}
+            course_concurrency=${{ steps.course_concurrency.outcome }}
             rollback=${{ steps.rollback.outcome }}
         run: |
           failed=0

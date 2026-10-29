@@ -115,7 +115,8 @@ final class CashInvoiceService
                 DB::table('invoices')->where('id', $invoice->id)
                     ->update(['invoice_status' => 3, 'updated_at' => now()]);
                 $this->releaseCourseBookings($entry);
-                $this->promoteCourseWaitlist((int) $entry->course_term_id);
+                // Same FIFO fill as cancellation and capacity changes (term still locked).
+                $this->fillCourseWaitlistAfterCapacityChange((int) $entry->course_term_id);
 
                 return true;
             }, 3);
@@ -222,6 +223,18 @@ final class CashInvoiceService
         if ($eventIds->isEmpty()) {
             return false;
         }
+        // Same session preconditions as a new enrollment. An invalid session
+        // keeps the head waiting (FIFO is never skipped) instead of creating a
+        // derived seat on a cancelled/draft occurrence or failing the caller's
+        // cancellation, expiry or capacity change.
+        foreach ($eventIds as $eventId) {
+            $event = CalendarEvent::query()->find($eventId);
+            if ($event === null || $event->status !== CalendarEvent::STATUS_PUBLISHED
+                || ! $event->booking_enabled || (int) $event->booking_capacity < 1
+                || $engine->activeAttendeeOf($event, $member) !== null) {
+                return false;
+            }
+        }
         DB::table('course_enrollments')->where('id', $head->id)->update([
             'status' => 'pending_payment', 'waitlist_sequence' => null, 'updated_at' => now(),
         ]);
@@ -308,8 +321,42 @@ final class CashInvoiceService
                 || (int) $invoice->booking_id !== (int) $hint->booking_id) {
                 throw ValidationException::withMessages(['invoice' => '帳單資料已變更，請重新操作。']);
             }
+            // A retried refund (double submit, timeout) returns the recorded
+            // result; it never writes a second negative transaction.
+            if ((int) $invoice->invoice_status === 5 && DB::table('invoice_refund_audits')
+                ->where('invoice_id', $invoiceId)->exists()) {
+                return ['id' => $invoiceId, 'status' => 5, 'replayed' => true];
+            }
             if ((int) $invoice->invoice_status !== 1) {
                 throw ValidationException::withMessages(['invoice' => '僅已付款且尚未退款的帳單可以退款。']);
+            }
+            // The invoice must belong to the cancelled parent it is refunded for.
+            if ($invoice->booking_type === '01') {
+                $memberIds = DB::table('event_booking_attendees')
+                    ->where('event_booking_group_id', $group->id)->pluck('member_user_id')
+                    ->map(static fn ($id): int => (int) $id)->all();
+                $matches = $invoice->transaction_type === '01'
+                    && (int) $invoice->product_id === (int) $group->calendar_event_id
+                    && (int) $invoice->booker_user_id === (int) $group->booker_user_id
+                    && in_array((int) $invoice->member_id, $memberIds, true);
+            } else {
+                $matches = $invoice->transaction_type === '02'
+                    && (int) $invoice->product_id === (int) $enrollment->course_term_id
+                    && (int) $invoice->member_id === (int) $enrollment->user_id
+                    && (int) $invoice->booker_user_id === (int) $enrollment->booker_user_id;
+            }
+            if (! $matches) {
+                throw ValidationException::withMessages(['invoice' => '帳單與預約會員或商品關聯不符，禁止記錄退款。']);
+            }
+            // Refund only what was actually collected: one successful positive
+            // cash transaction equal to the invoice amount and no earlier refund.
+            $successful = DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+                ->where('transaction_status', 1)->get(['transaction_amount']);
+            $toCents = static fn ($amount): int => (int) round((float) $amount * 100);
+            $collected = $successful->filter(fn ($t): bool => $toCents($t->transaction_amount) > 0);
+            if ($collected->count() !== 1 || $successful->count() !== 1
+                || $toCents($collected->first()->transaction_amount) !== $toCents($invoice->invoice_amount)) {
+                throw ValidationException::withMessages(['invoice' => '查無與帳單金額相符的實收紀錄，禁止記錄退款。']);
             }
             DB::table('payment_transactions')->insert([
                 'invoice_id' => $invoiceId,
@@ -328,7 +375,7 @@ final class CashInvoiceService
                 'reason' => $reason, 'created_at' => now(),
             ]);
 
-            return ['id' => $invoiceId, 'status' => 5];
+            return ['id' => $invoiceId, 'status' => 5, 'replayed' => false];
         }, 3);
     }
 

@@ -56,7 +56,8 @@ final class CourseEnrollmentController extends Controller
 
         $result = $this->enrollments->enroll($id, $booker, $member);
 
-        return new JsonResponse(['data' => $result], 201);
+        // 201 for a new place; 200 when a retry returns the existing place.
+        return new JsonResponse(['data' => $result], $result['replayed'] ? 200 : 201);
     }
 
     /** POST /api/v1/admin/course-enrollments/{id}/confirm-fee. */

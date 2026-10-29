@@ -54,7 +54,7 @@ class AuthController extends Notifier<AuthState> {
         } finally {
           // Credential revocation must sign out even if secure storage fails.
           state = const AuthState.signedOut();
-          await clearPendingBookingStorage();
+          // Unknown member identity: do not clear another account's pending data.
         }
       } else {
         // Offline or server error: keep the token, let the member retry.
@@ -82,6 +82,7 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    final memberId = state.profile?.id;
     try {
       await ref.read(sessionApiProvider).logout();
     } on ApiException {
@@ -91,7 +92,7 @@ class AuthController extends Notifier<AuthState> {
         await ref.read(tokenStorageProvider).clear();
       } finally {
         state = const AuthState.signedOut();
-        await clearPendingBookingStorage();
+        if (memberId != null) await clearPendingBookingStorage(memberId);
       }
     }
   }

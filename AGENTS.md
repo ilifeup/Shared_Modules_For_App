@@ -3,6 +3,11 @@
 > **每次工作第一步：先讀 [PROJECT_RULES.md](PROJECT_RULES.md) 的「一、有效決策」。** 該文件是唯一的已核准業務規則權威；本文件只管理 AI 工作方法，**不另行建立第二套業務規則**。
 > 永久問題與 Debug 追蹤：[Shared Issue #35](https://github.com/ilifeup/Shared_Modules_For_App/issues/35)。跨 App 依賴參考 [Tiandi Issue #38](https://github.com/ilifeup/tiandi-app/issues/38)。`FAST-DEVELOP.md` 已刪除，其完整歷史內容封存於 PROJECT_RULES.md。
 
+## 2026-10-29 基準線更正（最新指令優先）
+- **不得以舊 `ilifeup/tiandi-app` 的 Flutter／Laravel 作為正式 App 基底**；該 repo 比 Shared Modules 舊且有更多錯誤，僅歷史參考，不得回填覆蓋 Shared 程式。
+- Ubuntu 先只 clone `ilifeup/Shared_Modules_For_App`；以 Shared 最新 main 已驗證模組為來源，後續建立新的天帝教 Android 正式 App。Shared `examples/` 仍屬 PoC，不能宣稱已是上架 App。
+- 舊 Tiandi 的 `scripts/local_baseline_check.sh` 與兩 repo 映射流程**已作廢，不要執行**。
+
 ## 本機快速開發（2026-10-29 新決策）
 - 使用者已核准在原 iStudy Ubuntu 主機建立**隔離的** Shared Modules 開發環境，禁止干擾原有 iStudy 服務、容器、ZFS、PostgreSQL、憑證及資料；使用獨立 MySQL 8.4 InnoDB 開發 DB。
 - Claude Code 單一寫入者；ChatGPT／Codex 只審查。開發前先鎖定 main SHA，MVP 基準線只盤點會員、預約、現金收款、簽到、必要公告通知；其他模組保留但不作交接阻礙。

@@ -38,8 +38,20 @@ class PendingBookingRequest {
   final int? memberUserId;
 }
 
+class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
+  @override
+  Map<String, PendingBookingRequest> build() => {};
+
+  void save(String scope, PendingBookingRequest request) =>
+      state = {...state, scope: request};
+
+  void clear(String scope) => state = {...state}..remove(scope);
+}
+
 final pendingBookingRequestsProvider =
-    StateProvider<Map<String, PendingBookingRequest>>((ref) => {});
+    NotifierProvider<PendingBookingRequests, Map<String, PendingBookingRequest>>(
+      PendingBookingRequests.new,
+    );
 
 String bookingRequestScope(String memberId, String eventId) =>
     '${Uri.encodeComponent(memberId)}:${Uri.encodeComponent(eventId)}';
@@ -68,21 +80,11 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   bool _busy = false;
   Object? _error;
   BookingGroup? _result;
-  String _requestId = newRequestId();
-
   String? get _requestScope {
     final auth = ref.read(authControllerProvider);
     if (auth.status != AuthStatus.signedIn || auth.profile == null) return null;
     return bookingRequestScope(auth.profile!.id, widget.eventId);
   }
-
-  @override
-  void initState() {
-    super.initState();
-    // The pending request is recovered in didChangeDependencies via the provider
-    // when this route is reconstructed.
-  }
-
 
   Future<void> _submit() async {
     if (_busy) return;
@@ -106,13 +108,11 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _error = null;
       _pendingMemberUserId = selected;
       _hasPendingRequest = true;
-      _requestId = requestId;
     });
     if (saved == null) {
-      ref.read(pendingBookingRequestsProvider.notifier).state = {
-        ...ref.read(pendingBookingRequestsProvider),
-        scope: PendingBookingRequest(requestId, selected),
-      };
+      ref.read(pendingBookingRequestsProvider.notifier).save(
+        scope, PendingBookingRequest(requestId, selected),
+      );
     }
     try {
       final booking = await ref.read(bookingGroupApiProvider).book(
@@ -125,7 +125,6 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         _result = booking;
         _pendingMemberUserId = null;
         _hasPendingRequest = false;
-        _requestId = newRequestId();
       });
       _clearPending(scope);
       ref.invalidate(myBookingGroupsProvider);
@@ -141,7 +140,6 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             error.statusCode != 429) {
           _pendingMemberUserId = null;
           _hasPendingRequest = false;
-          _requestId = newRequestId();
           _clearPending(scope);
         }
       });
@@ -151,8 +149,7 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
   }
 
   void _clearPending(String scope) {
-    final next = {...ref.read(pendingBookingRequestsProvider)}..remove(scope);
-    ref.read(pendingBookingRequestsProvider.notifier).state = next;
+    ref.read(pendingBookingRequestsProvider.notifier).clear(scope);
   }
 
   @override

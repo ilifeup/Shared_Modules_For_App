@@ -232,3 +232,19 @@ it('permits the actual administrator to cancel a legacy booking through the serv
     expect($booking->refresh()->status)->toBe('cancelled')
         ->and($booking->cancelled_by)->toBe($admin->id);
 });
+
+it('rejects a forged administrator flag passed directly to the booking engine', function () {
+    $event = bookableEvent();
+    $owner = User::factory()->create();
+    $stranger = User::factory()->create();
+    $booking = app(BookingService::class)->book($event, $owner);
+
+    try {
+        app(\\App\\Services\\Booking\\BookingEngine::class)->cancelLegacy($booking, $stranger, true);
+        test()->fail('A forged admin flag must not bypass ownership');
+    } catch (\\App\\Support\\Api\\ApiException $exception) {
+        expect($exception)->toBeInstanceOf(\\App\\Support\\Api\\ApiException::class);
+    }
+
+    expect($booking->refresh()->status)->toBe('confirmed');
+});

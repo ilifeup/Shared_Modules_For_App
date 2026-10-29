@@ -11,7 +11,7 @@ final class InvoiceNumberAllocator
     public function addRange(string $start, string $end, string $period, User $admin): int
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {
-            throw ValidationException::withMessages(['admin' => '僅管理員可設定發票字軌。']);
+            throw new \App\Support\Api\ApiException(403, 'ADMIN_REQUIRED', '僅管理員可設定發票字軌。');
         }
         $start = strtoupper(trim($start));
         $end = strtoupper(trim($end));
@@ -46,7 +46,7 @@ final class InvoiceNumberAllocator
     public function correct(int $invoiceId, string $newNumber, string $reason, User $admin): string
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {
-            throw ValidationException::withMessages(['admin' => '僅管理員可更正發票號碼。']);
+            throw new \App\Support\Api\ApiException(403, 'ADMIN_REQUIRED', '僅管理員可更正發票號碼。');
         }
         $newNumber = strtoupper(trim($newNumber));
         if (! preg_match('/^[A-Z]{2}[0-9]{8}$/', $newNumber)) {
@@ -82,7 +82,7 @@ final class InvoiceNumberAllocator
     public function allocate(int $invoiceId, User $admin): string
     {
         if (! $admin->is_active || ! $admin->isAdmin()) {
-            throw ValidationException::withMessages(['admin' => '僅管理員可配發發票號碼。']);
+            throw new \App\Support\Api\ApiException(403, 'ADMIN_REQUIRED', '僅管理員可配發發票號碼。');
         }
 
         return DB::transaction(function () use ($invoiceId): string {

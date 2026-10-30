@@ -22,12 +22,13 @@ class EventBooking extends Model
 
     public const STATUS_EVENT_CANCELLED = 'event_cancelled';
 
-    protected $fillable = ['calendar_event_id', 'user_id', 'status', 'active', 'booked_at'];
+    protected $fillable = ['calendar_event_id', 'user_id', 'member_user_id', 'booker_user_id', 'client_request_id', 'status', 'active', 'booked_at', 'confirmed_at', 'cancel_reason'];
 
     protected function casts(): array
     {
         return [
             'booked_at' => 'datetime',
+            'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
     }

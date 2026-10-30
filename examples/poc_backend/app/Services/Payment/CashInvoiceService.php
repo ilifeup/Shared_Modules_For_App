@@ -393,13 +393,27 @@ final class CashInvoiceService
             }
             // The invoice must belong to the cancelled parent it is refunded for.
             if ($invoice->booking_type === '01') {
+                // R1: a cancelled legacy group alone is not sufficient proof
+                // of refund eligibility. Its canonical booking must identify
+                // the same event, original booker and single member, and must
+                // already be cancelled before any refund transaction is written.
+                $canonical = DB::table('event_bookings')
+                    ->where('id', $group->legacy_booking_id)
+                    ->lockForUpdate()->first();
+                if ($canonical === null
+                    || (int) $canonical->calendar_event_id !== (int) $group->calendar_event_id
+                    || (int) $canonical->booker_user_id !== (int) $group->booker_user_id
+                    || ! in_array($canonical->status, ['cancelled', 'event_cancelled'], true)) {
+                    throw ValidationException::withMessages(['invoice' => '正式預約尚未取消或關聯不一致，禁止退款。']);
+                }
                 $memberIds = DB::table('event_booking_attendees')
                     ->where('event_booking_group_id', $group->id)->pluck('member_user_id')
                     ->map(static fn ($id): int => (int) $id)->all();
                 $matches = $invoice->transaction_type === '01'
                     && (int) $invoice->product_id === (int) $group->calendar_event_id
                     && (int) $invoice->booker_user_id === (int) $group->booker_user_id
-                    && in_array((int) $invoice->member_id, $memberIds, true);
+                    && (int) $canonical->member_user_id === (int) $invoice->member_id
+                    && $memberIds === [(int) $invoice->member_id];
             } else {
                 $matches = $invoice->transaction_type === '02'
                     && (int) $invoice->product_id === (int) $enrollment->course_term_id

@@ -482,3 +482,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - **重要部署門檻**：`event_attendances.event_booking_id` 尚未建立，禁止在 Migration 前使用新 relation/欄位寫入；這次修改不代表資料庫遷移或 Checkin API 切換完成。
 - 待辦：確認原始 Migration、設計雙欄過渡與歷史資料映射、unique(calendar_event_id,event_booking_id)、更新 Service/Controller/QR/OpenAPI/Flutter 與測試，最後移除舊依賴。
 - PR #63 保持 Draft，無正式資料庫操作；新 HEAD CI 待驗證。
+
+### R1.59｜簽到 canonical FK 非破壞性 Migration（2026-10-30）
+
+- `4d0548f4`：新增 `2026_12_01_000100_add_event_booking_id_to_event_attendances.php`，對 `event_attendances` 增加 nullable `event_booking_id`、`event_bookings` 外鍵（restrict delete）及單欄唯一索引。
+- 舊 `event_booking_attendee_id` 與歷史資料不變；沒有自動 backfill。單欄唯一索引確保一個 canonical booking 只對應一筆 attendance，仍需在 Service 層驗證 event ID 一致。
+- **待驗證**：CI 執行 SQLite/MySQL migration 與 rollback，確認實際既有 schema、索引名稱、歷史資料相容性。完成 backfill 對帳前禁止移除 legacy 欄位；API/Flutter 尚未切換。
+- PR #63 Draft，不自動合併、不對正式資料庫執行 migration。

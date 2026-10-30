@@ -115,4 +115,15 @@ it('does not extend an already overdue invoice or revive a cancelled enrollment'
         $invoiceId, $admin, now()->addDay()->toIso8601String(), 'attempt to revive'
     ))->toThrow(\Illuminate\Validation\ValidationException::class);
     expect(DB::table('course_enrollments')->where('id', $enrollmentId)->value('status'))->toBe('cancelled');
+
+    // A cancelled booking is never resurrected even if the due date is still in the future.
+    DB::table('course_enrollments')->where('id', $enrollmentId)->update(['status' => 'pending_payment']);
+    DB::table('invoices')->where('id', $invoiceId)->update([
+        'payment_due_at' => now()->subMinute(),
+        'overdue_at' => now(),
+    ]);
+    expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
+        $invoiceId, $admin, now()->addDay()->toIso8601String(), 'attempt to extend overdue'
+    ))->toThrow(\\Illuminate\\Validation\\ValidationException::class);
+    expect(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'))->not->toBeNull();
 });

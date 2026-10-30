@@ -438,3 +438,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.47 退款安全不變量：活動退款 canonical 除已取消、活動/代訂者/會員一致外，還須 `active IS NULL` 且 `user_id === member_user_id`，避免狀態雖取消卻仍占用有效名額或身份欄位漂移時退款。commit `1f4a97227fa94a8a1f1db2c58ec4be9f7891b49b`；待最新 HEAD CI 與退款反例測試驗證。
 
 - R1.48 回歸測試：新增已取消活動的 canonical 會員身分漂移退款拒絕案例，驗證 `ValidationException`、帳單仍為已付款、無退款稽核與無負向交易；commit `d2714b71e15a045bf243f31e061eeae9007f3e68`。此測試故意製造帳單已付款但無實收交易，以驗證 canonical 守門必須在收款驗證之前拒絕。待 CI 實跑驗證；仍需取消前、重複退款與 MySQL 併發案例。
+
+- R1.49 回歸測試：新增取消後 canonical `active=1` 殘留有效席位時拒絕退款，斷言帳單仍已付款、無退款稽核及負向交易；commit `9a1bbfd8f57f59738fb86e3cf56cb863a88f2511`。與 R1.48 身分漂移測試共同覆蓋 R1.47 兩項不變量，仍待 CI 驗證。

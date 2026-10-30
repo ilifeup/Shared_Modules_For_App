@@ -238,3 +238,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 程式 commit `cfbd53d5`：`BookingEngine::expireCashHold` 取得事件鎖並重新讀取 group 後，新增 `group.calendar_event_id === locked event.id` 條件，避免讀取候選 group 到取得鎖之間發生事件歸屬變更時仍更新 invoice_status、取消預約與觸發候補晉升。
 - 本次只修正既有 S9 引擎的保護條件；不改正式資料庫，不代表完成單一 event_bookings 主表遷移。尚未執行 Pest、CI 或 MySQL 測試；此邊界仍需補齊交易競態回歸測試。
 - R1 主要工作仍是 schema/booking/payment/course/checkin/API/Flutter 一致切換；不得將過渡期防護修正誤列為重構完成。
+
+
+## R1.23｜統一預約 Model 狀態契約起步（2026-10-30）
+
+- `42cf3510`：`app/Models/EventBooking.php` 新增 STATUS_WAITLISTED、STATUS_EVENT_CANCELLED，及 `isActive()`（confirmed/waitlisted 且 active=1）。保留原 isConfirmed()、user()、event()，避免尚未遷移 S6 時破壞舊讀取。
+- `bb92c1db`：新增 EventBooking 狀態／active 欄位的 Pest 測試，確認取消及活動取消不視為有效預約。
+- 本次為目標 Model 契約的**非破壞性程式準備**，不是 schema 切換；尚未執行測試／CI，未合併 main。下一步應建立一次性整合 schema 改造及所有依賴切換，避免長期停留於過渡模式。

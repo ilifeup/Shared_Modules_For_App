@@ -159,6 +159,40 @@ it('rejects non-integer member identities even for internal booking calls', func
     expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
 });
 
+it('rejects malformed member IDs on idempotent replay without disclosing the original booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $key = (string) Str::uuid();
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => $key,
+        ])->assertCreated();
+
+    foreach ([(string) $member->id.'.0', (string) $member->id.'e0'] as $invalidId) {
+        try {
+            app(\App\Services\Booking\BookingEngine::class)->book(
+                $event,
+                new \App\Services\Booking\BookingRequest(
+                    booker: $member,
+                    contactName: $member->name,
+                    contactEmail: $member->email,
+                    contactPhone: $member->phone_e164,
+                    attendees: [['name' => $member->name, 'member_user_id' => $invalidId]],
+                    clientRequestId: $key,
+                    actor: $member,
+                ),
+            );
+            $this->fail('Malformed member ID replay was accepted.');
+        } catch (\App\Support\Api\ApiException $e) {
+            expect($e->status)->toBe(409)->and($e->errorCode)->toBe('IDEMPOTENCY_CONFLICT');
+        }
+    }
+
+    expect(seats($event))->toBe(1);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(1);
+});
+
 it('rejects an unverified member before booking or replay', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $member = User::factory()->create(['verified_status' => 1]);

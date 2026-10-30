@@ -426,3 +426,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `CashInvoiceService::recordManualRefund()` 對 `booking_type=01` 退款，在記錄負向交易之前額外鎖定 `event_bookings`，要求 canonical 已為 `cancelled` 或 `event_cancelled`，且 event/booker/member 與舊版群組、帳單、唯一參加者一致；防止只改動舊版 group 狀態就完成退款。
 - 程式 commit：`331d9f6850a8c44a204b3b191e122abbd1f6b2c6`。需補充退款 canonical mismatch / 重試回歸測試，並等待本 HEAD 完整 CI；仍屬過渡防護，最終需移除舊版群組依賴。
 - 依賴盤點：`CashInvoiceService.php` 仍有活動帳單與舊版群組/參加者的讀取；`BookingEngine.php` 候補仍 join 舊版候補表。先完成下游資料來源切換，再移除 legacy schema。
+
+- R1.45 併發鎖順序補正：退款改為 `calendar_events → event_booking_groups → event_bookings (canonical) → invoices`，與取消時 canonical 先於 invoice 的順序一致，避免退款與取消互相等待；commit `6de1f4d736824a06d87dd7b03cf8a734c2509d00`。此為尚待 CI 驗證的修正，仍需新增退款競態測試。

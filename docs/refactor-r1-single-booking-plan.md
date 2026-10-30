@@ -281,3 +281,12 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 新增 S9 API 預約→event_bookings canonical row→取消清除 active 的整體回歸測試，核對 member/booker/client_request_id/status/cancelled_at。
 - **重要：** 目前測試是對既有 S9 過渡寫入路徑的契約檢查，仍引用 group 表，**不是最終單表實作**。依使用者最新指示，最終不需舊資料或雙寫；下一階段要移除 group/attendee 及相關外鍵依賴，不應繼續增加相容層。
 - 尚未執行測試、CI 或資料庫重建，未合併 main。
+
+
+## R1.28｜Canonical member/booker 關聯與候補測試（2026-10-30）
+
+- `e0911030`：EventBooking Model 新增 member()（member_user_id）及 booker()（booker_user_id）關聯，支援家庭代報名時的身分區分。
+- `7f79a012`：新增 S9 候補建立、前一位取消後晉升、canonical event_bookings waitlisted→confirmed 的 Pest 回歸測試。
+- `8aba531b`：新增委託預約的 member/booker 關聯測試。
+- 查詢最新 Commit 的 PR workflow runs 回傳空清單；未證實 CI 已執行。Pest 尚未執行，未合併 main。
+- **R1 最終單表仍未完成**：舊 group/attendee、付款、課程、簽到、API 依賴尚待協調切換；不要把上述準備與測試當成已完成。

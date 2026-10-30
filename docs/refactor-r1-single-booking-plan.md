@@ -231,3 +231,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 程式 commit `816cb601`：`BookingEngine::promote` 發現候補 head 指向的 group.calendar_event_id 不屬於目前活動時，仍標記本活動的 queue entry 為 skipped，但**不呼叫 endGroup**，避免錯誤取消另一活動的預約、發票、參加者狀態或觸發跨活動同步。
 - 測試 commit `b10cf42d`：新增跨活動 queue/group 不一致情境；取消第一位確認會員釋出名額後，錯誤 queue 必須 skipped，另一活動 group 仍維持 waitlisted。
 - 已實際修改 BookingEngine 與 Pest 測試；**尚未執行測試／CI**。不代表完成 R1 主 Schema 統一。未合併 main。
+
+
+## R1.22｜現金保留逾期的活動歸屬防護（2026-10-30）
+
+- 程式 commit `cfbd53d5`：`BookingEngine::expireCashHold` 取得事件鎖並重新讀取 group 後，新增 `group.calendar_event_id === locked event.id` 條件，避免讀取候選 group 到取得鎖之間發生事件歸屬變更時仍更新 invoice_status、取消預約與觸發候補晉升。
+- 本次只修正既有 S9 引擎的保護條件；不改正式資料庫，不代表完成單一 event_bookings 主表遷移。尚未執行 Pest、CI 或 MySQL 測試；此邊界仍需補齊交易競態回歸測試。
+- R1 主要工作仍是 schema/booking/payment/course/checkin/API/Flutter 一致切換；不得將過渡期防護修正誤列為重構完成。

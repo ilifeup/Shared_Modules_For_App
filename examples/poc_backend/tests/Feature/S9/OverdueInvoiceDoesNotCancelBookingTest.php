@@ -41,8 +41,29 @@ it('marks an overdue invoice without changing the existing course enrollment or 
         'updated_at' => now(),
     ]);
 
+    // An unpaid invoice whose deadline was moved forward must not be marked overdue.
+    $futureInvoiceId = DB::table('invoices')->insertGetId([
+        'invoice_code' => 'TEST-FUTURE-'.uniqid(),
+        'invoice_status' => 0,
+        'invoice_amount' => 100,
+        'currency' => 'TWD',
+        'member_id' => $member->id,
+        'booker_user_id' => $member->id,
+        'transaction_type' => '02',
+        'product_id' => $termId,
+        'booking_type' => '02',
+        'booking_id' => $enrollmentId + 10000,
+        'app_stage' => 0,
+        'payment_method' => 0,
+        'invoice_datetime' => now(),
+        'payment_due_at' => now()->addDay(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
     expect(app(CashInvoiceService::class)->expireDue())->toBe(1);
     expect(app(CashInvoiceService::class)->expireDue())->toBe(0);
+    expect(DB::table('invoices')->where('id', $futureInvoiceId)->value('overdue_at'))->toBeNull();
 
     $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
     expect((int) $invoice->invoice_status)->toBe(0)

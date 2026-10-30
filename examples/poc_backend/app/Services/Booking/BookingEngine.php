@@ -236,6 +236,15 @@ final class BookingEngine
 
             $group = EventBookingGroup::query()->where('legacy_booking_id', $locked->id)->lockForUpdate()->first();
             if ($group !== null && $group->isActive()) {
+                // Reject corrupt cross-ledger pointers before touching invoices,
+                // attendees or the group. The surrounding transaction rolls back.
+                $memberId = EventBookingAttendee::query()
+                    ->where('event_booking_group_id', $group->id)->value('member_user_id');
+                if ((int) $group->calendar_event_id !== (int) $locked->calendar_event_id
+                    || (int) $group->booker_user_id !== (int) $locked->booker_user_id
+                    || $memberId === null || (int) $memberId !== (int) $locked->member_user_id) {
+                    throw new ApiException(409, 'CANONICAL_BOOKING_MISMATCH', '預約資料關聯不一致，請洽管理員。');
+                }
                 $this->cancelGroupLocked($group, $actor, $byAdmin, null);
             } else {
                 $this->cancelLegacyRow($locked, $actor);

@@ -300,14 +300,6 @@ final class CashInvoiceService
                 throw ValidationException::withMessages(['invoice' => '不支援此帳單類型。']);
             }
 
-            // BookingEngine cancellation locks canonical before touching invoices.
-            // Keep the same order for refunds to avoid a canonical/invoice deadlock.
-            $canonical = null;
-            if ($hint->booking_type === '01') {
-                $canonical = DB::table('event_bookings')
-                    ->where('id', $group->legacy_booking_id)
-                    ->lockForUpdate()->first();
-            }
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($invoice === null || $invoice->booking_type !== $hint->booking_type
                 || (int) $invoice->booking_id !== (int) $hint->booking_id

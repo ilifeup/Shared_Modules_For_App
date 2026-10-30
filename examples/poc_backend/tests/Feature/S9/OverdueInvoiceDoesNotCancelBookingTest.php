@@ -104,6 +104,16 @@ it('allows an administrator to extend an active unpaid deadline and records an a
     expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
         ->toBe($original->timestamp);
 
+    expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
+        $invoiceId, $admin, $newDeadline->toIso8601String(), '  '
+    ))->toThrow(\Illuminate\Validation\ValidationException::class);
+    expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
+        $invoiceId, $admin, $original->toIso8601String(), 'same deadline'
+    ))->toThrow(\Illuminate\Validation\ValidationException::class);
+    expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
+        ->toBe($original->timestamp);
+    expect(DB::table('audit_events')->where('event', 'invoice.payment_deadline_extended')->count())->toBe(0);
+
     app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, $newDeadline->toIso8601String(), 'member requested more time'
     );

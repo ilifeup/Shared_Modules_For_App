@@ -842,3 +842,22 @@ it('uses canonical FIFO order when an administrator reorders waiting members', f
     expect((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(1)
         ->and((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(2);
 });
+
+
+it('authorizes S6 cancellation by canonical original booker rather than obsolete user_id', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $booker = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $stranger = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(\App\Services\Booking\BookingEngine::class)->bookLegacy($event, $booker);
+
+    // Simulate a delegated canonical booking while retaining the old S6 user_id.
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['member_user_id' => $member->id, 'booker_user_id' => $booker->id]);
+    $engine = app(\App\Services\Booking\BookingEngine::class);
+    expect(fn () => $engine->cancelLegacy($booking->fresh(), $stranger))->toThrow(\App\Exceptions\ApiException::class);
+
+    $cancelled = $engine->cancelLegacy($booking->fresh(), $booker);
+    expect($cancelled->status)->toBe('cancelled')
+        ->and(DB::table('event_bookings')->where('id', $booking->id)->value('active'))->toBeNull();
+});

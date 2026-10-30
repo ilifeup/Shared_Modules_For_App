@@ -49,7 +49,8 @@ class EventDetailScreen extends ConsumerWidget {
             if (!item.isCancelled)
               FilledButton(
                 key: const Key('event-booking-s9'),
-                onPressed: () => context.push('/events/${item.id}/booking-groups'),
+                onPressed: () =>
+                    context.push('/events/${item.id}/booking-groups'),
                 child: const Text('報名／候補（單人）'),
               ),
             // S9: check-in entries.

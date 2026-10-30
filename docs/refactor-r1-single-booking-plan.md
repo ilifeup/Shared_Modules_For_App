@@ -463,3 +463,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `f2360db8`：`CheckinTokens.php` 新增 `booking(int $bookingId, ?int $time = null)`，簽發 `b.{bookingId}.{window}.{sig}`；驗證正規式接受 `b`，HMAC 簽章仍綁定 kind/id/window，舊 `e` 活動 QR 與 `a` 參加者 QR 保持原樣。
 - `88b33e68`：`M11CheckinTest.php` 新增 `b` token 有效驗證、`a/b` 交叉拒絕、跨視窗 10 秒寬限到期測試。
 - 目前 **尚未切換** CheckinController/CheckinService/Flutter/OpenAPI 的簽到入口，`b` token 僅為 canonical ID 切換前的安全基礎；不得宣稱簽到單表遷移完成。新 HEAD CI 待確認，PR #63 保持 Draft。
+
+### R1.56｜簽到 canonical relation 預備（2026-10-30）
+
+- `b2a8897f`：在 `EventBooking` 宣告 `canonicalAttendance(): HasOne`，目標 FK `event_attendances.event_booking_id`。此欄位尚未建立，關聯不得在 Migration 前使用；原簽到服務仍走 `EventBookingAttendee`，未切換 API/QR。
+- 待辦：新增安全 Migration 與 unique(event, booking)；建立舊資料映射與完整性驗證；修改 EventAttendance/CheckinService/Controller、測試與 Flutter 契約；確認後才能移除舊欄位。
+- 本階段不執行正式 DB Migration，PR 保持 Draft。R1.55 HEAD 的 CI 執行中，R1.56 新提交需重新驗證。

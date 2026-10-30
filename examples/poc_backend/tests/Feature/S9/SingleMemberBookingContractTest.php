@@ -613,27 +613,11 @@ it('defines the canonical active booking statuses without treating cancelled his
 });
 
 
-it('provides the additive canonical member and booker columns on event bookings', function () {
-    $event = s9Event(['booking_capacity' => 2]);
-    $member = User::factory()->create(['verified_status' => 2]);
-
-    $booking = \App\Models\EventBooking::query()->create([
-        'calendar_event_id' => $event->id,
-        'user_id' => $member->id,
-        'status' => \App\Models\EventBooking::STATUS_CONFIRMED,
-        'active' => 1,
-        'booked_at' => now(),
-    ]);
-
+it('creates the canonical booking identity columns directly in the fresh schema', function () {
     expect(\Illuminate\Support\Facades\Schema::hasColumns('event_bookings', [
         'member_user_id', 'booker_user_id', 'client_request_id', 'confirmed_at', 'cancel_reason',
     ]))->toBeTrue();
-
-    // The migration backfills existing S6 rows; new S6 writes still use the
-    // legacy user_id until the coordinated engine cutover.
-    expect(DB::table('event_bookings')->where('id', $booking->id)->exists())->toBeTrue();
 });
-
 
 it('dual-writes the canonical member and booker identities on S6 booking', function () {
     $event = s9Event(['booking_capacity' => 2]);
@@ -647,4 +631,32 @@ it('dual-writes the canonical member and booker identities on S6 booking', funct
         ->and((int) $row->booker_user_id)->toBe($member->id)
         ->and($row->status)->toBe('confirmed')
         ->and($row->confirmed_at)->not->toBeNull();
+});
+
+
+it('writes a single canonical row for an S9 booking and clears its active slot on cancellation', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $requestId = (string) Str::uuid();
+
+    $groupId = $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => $requestId,
+        ])->assertCreated()->json('data.id');
+
+    $group = DB::table('event_booking_groups')->where('id', $groupId)->first();
+    $booking = DB::table('event_bookings')->where('id', $group->legacy_booking_id)->first();
+    expect($booking)->not->toBeNull()
+        ->and((int) $booking->member_user_id)->toBe($member->id)
+        ->and((int) $booking->booker_user_id)->toBe($member->id)
+        ->and($booking->client_request_id)->toBe($requestId)
+        ->and($booking->status)->toBe('confirmed');
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$groupId}/cancel")->assertOk();
+
+    $cancelled = DB::table('event_bookings')->where('id', $booking->id)->first();
+    expect($cancelled->status)->toBe('cancelled')
+        ->and($cancelled->active)->toBeNull()
+        ->and($cancelled->cancelled_at)->not->toBeNull();
 });

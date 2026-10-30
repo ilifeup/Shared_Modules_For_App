@@ -394,6 +394,10 @@ it('confirms standalone event cash only once after validating its booking', func
     $invoiceId = DB::table('invoices')->where('booking_type', '01')
         ->where('booking_id', $groupId)->value('id');
     expect($invoiceId)->not->toBeNull();
+    $invoice = DB::table('invoices')->find($invoiceId);
+    expect(\Illuminate\Support\Carbon::parse($invoice->payment_due_at)->equalTo($event->starts_at))->toBeTrue();
+    expect(\Illuminate\Support\Carbon::parse($invoice->payment_due_at)->isFuture())->toBeTrue();
+
 
     $first = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
     $second = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);

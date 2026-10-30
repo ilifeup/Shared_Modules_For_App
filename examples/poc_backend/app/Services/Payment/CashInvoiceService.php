@@ -244,6 +244,78 @@ final class CashInvoiceService
     }
 
     /**
+     * Extend the deadline of an active unpaid booking only.
+     * Do not revive cancelled reservations or rewrite payment history.
+     */
+    public function extendPaymentDeadline(int $invoiceId, User $admin, string $newDeadline, string $reason): void
+    {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', '僅管理員可延長付款期限。');
+        }
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => '請填寫延長原因。']);
+        }
+        try {
+            $deadline = \Illuminate\Support\Carbon::parse($newDeadline);
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['payment_due_at' => '付款期限格式不正確。']);
+        }
+        if ($deadline->lte(now())) {
+            throw ValidationException::withMessages(['payment_due_at' => '新的付款期限必須晚於現在。']);
+        }
+
+        DB::transaction(function () use ($invoiceId, $admin, $deadline, $reason): void {
+            $hint = DB::table('invoices')->where('id', $invoiceId)->first();
+            if ($hint === null) {
+                throw ValidationException::withMessages(['invoice' => '帳單不存在。']);
+            }
+            if ($hint->booking_type === '02') {
+                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)->value('course_term_id');
+                if ($termId === null || DB::table('course_terms')->where('id', $termId)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '課程預約不存在。']);
+                }
+                $entry = DB::table('course_enrollments')->where('id', $hint->booking_id)->lockForUpdate()->first();
+                if ($entry === null || $entry->status !== 'pending_payment') {
+                    throw ValidationException::withMessages(['invoice' => '只有有效且待付款的課程預約可延長期限。']);
+                }
+            } elseif ($hint->booking_type === '01') {
+                $groupHint = EventBookingGroup::query()->find($hint->booking_id);
+                if ($groupHint === null || CalendarEvent::query()->whereKey($groupHint->calendar_event_id)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '活動預約不存在。']);
+                }
+                $group = EventBookingGroup::query()->whereKey($hint->booking_id)->lockForUpdate()->first();
+                if ($group === null || $group->status !== EventBookingGroup::STATUS_CONFIRMED) {
+                    throw ValidationException::withMessages(['invoice' => '只有有效的活動預約可延長期限。']);
+                }
+            } else {
+                throw ValidationException::withMessages(['invoice' => '不支援此帳單類型。']);
+            }
+
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($invoice === null || $invoice->booking_type !== $hint->booking_type
+                || (int) $invoice->booking_id !== (int) $hint->booking_id
+                || (int) $invoice->invoice_status !== 0) {
+                throw ValidationException::withMessages(['invoice' => '帳單已付款、取消或資料已變更。']);
+            }
+            if ($invoice->overdue_at !== null || $invoice->payment_due_at === null
+                || \Illuminate\Support\Carbon::parse($invoice->payment_due_at)->lte(now())) {
+                throw ValidationException::withMessages(['invoice' => '付款期限已到期，請使用管理員逾期收款流程。']);
+            }
+            if ($deadline->lte(\Illuminate\Support\Carbon::parse($invoice->payment_due_at))) {
+                throw ValidationException::withMessages(['payment_due_at' => '新期限必須晚於原付款期限。']);
+            }
+            DB::table('invoices')->where('id', $invoiceId)->update([
+                'payment_due_at' => $deadline, 'updated_at' => now(),
+            ]);
+            \App\Models\AuditEvent::record('invoice.payment_deadline_extended', $admin->id, \App\Models\Invoice::find($invoiceId), [
+                'old_payment_due_at' => $invoice->payment_due_at,
+                'new_payment_due_at' => $deadline->toDateTimeString(),
+                'reason' => trim($reason),
+            ]);
+        }, 3);
+    }
+
+    /**
      * Manual cash refund only. Does not reassign an issued invoice number.
      * The operator must complete the real-world refund before recording it here.
      */

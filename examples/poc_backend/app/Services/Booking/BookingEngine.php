@@ -670,6 +670,12 @@ final class BookingEngine
             $byGroup = $entries->keyBy('event_booking_group_id');
             foreach ($ids as $i => $groupId) {
                 $byGroup[$groupId]->forceFill(['sequence' => $sequences[$i]])->save();
+                // Keep canonical FIFO ordering aligned until the legacy queue is removed.
+                $bookingId = EventBookingGroup::query()->whereKey($groupId)->value('legacy_booking_id');
+                if ($bookingId !== null) {
+                    EventBooking::query()->whereKey($bookingId)
+                        ->update(['waitlist_sequence' => $sequences[$i], 'updated_at' => now()]);
+                }
             }
 
             $this->promote($event);

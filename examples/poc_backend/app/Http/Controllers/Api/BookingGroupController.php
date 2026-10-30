@@ -34,7 +34,7 @@ class BookingGroupController extends Controller
         // Only the idempotency UUID and one verified member ID belong to this endpoint.
         $unknown = array_diff(array_keys($request->all()), ['client_request_id', 'member_user_id']);
         if ($unknown !== []) {
-            throw \\Illuminate\\Validation\\ValidationException::withMessages([
+            throw \Illuminate\Validation\ValidationException::withMessages([
                 (string) reset($unknown) => ['此欄位不支援單人報名。'],
             ]);
         }

@@ -30,22 +30,18 @@ class BookingGroupController extends Controller
      */
     public function store(Request $request, int $id): JsonResponse
     {
+        // Fail closed: unknown keys (including legacy group/guest payloads) must not be ignored.
+        // Only the idempotency UUID and one verified member ID belong to this endpoint.
+        $unknown = array_diff(array_keys($request->all()), ['client_request_id', 'member_user_id']);
+        if ($unknown !== []) {
+            throw \\Illuminate\\Validation\\ValidationException::withMessages([
+                (string) reset($unknown) => ['此欄位不支援單人報名。'],
+            ]);
+        }
+
         $data = $request->validate([
             'client_request_id' => ['required', 'uuid'],
-            'include_self' => ['prohibited'],
-            'attendees' => ['prohibited'],
-            // No guest contacts, group sizes, or client-supplied attendee identity.
-            'seat_count' => ['prohibited'],
-            'contact_name' => ['prohibited'],
-            'contact_email' => ['prohibited'],
-            'contact_phone' => ['prohibited'],
-            'guest_name' => ['prohibited'],
-            'guest_email' => ['prohibited'],
-            'guest_phone' => ['prohibited'],
             'member_user_id' => ['sometimes', 'integer', 'min:1'],
-            'booking_max_seats' => ['prohibited'],
-            'guest_count' => ['prohibited'],
-            'guest_attendees' => ['prohibited'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);

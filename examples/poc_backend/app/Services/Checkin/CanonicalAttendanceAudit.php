@@ -42,7 +42,15 @@ final class CanonicalAttendanceAudit
             'duplicate_canonical_target' => 0,
             'safe_candidates' => 0,
         ];
-        $targets = [];
+        // Count every candidate target first: the first of two conflicting rows
+        // must not be reported as safe merely because it was visited first.
+        $targetCounts = [];
+        foreach ($rows as $row) {
+            if ($row->booking_id !== null) {
+                $id = (int) $row->booking_id;
+                $targetCounts[$id] = ($targetCounts[$id] ?? 0) + 1;
+            }
+        }
 
         foreach ($rows as $row) {
             if ($row->assigned_booking_id === null) {
@@ -74,11 +82,10 @@ final class CanonicalAttendanceAudit
                 continue;
             }
             $target = (int) $row->booking_id;
-            if (isset($targets[$target])) {
+            if ($targetCounts[$target] > 1) {
                 $report['duplicate_canonical_target']++;
                 continue;
             }
-            $targets[$target] = true;
             if ($row->assigned_booking_id === null) {
                 $report['safe_candidates']++;
             }

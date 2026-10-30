@@ -324,3 +324,13 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `65cca0b7`：新增 Pest 測試，驗證兩位候補會員在 canonical booking 的順序為 1、2。
 - **尚未完成**：promote() 仍以舊 event_waitlist_entries 選擇候補首位；尚未刪除 group/attendee/queue 舊表。下一步須將晉升與管理員排序直接改以 canonical waitlist_sequence 運作，並處理 invoice/course/check-in 的外鍵切換。避免擴充舊表相容層。
 - 尚未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。
+
+
+## R1.33｜PR #63 Backend CI 診斷與格式修正（2026-10-30）
+
+- CI Run `41030671872`（S1 PoC Backend #1282，對應 HEAD `5fac3a18`）最終 Gate 失敗；完整 job log 顯示 `pint=failure`，其餘 `pest/migrate/openapi/audit/e2e/concurrency/booking_concurrency/s9_concurrency/m11_concurrency/course_concurrency/rollback=success`。注意診斷步驟本身顯示 success 不等於所有檢查通過，應以 Gate outcomes 為準。
+- Pint 唯一指出 `examples/poc_backend/tests/Feature/S9/CourseEnrollmentServiceTest.php` 格式問題，涉及 `class_attributes_separation`、`fully_qualified_strict_types`、`ordered_imports`。
+- `bd323ae401ffe09a827b95c6d34412d0c883d5ab`：直接在 PR #63 分支修正測試檔案格式（補方法間距、Carbon import 與引用、移除多餘尾端空行）；未改業務邏輯。
+- 查詢該新 SHA 的 PR workflow runs 回傳空清單，**新提交尚無已驗證 CI 結果**。下一步確認新 HEAD CI、Pint/Pest；尤其審查接近開課付款期限、開課後拒絕報名與交易回滾，必要時再集中修正。
+- R1 canonical 單表重構仍未完成，不能將本次 CI 修正當成整體完成；不得自動 merge main，不操作正式資料庫。
+- 後續每階段須同步更新本計畫書：實際變更、SHA、測試結果、剩餘風險、下一步。

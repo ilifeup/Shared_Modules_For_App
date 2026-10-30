@@ -7,14 +7,15 @@ use App\Models\Invoice;
 use App\Services\Payment\CashInvoiceService;
 use App\Services\Payment\InvoiceNumberAllocator;
 use Filament\Actions\Action;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceResource extends Resource
@@ -101,7 +102,7 @@ class InvoiceResource extends Resource
                 ->requiresConfirmation()
                 ->action(function (Invoice $record, array $data): void {
                     app(CashInvoiceService::class)->extendPaymentDeadline(
-                        $record->id, auth()->user(), \Illuminate\Support\Carbon::parse((string) $data['payment_due_at'], 'Asia/Taipei')->toIso8601String(), (string) $data['reason']
+                        $record->id, auth()->user(), Carbon::parse((string) $data['payment_due_at'], 'Asia/Taipei')->toIso8601String(), (string) $data['reason']
                     );
                     Notification::make()->title('付款期限已延長')->success()->send();
                 }),

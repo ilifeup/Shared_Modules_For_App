@@ -43,6 +43,9 @@ class BookingGroupController extends Controller
             'guest_email' => ['prohibited'],
             'guest_phone' => ['prohibited'],
             'member_user_id' => ['sometimes', 'integer', 'min:1'],
+            'booking_max_seats' => ['prohibited'],
+            'guest_count' => ['prohibited'],
+            'guest_attendees' => ['prohibited'],
         ]);
 
         $event = CalendarEvent::query()->listed()->findOrFail($id);

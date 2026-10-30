@@ -469,3 +469,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `b2a8897f`：在 `EventBooking` 宣告 `canonicalAttendance(): HasOne`，目標 FK `event_attendances.event_booking_id`。此欄位尚未建立，關聯不得在 Migration 前使用；原簽到服務仍走 `EventBookingAttendee`，未切換 API/QR。
 - 待辦：新增安全 Migration 與 unique(event, booking)；建立舊資料映射與完整性驗證；修改 EventAttendance/CheckinService/Controller、測試與 Flutter 契約；確認後才能移除舊欄位。
 - 本階段不執行正式 DB Migration，PR 保持 Draft。R1.55 HEAD 的 CI 執行中，R1.56 新提交需重新驗證。
+
+### R1.57｜QR 安全回歸測試補強（2026-10-30）
+
+- `82b13513`：M11CheckinTest 補上 canonical `b` QR 的 ID 竄改、過期視窗、錯誤類型 (`e`) 驗證拒絕測試。
+- 測試目前為提交待 CI 驗證，不代表 canonical 簽到入口已切換；仍須整合 Migration、Service、Controller、Flutter 與 E2E。
+- PR #63 保持 Draft；不執行正式 DB 變更、不自動合併。

@@ -269,6 +269,33 @@ it('rejects a disabled member even when reusing a valid booking request id', fun
     expect(seats($event))->toBe(1);
 });
 
+it('does not promote a waitlisted attendee whose event ledger was corrupted', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $unrelated = s9Event();
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+
+    $first = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waiting = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    // Simulate a stale or corrupt historical ledger before capacity is released.
+    DB::table('event_booking_attendees')->where('event_booking_group_id', $waiting)
+        ->update(['calendar_event_id' => $unrelated->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$first}/cancel")
+        ->assertOk();
+
+    expect(EventBookingGroup::query()->findOrFail($waiting)->status)->toBe('cancelled');
+    expect(seats($event))->toBe(0);
+});
+
 it('cancels a delegated booking once and refuses a stale second cancellation', function () {
     $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
     $manager = User::factory()->create(['verified_status' => 2]);

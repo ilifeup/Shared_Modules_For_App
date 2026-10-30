@@ -249,7 +249,7 @@ class CourseEnrollmentServiceTest extends TestCase
         DB::table('invoices')->where('id', $invoiceId)->update(['member_id' => $other->id]);
         $result = $service->confirmationReadiness($enrollment['id'], $admin);
         $this->assertFalse($result['ready']);
-        $this->assertSame('整期帳單不存在、已逾期或與報名資料不符。', $result['reason']);
+        $this->assertSame('整期帳單不存在、已取消或與報名資料不符。', $result['reason']);
 
         DB::table('invoices')->where('id', $invoiceId)->update([
             'member_id' => $member->id, 'payment_due_at' => now()->subMinute(),

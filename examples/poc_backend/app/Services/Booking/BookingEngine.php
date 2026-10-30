@@ -817,10 +817,13 @@ final class BookingEngine
 
         // Only a real, active and verified users.id can occupy the one seat.
         $attendeeId = $request->attendees[0]['member_user_id'] ?? null;
-        if ($attendeeId === null || ! is_numeric($attendeeId)) {
+        // Strict positive integer: is_numeric() also accepts fractions and scientific
+        // notation, which would silently coerce to a different users.id.
+        $validatedMemberId = filter_var($attendeeId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($validatedMemberId === false) {
             throw new ApiException(422, 'MEMBER_ID_REQUIRED', '參加者必須有正式會員 ID。');
         }
-        $attendee = User::query()->whereKey((int) $attendeeId)
+        $attendee = User::query()->whereKey($validatedMemberId)
             ->where('is_active', true)->where('verified_status', 2)->first();
         if ($attendee === null) {
             throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');

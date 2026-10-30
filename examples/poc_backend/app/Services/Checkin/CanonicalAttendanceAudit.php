@@ -59,19 +59,23 @@ final class CanonicalAttendanceAudit
             }
             if ($row->attendee_id === null) {
                 $report['missing_legacy_attendee']++;
+
                 continue;
             }
             if ($row->group_id === null) {
                 $report['missing_booking_group']++;
+
                 continue;
             }
             if ($row->booking_id === null) {
                 $report['missing_canonical_booking']++;
+
                 continue;
             }
             if ((int) $row->attendance_event_id !== (int) $row->attendee_event_id
                 || (int) $row->attendance_event_id !== (int) $row->booking_event_id) {
                 $report['event_mismatch']++;
+
                 continue;
             }
             // NULL is never a valid registered member. Casting both NULLs to
@@ -79,15 +83,18 @@ final class CanonicalAttendanceAudit
             if ($row->attendee_member_id === null || $row->booking_member_id === null
                 || (int) $row->attendee_member_id !== (int) $row->booking_member_id) {
                 $report['member_mismatch']++;
+
                 continue;
             }
             if ($row->assigned_booking_id !== null && (int) $row->assigned_booking_id !== (int) $row->booking_id) {
                 $report['assigned_booking_mismatch']++;
+
                 continue;
             }
             $target = (int) $row->booking_id;
             if ($targetCounts[$target] > 1) {
                 $report['duplicate_canonical_target']++;
+
                 continue;
             }
             if ($row->assigned_booking_id === null) {

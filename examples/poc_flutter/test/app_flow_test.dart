@@ -1350,7 +1350,9 @@ void main() {
     expect(find.text('社區講座'), findsOneWidget);
   });
 
-  testWidgets('books one verified member and cancels through S9', (tester) async {
+  testWidgets('books one verified member and cancels through S9', (
+    tester,
+  ) async {
     final backend = FakeBackend();
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-calendar')));
@@ -1374,9 +1376,8 @@ void main() {
       backend.calls.where((c) => c == 'POST /api/v1/events/1/booking-groups'),
       hasLength(1),
     );
-    final sent = backend.bodies[
-      backend.calls.indexOf('POST /api/v1/events/1/booking-groups')
-    ]!;
+    final sent = backend
+        .bodies[backend.calls.indexOf('POST /api/v1/events/1/booking-groups')]!;
     expect(sent.keys, contains('client_request_id'));
     expect(sent, isNot(contains('attendees')));
     expect(sent, isNot(contains('member_user_id')));
@@ -1389,14 +1390,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('group-cancel-confirm')));
     await tester.pumpAndSettle();
-    expect(
-      backend.calls,
-      contains('POST /api/v1/me/booking-groups/g1/cancel'),
-    );
+    expect(backend.calls, contains('POST /api/v1/me/booking-groups/g1/cancel'));
     expect(find.text('【沒有報名】'), findsOneWidget);
   });
 
-  testWidgets('shows full booking error and cancelled event state', (tester) async {
+  testWidgets('shows full booking error and cancelled event state', (
+    tester,
+  ) async {
     final backend = FakeBackend()..bookingRaceFull = true;
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-calendar')));

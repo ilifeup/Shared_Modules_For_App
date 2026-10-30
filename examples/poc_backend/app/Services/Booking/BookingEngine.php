@@ -459,7 +459,7 @@ final class BookingEngine
         ], true);
         $byAdmin = $byAdmin && $verifiedAdmin;
         $wasConfirmed = false;
-        $result = $this->transaction(function () use ($group, $actor, $byAdmin, $reason, &$wasConfirmed): EventBookingGroup {
+        $result = $this->transaction(function () use ($group, $actor, $byAdmin, $courseReleaseRequested, $reason, &$wasConfirmed): EventBookingGroup {
             $event = $this->lock($group->event);
             /** @var EventBookingGroup $locked */
             $locked = EventBookingGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();

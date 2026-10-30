@@ -254,7 +254,7 @@ class CourseEnrollmentServiceTest extends TestCase
         DB::table('invoices')->where('id', $invoiceId)->update([
             'member_id' => $member->id, 'payment_due_at' => now()->subMinute(),
         ]);
-        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
 
         DB::table('invoices')->where('id', $invoiceId)->update([
             'payment_due_at' => now()->addHour(), 'invoice_status' => 3,

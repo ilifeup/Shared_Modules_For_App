@@ -1098,7 +1098,12 @@ final class BookingEngine
         if ($attendee === null) {
             throw new ApiException(403, 'INVALID_ATTENDEE', '參加者會員資格已失效。');
         }
-        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
+        // A caller-supplied byAdmin flag is not proof of administrator rights.
+        // The booker must still own this request, and any delegated booking
+        // must pass current authorization unless the booker is a real admin.
+        $isAdmin = $request->byAdmin && $request->booker->is_active
+            && ! $request->booker->FamilyUser && $request->booker->isAdmin();
+        if (! $isAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '已無權查看此家庭會員的預約。');
         }
 

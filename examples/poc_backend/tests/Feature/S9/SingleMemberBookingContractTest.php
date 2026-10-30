@@ -1048,3 +1048,23 @@ it('does not accept course enrollment before the administrator scheduled opening
         ->toThrow(\Illuminate\Validation\ValidationException::class);
     expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
 });
+
+
+it('automatically closes course enrollment at its configured cutoff before classes begin', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Enrollment closed before first lesson',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->subDays(5),
+        'booking_closes_at' => now()->subMinute(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => app(\App\Services\Course\CourseEnrollmentService::class)
+        ->enroll($termId, $member, $member))
+        ->toThrow(\Illuminate\Validation\ValidationException::class);
+    expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
+});

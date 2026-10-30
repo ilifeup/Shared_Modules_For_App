@@ -150,3 +150,14 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 已確認 `tests/Pest.php` 使用 `RefreshDatabase`，並以 `s9Event` 建立活動、`seats` 查確認名額；原 fixture 仍保留過渡性 `booking_max_seats=5`（不是目標 schema）。
 - 核心資料庫 Migration 原始建表檔仍未定位；不能以本階段防護取代 R1 統一 `event_bookings`。需要 Git tree 列舉／完整 checkout，才能安全修改 migration 與 FK。
 - 最近已知程式 commit `7d101a58acb074d388bce3fcabeeed748db43e47`；以 GitHub HEAD 為準。未執行 CI、未合併 main。
+
+
+## R1.16｜核心原始 Migration 已定位（2026-10-30）
+
+本階段直接從 GitHub commit 歷史追溯並讀取 R1 分支的兩支原始 Migration；解除 R1.13–R1.15 所記「原始建表檔未定位」阻擋。此為靜態查核，尚未執行資料庫測試。
+
+1. `examples/poc_backend/database/migrations/2026_10_30_000100_s6_event_bookings.php`（原始引入 commit `f66697c5`）：建立 `event_bookings`，`calendar_event_id` FK restrict、`user_id` FK cascade、`status` confirmed/cancelled、`active` nullable，UNIQUE(calendar_event_id,user_id,active)；取消歷史依 NULL 允許重複。此唯一索引只覆蓋 S6 舊預約，不能直接當作新 R1 跨 S6/S9 單人唯一性已完成。
+2. `examples/poc_backend/database/migrations/2026_11_01_000100_s9_modules.php`（原始引入 commit `a557a623`）：建立 `event_booking_groups`（含 legacy_booking_id FK 指向 event_bookings、booker_user_id）、`event_booking_attendees`（group FK cascade、calendar_event_id FK restrict、member_user_id nullable FK nullOnDelete）、`event_waitlist_entries`（event_booking_group_id UNIQUE FK cascade）、`event_attendances`（event_booking_attendee_id FK restrict、event+attendee UNIQUE）、`event_attendance_corrections`（attendance FK cascade）。
+3. 已確認五張核心表的原始 Migration 路徑，接下來須讀取上述 S9 Migration 第 190–295 行的完整欄位／索引、後續所有增量 Migration，並逐一核對 Model/Service 的 FK 引用，才能開始 schema 整批修改。
+4. 特別注意：S9 Migration 的 event_attendances 是指向 attendee 而非 group；不能只把 group_id 重新命名成 booking_id。S6 的 user_id 也需與新 member_user_id/booker_user_id 語意整合。
+5. 本階段沒有修改應用程式碼、沒有執行 Pest/Flutter/CI、沒有操作 DB，也沒有合併 main。下一階段進入完整 FK/索引與增量 Migration 核對，之後集中實作。

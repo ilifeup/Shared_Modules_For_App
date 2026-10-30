@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
 use Illuminate\Support\Carbon;
@@ -203,7 +204,7 @@ it('keeps an event booking and FIFO waitlist unchanged through legacy cash expir
         'updated_at' => now(),
     ]);
 
-    $engine = app(\\App\\Services\\Booking\\BookingEngine::class);
+    $engine = app(BookingEngine::class);
     expect($engine->expireCashHold($groupId, $invoiceId))->toBeTrue();
     expect($engine->expireCashHold($groupId, $invoiceId))->toBeFalse();
 

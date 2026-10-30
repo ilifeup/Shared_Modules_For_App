@@ -358,3 +358,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 新增測試尚未取得本次 HEAD CI 結果。先前 `6721c918` 的 S0 Documentation success，Backend/Mobile pending、Shared Core in_progress（查詢當時）。
 - 這是過渡期回歸防護，不是完成單表切換。後續仍須移除晉升對舊 queue/group/attendee 的依賴，並同步付款、通知、課程、簽到、Migration 與 Flutter 契約。
 - 不操作正式 DB，不自動合併 main。
+
+
+## R1.37｜管理員 FIFO 排序與下游佇列順序一致性（2026-10-30）
+
+- `868aa9274e7c3a6d35dc2e1a693084827c3a9498`：擴充 `SingleMemberBookingContractTest.php` 管理員重排候補案例；canonical 第二位移至首位後，除核對 `event_bookings.waitlist_sequence` 為 1/2，亦檢查下游過渡 `event_waitlist_entries` 依 sequence 排序的 group ID 與 canonical 一致。
+- 此測試僅保護過渡階段的新舊佇列一致性；不是認可長期保留雙表。新提交 CI/Pest 尚未驗證。
+- 提交前 `9f2b9a33` 的 S0 success、Shared Core in_progress、Backend pending、Mobile queued（當時快照）。
+- 下一階段應將 queue 消費者逐一改讀 canonical booking，並同步處理付款、通知、簽到及 migration 的舊 FK；仍不可自動合併 main 或碰正式 DB。

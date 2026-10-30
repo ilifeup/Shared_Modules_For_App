@@ -521,7 +521,10 @@ it('cancels a paid booking after event start without promoting a waiting member'
     groupBook($event, $first)->assertCreated()->assertJsonPath('data.status', 'confirmed');
     groupBook($event, $waiting)->assertCreated()->assertJsonPath('data.status', 'waitlisted');
 
-    $event->forceFill(['starts_at' => now()->subMinutes(5)])->save();
+    // Simulate the clock passing the event start without invoking event-edit
+    // validation (which correctly forbids changing start past booking close).
+    DB::table('calendar_events')->where('id', $event->id)
+        ->update(['starts_at' => now()->subMinutes(5)]);
     $firstGroup = EventBookingGroup::query()->where('booker_user_id', $first->id)
         ->where('calendar_event_id', $event->id)->firstOrFail();
     app(BookingEngine::class)->cancelGroup($firstGroup, makeAdmin(), true, 'seat released after start');

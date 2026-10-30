@@ -406,3 +406,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `BookingEngine::endGroup()`：將 canonical `event_bookings` 的身份查詢及 `lockForUpdate()` 提前到舊版 invoice/group/attendee/waitlist 寫入之前，降低先修改舊資料、後取得 canonical 鎖的競爭窗口。
 - 此次僅調整鎖定順序，維持既有候補異常隔離語意；尚未完成所有取消入口的 canonical mismatch 前置拒絕與回歸測試，不可視為 R1 完工。
 - 對應 commit：`ab630aff1ebb2f1e8e1283bd1353aeb0e39ee184`。須以本 HEAD 的 CI 為準；PR #63 保持 Draft、不自動合併、不觸碰正式資料庫。
+
+
+### R1.43｜共用取消流程 canonical mismatch 前置拒絕（2026-10-30）
+
+- `BookingEngine::endGroup()` 在帳單、group、attendee、waitlist 任何寫入前，先鎖定並核對 canonical event/booker/member/status；有 `legacy_booking_id` 但找不到匹配有效 canonical 預約時，預設拋出 `409 CANONICAL_BOOKING_MISMATCH`，避免活動取消與管理員取消只變更舊資料。
+- `promote()` 的永久無效候補隔離明確傳入 `quarantineInvalidWaitlist: true`，允許隔離無效舊版候補群組，但不修改不匹配的 canonical 預約；此例外不得由一般取消入口使用。
+- 程式 commit：`c40e0981a35cccd8c4836a149ea5064985aa982a`。本階段仍需新增活動取消 mismatch 與候補隔離回歸測試，並等待此 HEAD 的 Backend/Mobile CI；不得自動合併。

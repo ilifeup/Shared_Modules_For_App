@@ -212,25 +212,19 @@ it('rejects invalid intervals on direct model create and update but accepts over
     }
 });
 
-it('rejects paid events whose booking deadline violates the cash hold period', function () {
-    expect(fn () => calendarEvent([
+it('allows paid events with shortened late-booking payment windows', function () {
+    $event = calendarEvent([
         'booking_enabled' => true,
         'booking_capacity' => 5,
         'price_amount' => 500,
         'booking_closes_at' => '2026-11-09 02:00:00',
-    ]))->toThrow(ValidationException::class);
-
-    $valid = calendarEvent([
-        'booking_enabled' => true,
-        'booking_capacity' => 5,
-        'price_amount' => 500,
-        'booking_closes_at' => '2026-11-08 12:00:00',
     ]);
-    expect($valid->exists)->toBeTrue();
+    expect($event->exists)->toBeTrue();
+    $event->update(['payment_hold_hours' => 48]);
+    expect($event->fresh()->payment_hold_hours)->toBe(48);
 
-    expect(fn () => $valid->update([
-        'payment_hold_hours' => 48,
-    ]))->toThrow(ValidationException::class);
+    expect(fn () => $event->update(['booking_closes_at' => '2026-11-10 03:00:00']))
+        ->toThrow(ValidationException::class);
 });
 
 it('rejects nonpositive cash hold hours and negative event prices', function () {
@@ -240,7 +234,7 @@ it('rejects nonpositive cash hold hours and negative event prices', function () 
         ->toThrow(ValidationException::class);
 });
 
-it('uses administrator cash hold default when the event has no override', function () {
+it('allows the administrator cash hold default to be shortened for late booking', function () {
     app(Settings::class)->put(['payment_hold_hours' => 24]);
 
     $event = calendarEvent([
@@ -250,7 +244,6 @@ it('uses administrator cash hold default when the event has no override', functi
         'booking_closes_at' => '2026-11-09 02:00:00',
     ]);
     expect($event->exists)->toBeTrue();
-
-    expect(fn () => $event->update(['booking_closes_at' => '2026-11-09 03:00:00']))
-        ->toThrow(ValidationException::class);
+    $event->update(['booking_closes_at' => '2026-11-09 03:00:00']);
+    expect($event->fresh()->booking_closes_at->format('Y-m-d H:i:s'))->toBe('2026-11-09 03:00:00');
 });

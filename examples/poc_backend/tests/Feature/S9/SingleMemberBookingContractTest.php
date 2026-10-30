@@ -131,6 +131,41 @@ it('rejects unknown guest and group keys without creating a booking', function (
     expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
 });
 
+it('rejects legacy guest and multi-member requests at the shared engine boundary', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $booker = User::factory()->create(['verified_status' => 2]);
+    $second = User::factory()->create(['verified_status' => 2]);
+
+    foreach ([
+        [null, [['name' => 'Visitor', 'member_user_id' => null]], 403, 'GUEST_NOT_ALLOWED'],
+        [$booker, [
+            ['name' => $booker->name, 'member_user_id' => $booker->id],
+            ['name' => $second->name, 'member_user_id' => $second->id],
+        ], 422, 'SINGLE_ATTENDEE_ONLY'],
+    ] as [$actor, $attendees, $status, $code]) {
+        try {
+            app(\App\Services\Booking\BookingEngine::class)->book(
+                $event,
+                new \App\Services\Booking\BookingRequest(
+                    booker: $actor,
+                    contactName: $actor?->name ?? 'Visitor',
+                    contactEmail: $actor?->email,
+                    contactPhone: $actor?->phone_e164,
+                    attendees: $attendees,
+                    clientRequestId: (string) Str::uuid(),
+                    actor: $actor,
+                ),
+            );
+            $this->fail('An unsupported guest or group booking was accepted.');
+        } catch (\App\Support\Api\ApiException $e) {
+            expect($e->status)->toBe($status)->and($e->errorCode)->toBe($code);
+        }
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
 it('rejects non-integer member identities even for internal booking calls', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $member = User::factory()->create(['verified_status' => 2]);

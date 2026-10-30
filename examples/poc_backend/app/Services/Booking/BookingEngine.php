@@ -453,11 +453,11 @@ final class BookingEngine
         // Only actual administrators can bypass normal cancellation ownership.
         // Course release reasons are handled separately by the verified parent
         // enrollment/invoice checks inside the transaction below.
-        if ($byAdmin && ! in_array($reason, [
+        $verifiedAdmin = $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
+        $courseReleaseRequested = $byAdmin && in_array($reason, [
             'course_payment_expired', 'course_enrollment_cancelled', 'course_makeup_released',
-        ], true)) {
-            $byAdmin = $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
-        }
+        ], true);
+        $byAdmin = $byAdmin && $verifiedAdmin;
         $wasConfirmed = false;
         $result = $this->transaction(function () use ($group, $actor, $byAdmin, $reason, &$wasConfirmed): EventBookingGroup {
             $event = $this->lock($group->event);
@@ -471,6 +471,11 @@ final class BookingEngine
                 ->where('calendar_event_id', $locked->calendar_event_id)->exists();
             $courseGroupSession = DB::table('course_group_events')
                 ->where('calendar_event_id', $locked->calendar_event_id)->exists();
+            // Only the course-owned path may request a parent-validated release.
+            // A forged course reason cannot grant admin rights on a normal event.
+            if ($courseReleaseRequested && $courseSession && ! $byAdmin) {
+                $byAdmin = true; // Still subject to exact cancelled parent + invoice checks below.
+            }
             if ($courseSession || $courseGroupSession) {
                 $releaseAllowed = false;
                 if ($courseSession && $byAdmin && in_array($reason, ['course_payment_expired', 'course_enrollment_cancelled'], true)) {

@@ -915,4 +915,44 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertContains($visibleTerm, $ids);
         $this->assertNotContains($hiddenTerm, $ids);
     }
+    public function test_near_start_course_enrollment_caps_payment_deadline_at_first_session(): void
+    {
+        $term = $this->term();
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)
+            ->value('calendar_event_id');
+        $start = now()->addMinutes(30);
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => $start, 'booking_closes_at' => now()->addMinutes(20),
+        ]);
+        $member = $this->verified();
+        $result = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $this->assertSame('pending_payment', $result['status']);
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $result['id'])->first();
+        $this->assertNotNull($invoice);
+        $this->assertTrue(\Carbon\Carbon::parse($invoice->payment_due_at)->lte($start));
+        $this->assertTrue(\Carbon\Carbon::parse($invoice->payment_due_at)->gt(now()));
+    }
+
+    public function test_course_enrollment_after_first_session_start_creates_no_seats_or_invoice(): void
+    {
+        $term = $this->term();
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)
+            ->value('calendar_event_id');
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => now()->subMinute(),
+        ]);
+        $member = $this->verified();
+
+        try {
+            app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+            $this->fail('A started course cannot create a new paid enrollment.');
+        } catch (ValidationException $exception) {
+            $this->assertNotEmpty($exception->errors());
+        }
+        $this->assertSame(0, DB::table('course_enrollments')->where('course_term_id', $term)->count());
+        $this->assertSame(0, DB::table('invoices')->where('booking_type', '02')->count());
+    }
+
 }

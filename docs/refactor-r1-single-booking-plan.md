@@ -448,3 +448,12 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.52 CI 實際失敗修正：HEAD `0170b654` 的 Backend Pest 579 pass / 1 fail，失敗為既有 `ManualRefundCancellationTest` 只取消 legacy group、未建立/取消 canonical booking；改為透過 `BookingEngine::bookLegacy()` 建立正式預約及 `cancelLegacy()` 取消後驗證退款（`c429733b`）。同時修正 `BookingEngine.php` Pint array indentation（`9c64642e`）。原 CI 的 S0 與 Shared Core 成功，Mobile E2E 成功、Android 當時尚在執行。新 HEAD 待 CI 驗證；未合併。
 
 - R1.53 CI 驗證：R1.52 HEAD `780b68ea` 的 Backend Pest **580 passed / 3603 assertions**；HTTP E2E、OTP/booking/S9/M11/course concurrency、rollback 均成功。唯一失敗是 `ManualRefundCancellationTest.php` 的 Pint `ordered_imports`，已按 Pint 要求調整 `BookingEngine` / `CashInvoiceService` 匯入順序（`6341c054`），未變更業務邏輯。後續新 HEAD 仍須 CI 確認 Pint 綠燈；PR 保持 Draft、不自動合併。
+
+## R1.54｜CI 全綠後跨模組依賴審查（2026-10-30）
+
+- R1.53 HEAD `63fb075d`：S0 Documentation、S1 Shared Core、S1 PoC Backend、S1 PoC Mobile（含 Android debug APK）四個 workflow 均為 `success`；Backend Pint 成功、Pest 580 passed / 3603 assertions，API E2E/併發/rollback 均成功。**這是現有過渡實作的 CI 證明，不代表 R1 單表重構完成。**
+- 直接讀取 `BookingEngine.php`（1290 行）：`bookLegacy()`、`book()` 仍雙入口；`legacy_booking_id`、`event_booking_group_id` 仍用於 S6/S9 同步、取消與候補。候補查詢於約 685–694、772–781 行 join `event_waitlist_entries` → `event_booking_groups` → `event_bookings`；`endGroup()` 約 1002 行仍依賴舊群組/參加者，不能單獨刪表。
+- 直接讀取 `CashInvoiceService.php`（636 行）：約 133 行仍 join 舊群組；退款 `recordManualRefund()` 約 331–416 行以 group ID 與 canonical booking 核對；約 589–590 行仍查舊 attendee。必須同批調整 invoice 01/02、取消前退款限制與鎖定順序。
+- 直接讀取 `CheckinService.php`（445 行）：約 153、199–205、363–396 行以 `event_booking_attendee_id` 查找/建立 attendance；註解明確依賴 `UNIQUE(calendar_event_id,event_booking_attendee_id)` 防併發重掃。新 schema 須改為 `event_booking_id` 並同步 QR payload、API response 的 `attendee_id`、管理員更正、測試；禁止先刪舊 attendee 表。
+- `CourseEnrollmentService.php`（462 行）本次關鍵字搜尋未發現直接 SQL 字串 `event_booking_groups`、`event_booking_attendees`、`event_booking_group_id`；**不表示無間接依賴**，仍須檢查 BookingEngine/Request/Model 與課程發票流程。
+- 下一整合批次順序：先定位 migration 的 attendance/QR/invoice FK 與現有 API 契約；設計 canonical booking ID 全鏈路；整批更新 migration/Model/Engine/Invoice/Checkin/Course/Controller/OpenAPI/Flutter/Filament/測試；僅在隔離開發 DB migrate:fresh；確認舊 schema 引用清零及所有測試後，才考慮完成 R1。PR #63 保持 Draft、不自動合併。

@@ -57,6 +57,26 @@ class EventBooking extends Model
     }
 
     /**
+     * The member who occupies the event seat, distinct from a family booker.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'member_user_id');
+    }
+
+    /**
+     * The verified member who submitted this booking.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function booker(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'booker_user_id');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo

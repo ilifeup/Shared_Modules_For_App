@@ -409,9 +409,12 @@ final class CashInvoiceService
             if ((int) $invoice->invoice_status === 1) {
                 return ['id' => $invoiceId, 'status' => 1, 'replayed' => true];
             }
-            if ((int) $invoice->invoice_status !== 0 || now()->gt($invoice->payment_due_at)) {
-                throw ValidationException::withMessages(['invoice' => '帳單已取消、過期或不允許付款。']);
+            if ((int) $invoice->invoice_status !== 0) {
+                throw ValidationException::withMessages(['invoice' => '帳單已取消、退款或不允許付款。']);
             }
+            // Overdue is an accounting marker, not a cancelled reservation.
+            // The administrator may confirm recovered cash after the due date,
+            // provided the original booking remains active and valid.
             if ($invoice->booking_type === '02') {
                 $enrollment = DB::table('course_enrollments')
                     ->where('id', $invoice->booking_id)->lockForUpdate()->first();

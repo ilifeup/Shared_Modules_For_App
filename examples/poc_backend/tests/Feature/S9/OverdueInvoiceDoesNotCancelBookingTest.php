@@ -169,3 +169,50 @@ it('does not extend an already overdue invoice or revive a cancelled enrollment'
     ))->toThrow(ValidationException::class);
     expect(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'))->not->toBeNull();
 });
+
+it('keeps an event booking and FIFO waitlist unchanged through legacy cash expiry retries', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_capacity' => 2]);
+    $booker = User::factory()->create(['verified_status' => 2]);
+    $waiting = User::factory()->create(['verified_status' => 2]);
+
+    $groupId = groupBook($event, $booker)->assertCreated()
+        ->assertJsonPath('data.status', 'confirmed')->json('data.id');
+    groupBook($event, $waiting)->assertCreated()
+        ->assertJsonPath('data.status', 'waitlisted');
+
+    $before = DB::table('event_waitlist_entries')
+        ->where('calendar_event_id', $event->id)
+        ->orderBy('id')->get(['id', 'status', 'sequence'])->toArray();
+
+    $invoiceId = DB::table('invoices')->insertGetId([
+        'invoice_code' => 'TEST-EVENT-OVERDUE-'.uniqid(),
+        'invoice_status' => 0,
+        'invoice_amount' => 100,
+        'currency' => 'TWD',
+        'member_id' => $booker->id,
+        'booker_user_id' => $booker->id,
+        'transaction_type' => '01',
+        'product_id' => $event->id,
+        'booking_type' => '01',
+        'booking_id' => $groupId,
+        'app_stage' => 0,
+        'payment_method' => 0,
+        'invoice_datetime' => now()->subDays(2),
+        'payment_due_at' => now()->subDay(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $engine = app(\\App\\Services\\Booking\\BookingEngine::class);
+    expect($engine->expireCashHold($groupId, $invoiceId))->toBeTrue();
+    expect($engine->expireCashHold($groupId, $invoiceId))->toBeFalse();
+
+    $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+    expect((int) $invoice->invoice_status)->toBe(0)
+        ->and($invoice->overdue_at)->not->toBeNull()
+        ->and(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))
+        ->toBe('confirmed')
+        ->and(DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+            ->orderBy('id')->get(['id', 'status', 'sequence'])->toArray())
+        ->toEqual($before);
+});

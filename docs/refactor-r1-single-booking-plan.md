@@ -314,3 +314,13 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `8b3a0d57`：新增 Pest 測試，驗證 attendee ledger 即使狀態變動，canonical 有效預約仍阻擋重複報名；canonical 取消後查詢回 null。
 - 仍待：將 FIFO queue、付款／退款、課程、簽到、API、Migration 全部切至單表後移除舊 group/attendee。使用者已確認無舊資料，禁止擴張歷史相容層。
 - 未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。
+
+
+## R1.32｜候補 FIFO 序號寫入 canonical booking（2026-10-30）
+
+- `2b9aceb4`：全新 event_bookings schema 新增 nullable waitlist_sequence 及候補排序索引。
+- `c66db3b8`：S9 候補建立時，以 canonical booking 的 max(waitlist_sequence)+1 指派序號，並寫入原有 queue entry（暫時維持下游相容）。
+- `6910bbfd`：管理員調整舊 queue 序號時同步更新 canonical booking 的 waitlist_sequence。
+- `65cca0b7`：新增 Pest 測試，驗證兩位候補會員在 canonical booking 的順序為 1、2。
+- **尚未完成**：promote() 仍以舊 event_waitlist_entries 選擇候補首位；尚未刪除 group/attendee/queue 舊表。下一步須將晉升與管理員排序直接改以 canonical waitlist_sequence 運作，並處理 invoice/course/check-in 的外鍵切換。避免擴充舊表相容層。
+- 尚未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。

@@ -894,9 +894,17 @@ final class BookingEngine
             ->update(['status' => EventWaitlistEntry::CANCELLED, 'resolved_at' => now(), 'updated_at' => now()]);
 
         if ($group->legacy_booking_id !== null) {
-            $legacy = EventBooking::query()->whereKey($group->legacy_booking_id)->where('status', EventBooking::STATUS_CONFIRMED)->first();
+            $legacy = EventBooking::query()->whereKey($group->legacy_booking_id)
+                ->whereIn('status', [EventBooking::STATUS_CONFIRMED, EventBooking::STATUS_WAITLISTED])->first();
             if ($legacy !== null) {
-                $this->cancelLegacyRow($legacy, $actor);
+                $legacy->forceFill([
+                    'status' => $status === EventBookingGroup::STATUS_EVENT_CANCELLED
+                        ? EventBooking::STATUS_EVENT_CANCELLED : EventBooking::STATUS_CANCELLED,
+                    'active' => null,
+                    'cancelled_at' => now(),
+                    'cancelled_by' => $actor?->id,
+                    'cancel_reason' => $reason !== null ? mb_substr($reason, 0, 255) : null,
+                ])->save();
             }
         }
 
@@ -949,7 +957,7 @@ final class BookingEngine
             throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', '每筆活動報名只能建立一位參加者。');
         }
 
-        return EventBookingAttendee::query()->create([
+        $attendee = EventBookingAttendee::query()->create([
             'event_booking_group_id' => $group->id,
             'calendar_event_id' => $group->calendar_event_id,
             'member_user_id' => $memberId,
@@ -957,6 +965,26 @@ final class BookingEngine
             'status' => $status,
             'active' => 1,
         ]);
+
+        // R1 transition: both S9 and S6 share the canonical booking identity.
+        // The outer booking transaction owns this write and rolls back both
+        // ledgers together. S6 already created the linked canonical row.
+        if ($group->legacy_booking_id === null) {
+            $booking = EventBooking::query()->create([
+                'calendar_event_id' => $group->calendar_event_id,
+                'user_id' => $memberId, // Legacy S6 compatibility column.
+                'member_user_id' => $memberId,
+                'booker_user_id' => $group->booker_user_id,
+                'client_request_id' => $group->client_request_id,
+                'status' => $status,
+                'active' => 1,
+                'booked_at' => $group->booked_at,
+                'confirmed_at' => $status === EventBooking::STATUS_CONFIRMED ? now() : null,
+            ]);
+            $group->forceFill(['legacy_booking_id' => $booking->id])->save();
+        }
+
+        return $attendee;
     }
 
     private function replay(EventBookingGroup $existing, CalendarEvent $event, BookingRequest $request): EventBookingGroup

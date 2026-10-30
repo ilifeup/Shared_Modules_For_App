@@ -217,7 +217,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       return;
     }
     if (_busy || _restoringScope == scope ||
-        _restoredScope != scope || _restoreErrorScope == scope) return;
+        _restoredScope != scope || _restoreErrorScope == scope) {
+      return;
+    }
     setState(() { _busy = true; _error = null; });
     final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
     PendingBookingRequest? saved;

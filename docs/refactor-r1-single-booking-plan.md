@@ -216,3 +216,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 **依賴次序：** 先建立最終 schema／Model 的完整欄位與外鍵對照，再以同一整合批次處理 BookingEngine + CashInvoiceService + CourseEnrollmentService + CheckinService + controllers/requests/notifications；同步更新 Flutter、Filament、OpenAPI、Pest。任何一個 Service 單獨換主鍵都會產生破壞性不相容。
 
 **尚未核對：** 所有 Controller/Request、其他 Model、Jobs/Notification、Flutter DTO/provider、Filament relation managers 與全量增量 Migration；本輪未執行測試或修改核心程式。下一階段應優先以 repository 檔案樹或逐檔實讀完成引用清單，然後進入集中實作；禁止僅追加文件就宣稱重構完成。
+
+
+## R1.20｜預約歷史 API 第一批程式／測試修改（2026-10-30）
+
+- 程式 commit `2ba63a1`：`BookingGroupController::mine` 接受 `status=event_cancelled` 並精確過濾；原 `status=cancelled` 仍同時涵蓋 cancelled/event_cancelled。
+- 測試 commit `b24f8d7`：`SingleMemberBookingContractTest` 新增活動取消歷史明確查詢及取消彙總查詢的回歸案例。
+- 本階段已實際修改 PHP controller 與 Pest test，**但尚未執行測試**，不得宣稱通過。此修正是 R1 過渡期的局部契約修復，並非 event_bookings 主鍵統一完成。
+- 下一批仍需一次處理新 Schema、BookingEngine、付款／課程／簽到及 Flutter/OpenAPI；不得以此小修代替主重構。未合併 main。

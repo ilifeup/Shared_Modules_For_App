@@ -27,7 +27,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('course_term_id')->constrained()->cascadeOnDelete();
             $table->foreignId('calendar_event_id')->unique()->constrained('calendar_events')->restrictOnDelete();
-            $table->unsignedInteger('makeup_capacity')->default(1);
+            $table->unsignedInteger('makeup_capacity')->default(0);
             $table->timestamps();
         });
 

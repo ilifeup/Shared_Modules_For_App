@@ -1168,6 +1168,29 @@ it('replays an existing authorized course enrollment after booking closes withou
         ->and(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(1);
 });
 
+it('rejects an event refund when only the legacy group is cancelled', function () {
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin->assignRole(User::ADMIN_ROLE);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    DB::table('event_booking_groups')->where('id', $groupId)->update(['status' => 'cancelled']);
+    DB::table('invoices')->where('id', $invoiceId)->update(['invoice_status' => 1]);
+
+    expect(fn () => app(CashInvoiceService::class)->recordManualRefund((int) $invoiceId, $admin, 'legacy-only cancellation'))
+        ->toThrow(ValidationException::class);
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and((int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'))->toBe(1)
+        ->and(DB::table('invoice_refund_audits')->where('invoice_id', $invoiceId)->count())->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+            ->where('transaction_amount', '<', 0)->count())->toBe(0);
+});
+
 it('rejects an event refund before cancellation without changing its invoice or ledger', function () {
     Role::findOrCreate(User::ADMIN_ROLE, 'web');
     $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);

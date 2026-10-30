@@ -928,6 +928,13 @@ final class BookingEngine
         if ($memberId === null || $memberId <= 0) {
             throw new ApiException(422, 'MEMBER_ID_REQUIRED', '參加者必須有正式會員 ID。');
         }
+        // A one-seat booking can never acquire a second attendee through an
+        // internal/admin code path. The event lock serialises normal booking
+        // writes; this is an additional guard against future callers.
+        if ((int) $group->seat_count !== 1
+            || EventBookingAttendee::query()->where('event_booking_group_id', $group->id)->exists()) {
+            throw new ApiException(422, 'SINGLE_ATTENDEE_ONLY', '每筆活動報名只能建立一位參加者。');
+        }
 
         return EventBookingAttendee::query()->create([
             'event_booking_group_id' => $group->id,

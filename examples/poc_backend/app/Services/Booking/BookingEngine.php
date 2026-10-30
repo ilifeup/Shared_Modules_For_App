@@ -123,11 +123,14 @@ final class BookingEngine
     /**
      * The member's active (confirmed or waitlisted) place at this occurrence, if any.
      */
-    public function activeAttendeeOf(CalendarEvent $event, User $member): ?EventBookingAttendee
+    public function activeAttendeeOf(CalendarEvent $event, User $member): ?EventBooking
     {
-        return EventBookingAttendee::query()
+        // R1: one active booking per event/member, whether confirmed or waiting.
+        // The return type is the canonical booking, not an attendee ledger row.
+        return EventBooking::query()
             ->where('calendar_event_id', $event->id)
             ->where('member_user_id', $member->id)
+            ->whereIn('status', [EventBooking::STATUS_CONFIRMED, EventBooking::STATUS_WAITLISTED])
             ->where('active', 1)
             ->first();
     }

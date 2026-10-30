@@ -65,3 +65,25 @@ it('does not overwrite an attendance already linked to another booking', functio
         ->and($report['safe_candidates'])->toBe(0)
         ->and($report['unmapped'])->toBe(0);
 });
+
+it('reports missing attendee, group and canonical booking independently', function () {
+    $report = inspectAuditRows([
+        auditRow(1, null, ['attendee_id' => null, 'group_id' => null]),
+        auditRow(2, null, ['group_id' => null]),
+        auditRow(3, null),
+    ]);
+
+    expect($report['missing_legacy_attendee'])->toBe(1)
+        ->and($report['missing_booking_group'])->toBe(1)
+        ->and($report['missing_canonical_booking'])->toBe(1)
+        ->and($report['safe_candidates'])->toBe(0);
+});
+
+it('does not mistake a valid already-mapped attendance for a backfill candidate', function () {
+    $report = inspectAuditRows([auditRow(1, 301, ['assigned_booking_id' => 301])]);
+
+    expect($report['total'])->toBe(1)
+        ->and($report['unmapped'])->toBe(0)
+        ->and($report['safe_candidates'])->toBe(0)
+        ->and($report['assigned_booking_mismatch'])->toBe(0);
+});

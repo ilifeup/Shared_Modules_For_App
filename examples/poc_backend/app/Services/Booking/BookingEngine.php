@@ -913,7 +913,11 @@ final class BookingEngine
         if ($attendee === null) {
             throw new ApiException(422, 'INVALID_ATTENDEE', '參加者會員 ID 無效。');
         }
-        if (! $request->byAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
+        // Internal callers cannot manufacture administrator authority by
+        // setting byAdmin=true; the verified booker must actually be an admin.
+        $isAdmin = $request->byAdmin && $request->booker->is_active
+            && ! $request->booker->FamilyUser && $request->booker->isAdmin();
+        if (! $isAdmin && ! $this->canManageFamily($request->booker, $attendee, true)) {
             throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '尚未取得此參加者的代訂授權。');
         }
         if ($this->activeAttendeeOf($event, $attendee) !== null) {

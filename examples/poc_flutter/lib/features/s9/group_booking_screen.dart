@@ -93,7 +93,8 @@ class PendingBookingRequests
         final parts = raw.split('|');
         if (parts.length == 2 &&
             RegExp(
-              r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}
+              r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+            ).hasMatch(parts[0])) {
           final member = parts[1] == 'self' ? null : int.tryParse(parts[1]);
           if (parts[1] == 'self' || (member != null && member > 0)) {
             restored = PendingBookingRequest(parts[0], member);

@@ -13,7 +13,7 @@ final class CanonicalAttendanceAudit
     /** @return array<string, int> */
     public function inspect(): array
     {
-        $rows = DB::table('event_attendances as attendance')
+        $query = DB::table('event_attendances as attendance')
             ->leftJoin('event_booking_attendees as attendee', 'attendee.id', '=', 'attendance.event_booking_attendee_id')
             ->leftJoin('event_booking_groups as booking_group', 'booking_group.id', '=', 'attendee.event_booking_group_id')
             ->leftJoin('event_bookings as booking', 'booking.id', '=', 'booking_group.legacy_booking_id')
@@ -28,10 +28,10 @@ final class CanonicalAttendanceAudit
                 'booking.id as booking_id',
                 'booking.calendar_event_id as booking_event_id',
                 'booking.member_user_id as booking_member_id',
-            ])->get();
+            ]);
 
         $report = [
-            'total' => $rows->count(),
+            'total' => 0,
             'unmapped' => 0,
             'missing_legacy_attendee' => 0,
             'missing_booking_group' => 0,
@@ -45,14 +45,15 @@ final class CanonicalAttendanceAudit
         // Count every candidate target first: the first of two conflicting rows
         // must not be reported as safe merely because it was visited first.
         $targetCounts = [];
-        foreach ($rows as $row) {
+        foreach ((clone $query)->orderBy('attendance.id')->cursor() as $row) {
             if ($row->booking_id !== null) {
                 $id = (int) $row->booking_id;
                 $targetCounts[$id] = ($targetCounts[$id] ?? 0) + 1;
             }
         }
 
-        foreach ($rows as $row) {
+        foreach ((clone $query)->orderBy('attendance.id')->cursor() as $row) {
+            $report['total']++;
             if ($row->assigned_booking_id === null) {
                 $report['unmapped']++;
             }

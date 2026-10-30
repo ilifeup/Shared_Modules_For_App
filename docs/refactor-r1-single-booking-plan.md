@@ -254,3 +254,12 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `f1002a35`：增加 Pest Schema 欄位存在性回歸測試。**尚未執行測試或 Migration**。
 - **重要限制：** 目前舊 S6/S9 引擎仍可寫入沒有 canonical member/booker 的新資料；本 Migration 尚未搬移 S9 groups/attendees，也未將新增 FK 改 NOT NULL，**不得宣稱已達成單一預約主表**。後續須在同一協調批次完成歷史 S9 資料轉換、寫入路徑、外鍵依賴與唯一性、舊欄位清理。
 - 只允許隔離開發 DB 驗證；正式環境禁止直接執行未審核的破壞性切換。未合併 main。
+
+
+## R1.25｜S6 入口雙寫 canonical event_bookings 欄位（2026-10-30）
+
+- `496e239c`：EventBooking Model fillable 新增 member_user_id、booker_user_id、client_request_id、confirmed_at、cancel_reason；confirmed_at datetime cast。
+- `c37a4ec9`：BookingEngine::bookLegacy() 在原有 S6 transaction 中將 member_user_id/booker_user_id 設為會員 ID，並將 booked_at/confirmed_at 設為同一時間；保留 user_id 以維持舊契約。
+- `f418ff0c`：Pest 增加 S6 建立預約後檢查 canonical 身分欄位與 confirmed_at 的回歸測試。
+- **目前僅 S6 寫入雙寫**，S9 仍以 group/attendee 為權威，未搬移 S9 歷史資料，尚未切換候補／付款／課程／簽到外鍵。這些步驟須集中協調以避免雙權威資料漂移。
+- **Migration/Pest/CI 未執行**；沒有合併 main 或操作正式資料庫。

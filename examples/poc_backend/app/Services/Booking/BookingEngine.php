@@ -386,10 +386,12 @@ final class BookingEngine
                     $this->queueSync($request->booker->id, $locked->id);
                 }
 
-                AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id, $group, [
+                // Audit the verified privilege actually used, never the untrusted
+                // request flag. A missing optional actor must not erase the booker.
+                AuditEvent::record($group->status === EventBookingGroup::STATUS_WAITLISTED ? 'booking.waitlisted' : 'booking.confirmed', $request->actor?->id ?? $request->booker->id, $group, [
                     'event_id' => $event->id,
                     'seats' => $group->seat_count,
-                    'by' => $request->byAdmin ? 'admin' : 'member',
+                    'by' => ($request->byAdmin && $request->booker->is_active && ! $request->booker->FamilyUser && $request->booker->isAdmin()) ? 'admin' : 'member',
                 ]);
 
                 return $group;

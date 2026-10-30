@@ -611,3 +611,25 @@ it('defines the canonical active booking statuses without treating cancelled his
     $booking->status = \App\Models\EventBooking::STATUS_EVENT_CANCELLED;
     expect($booking->isActive())->toBeFalse();
 });
+
+
+it('provides the additive canonical member and booker columns on event bookings', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    $booking = \App\Models\EventBooking::query()->create([
+        'calendar_event_id' => $event->id,
+        'user_id' => $member->id,
+        'status' => \App\Models\EventBooking::STATUS_CONFIRMED,
+        'active' => 1,
+        'booked_at' => now(),
+    ]);
+
+    expect(\Illuminate\Support\Facades\Schema::hasColumns('event_bookings', [
+        'member_user_id', 'booker_user_id', 'client_request_id', 'confirmed_at', 'cancel_reason',
+    ]))->toBeTrue();
+
+    // The migration backfills existing S6 rows; new S6 writes still use the
+    // legacy user_id until the coordinated engine cutover.
+    expect(DB::table('event_bookings')->where('id', $booking->id)->exists())->toBeTrue();
+});

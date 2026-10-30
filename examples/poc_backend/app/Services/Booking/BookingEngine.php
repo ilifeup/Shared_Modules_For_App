@@ -1007,8 +1007,17 @@ final class BookingEngine
             ->update(['status' => EventWaitlistEntry::CANCELLED, 'resolved_at' => now(), 'updated_at' => now()]);
 
         if ($group->legacy_booking_id !== null) {
+            // Never cancel an unrelated canonical booking through a stale group
+            // pointer. Only the same event, booker and single attendee may be
+            // transitioned while the legacy tables are being retired.
+            $attendeeMemberId = EventBookingAttendee::query()
+                ->where('event_booking_group_id', $group->id)->value('member_user_id');
             $legacy = EventBooking::query()->whereKey($group->legacy_booking_id)
-                ->whereIn('status', [EventBooking::STATUS_CONFIRMED, EventBooking::STATUS_WAITLISTED])->first();
+                ->where('calendar_event_id', $group->calendar_event_id)
+                ->where('booker_user_id', $group->booker_user_id)
+                ->where('member_user_id', $attendeeMemberId)
+                ->whereIn('status', [EventBooking::STATUS_CONFIRMED, EventBooking::STATUS_WAITLISTED])
+                ->lockForUpdate()->first();
             if ($legacy !== null) {
                 $legacy->forceFill([
                     'status' => $status === EventBookingGroup::STATUS_EVENT_CANCELLED

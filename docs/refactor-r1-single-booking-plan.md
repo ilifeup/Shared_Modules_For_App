@@ -374,3 +374,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `5f3fc7c8e88ca3bfbe37a1394819836a82b4e94d`：新增 `SingleMemberBookingContractTest.php` 身分不一致案例，模擬 canonical 會員 ID 被更改後釋出名額，要求候補被取消、舊 queue 標記 skipped 且不占用席次。
 - **未驗證**：新增測試尚待 Backend CI/Pest 實際執行。此為過渡期防錯，不是舊表移除完成；後續須直接以 canonical booking 為唯一晉升來源並重構下游付款、通知、簽到、課程及 migration。
 - 查詢前一 HEAD `de7651b8` 時 S0/Shared Core 執行中，Backend/Mobile pending；勿視為本次提交的結果。未合併 main，未操作正式 DB。
+
+
+## R1.39｜共用取消入口 canonical 身分限制（2026-10-30）
+
+- `b7b2fc4de1729a2c89636be44fccecc1e8ee1e28`：`BookingEngine::endGroup()` 依 group 指標取消 canonical 預約前，額外限定 `calendar_event_id`、`booker_user_id` 與 group attendee 的 `member_user_id` 一致，並對符合條件的 canonical row 加鎖。避免過渡期舊 FK 錯誤時直接取消其他會員或其他活動預約。
+- `4b471ddcf2603aad305829127e8203fd6f86f341`：延伸 canonical 身分錯置的候補案例，驗證舊 group 被取消、queue skipped 時，錯置 canonical row 不會被連帶取消。
+- **風險**：不一致的 canonical row 可能保留有效狀態，須在後續資料修復／單表切換時建立明確隔離或清理流程；此防護不代表最終狀態已一致。新提交的 Backend/Pest 尚未驗證。提交前舊 HEAD `768f3239` 的 S0 與 Shared Core success，Backend/Mobile in_progress；新提交可能觸發新的 CI 並取消舊 run。
+- 後續優先處理 canonical 為唯一真實來源、錯誤關聯隔離、invoice/course/check-in FK 與 API/migration 清理。未合併 main，未操作正式 DB。

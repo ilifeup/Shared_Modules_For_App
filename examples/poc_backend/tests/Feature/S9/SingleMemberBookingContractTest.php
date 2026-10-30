@@ -842,6 +842,9 @@ it('uses canonical FIFO order when an administrator reorders waiting members', f
 
     expect((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(1)
         ->and((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(2);
+    $queueOrder = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->where('status', 'waiting')->orderBy('sequence')->pluck('event_booking_group_id')->all();
+    expect(array_map('intval', $queueOrder))->toBe([(int) $groupIds[1], (int) $groupIds[2]]);
 });
 
 it('authorizes S6 cancellation by canonical original booker rather than obsolete user_id', function () {

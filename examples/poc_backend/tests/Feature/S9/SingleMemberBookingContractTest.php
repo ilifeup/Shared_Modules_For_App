@@ -883,3 +883,28 @@ it('allows cancelling an active waitlisted canonical booking through the S6 canc
         ->and($cancelled->waitlist_sequence)->toBeNull()
         ->and($engine->waitingGroups($event))->toBe(0);
 });
+
+
+it('rejects administrator reorder if canonical waitlist and legacy queue diverge', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $waitingGroup = EventBookingGroup::query()->findOrFail($ids[1]);
+    DB::table('event_waitlist_entries')->where('event_booking_group_id', $waitingGroup->id)
+        ->update(['status' => 'skipped']);
+
+    expect(fn () => app(\App\Services\Booking\BookingEngine::class)
+        ->moveInWaitlist($waitingGroup, 1, $members[0], 'divergent queue'))
+        ->toThrow(\App\Exceptions\ApiException::class);
+    expect(DB::table('event_bookings')->where('id', $waitingGroup->legacy_booking_id)
+        ->value('status'))->toBe('waitlisted');
+});

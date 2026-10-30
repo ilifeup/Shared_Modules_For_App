@@ -885,6 +885,11 @@ it('authorizes S6 cancellation by canonical original booker rather than obsolete
     // Simulate a delegated canonical booking while retaining the old S6 user_id.
     DB::table('event_bookings')->where('id', $booking->id)
         ->update(['member_user_id' => $member->id, 'booker_user_id' => $booker->id]);
+    // A valid delegated booking has the same participant in the attendee ledger.
+    // The obsolete S6 user_id deliberately remains the original booker.
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)
+        ->update(['member_user_id' => $member->id]);
     $engine = app(BookingEngine::class);
     expect(fn () => $engine->cancelLegacy($booking->fresh(), $stranger))->toThrow(ApiException::class);
 

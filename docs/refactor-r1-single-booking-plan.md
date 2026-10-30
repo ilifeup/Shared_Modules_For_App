@@ -245,3 +245,12 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `42cf3510`：`app/Models/EventBooking.php` 新增 STATUS_WAITLISTED、STATUS_EVENT_CANCELLED，及 `isActive()`（confirmed/waitlisted 且 active=1）。保留原 isConfirmed()、user()、event()，避免尚未遷移 S6 時破壞舊讀取。
 - `bb92c1db`：新增 EventBooking 狀態／active 欄位的 Pest 測試，確認取消及活動取消不視為有效預約。
 - 本次為目標 Model 契約的**非破壞性程式準備**，不是 schema 切換；尚未執行測試／CI，未合併 main。下一步應建立一次性整合 schema 改造及所有依賴切換，避免長期停留於過渡模式。
+
+
+## R1.24｜新增 canonical event_bookings 第一階段 Migration（2026-10-30）
+
+- `f159782c`：新增 `database/migrations/2026_11_10_000100_prepare_canonical_event_bookings.php`，為既有 S6 event_bookings **加法式**加入 member_user_id、booker_user_id（nullable FK users restrictOnDelete）、client_request_id（UUID UNIQUE）、confirmed_at、cancel_reason；建立 UNIQUE(calendar_event_id,member_user_id,active) 與 booker/history 索引。
+- 以既有 S6 user_id 回填歷史列的 member_user_id/booker_user_id，confirmed 狀態的 confirmed_at 回填 booked_at；保留既有 ID、user_id 與舊 unique，並提供反向移除新增欄位／索引的 down()。
+- `f1002a35`：增加 Pest Schema 欄位存在性回歸測試。**尚未執行測試或 Migration**。
+- **重要限制：** 目前舊 S6/S9 引擎仍可寫入沒有 canonical member/booker 的新資料；本 Migration 尚未搬移 S9 groups/attendees，也未將新增 FK 改 NOT NULL，**不得宣稱已達成單一預約主表**。後續須在同一協調批次完成歷史 S9 資料轉換、寫入路徑、外鍵依賴與唯一性、舊欄位清理。
+- 只允許隔離開發 DB 驗證；正式環境禁止直接執行未審核的破壞性切換。未合併 main。

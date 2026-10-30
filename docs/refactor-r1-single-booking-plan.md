@@ -110,3 +110,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 本文件位置：`docs/refactor-r1-single-booking-plan.md`。
 - 已有測試：`examples/poc_backend/tests/Feature/S9/SingleMemberBookingContractTest.php`；原有 `M08BookingTest.php` 含 S6/S9 共存情境，正式移除 S6 時須同步改測試。
 - GitHub 操作使用既有 GitHub connector；先讀取最新 SHA，再帶 SHA 更新，避免覆蓋其他修改。
+
+## R1.11 階段快照（2026-10-30）
+
+- 新增 Pest 防線測試 `5eff724`：直接呼叫 BookingEngine::book()，涵蓋訪客 booker=null 與兩位會員 attendees，要求分別拒絕為 403 GUEST_NOT_ALLOWED、422 SINGLE_ATTENDEE_ONLY，且不得新增 group/占位。**尚未執行測試。**
+- 重新讀取 `BookingGroupController.php`：POST /events/{id}/booking-groups 只允許 client_request_id、member_user_id；GET /me/booking-groups 仍查 event_booking_groups/attendees；cancel 仍走 cancelGroup。這證實目前尚非單一 event_bookings 契約。
+- 重新讀取 `BookingEngine.php`：`bookLegacy` 寫 event_bookings + event_booking_groups + attendee；`book` 寫 group + attendee；兩者使用 event row lock 與共用座位計算。遷移時須一次改 S6/S9 寫入、取消、候補、付款、通知。
+- GitHub 程式碼搜尋原始 migration 建表字串未返回結果，且 fetch_file 不支援直接讀取目錄。**原始 migration 尚未定位；不得因此假設不存在，也不得先刪表。** 下一階段應透過可列舉 Git tree 的工具或本機 checkout 全量搜尋 `Schema::create`，並以實際檔案核對索引與外鍵。
+- 交接時先讀本文件，確認 branch HEAD、CI 和未完成依賴；**嚴禁把新增測試視為測試已通過**。不自動合併 main。

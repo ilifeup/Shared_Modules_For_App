@@ -33,7 +33,6 @@ final manageableFamilyMembersProvider =
       (ref) => ref.watch(bookingGroupApiProvider).manageableMembers(),
     );
 
-
 /// Persist unresolved booking attempts before sending HTTP, so a lost response
 /// followed by an app restart reuses the exact same idempotency key and member.
 /// Storage is scoped to the authenticated member and event.
@@ -223,17 +222,26 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       setState(() => _error = '請先登入會員帳號。');
       return;
     }
-    if (_busy || _restoringScope == scope ||
-        _restoredScope != scope || _restoreErrorScope == scope) {
+    if (_busy ||
+        _restoringScope == scope ||
+        _restoredScope != scope ||
+        _restoreErrorScope == scope) {
       return;
     }
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
     PendingBookingRequest? saved;
     try {
       saved = await pendingStore.load(scope);
     } catch (error) {
-      if (mounted) setState(() { _busy = false; _error = error; });
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _error = error;
+        });
       return;
     }
     if (!mounted || _requestScope != scope) {
@@ -245,16 +253,26 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
       if (allowed == null || !allowed.any((member) => member.id == selected)) {
-        setState(() { _busy = false; _error = '請選擇已授權的家庭會員。'; });
+        setState(() {
+          _busy = false;
+          _error = '請選擇已授權的家庭會員。';
+        });
         return;
       }
     }
     try {
       if (saved == null) {
-        await pendingStore.save(scope, PendingBookingRequest(requestId, selected));
+        await pendingStore.save(
+          scope,
+          PendingBookingRequest(requestId, selected),
+        );
       }
     } catch (error) {
-      if (mounted) setState(() { _busy = false; _error = error; });
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _error = error;
+        });
       return;
     }
     if (!mounted || _requestScope != scope) {
@@ -324,7 +342,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _restoreError = null;
     }
     final result = scope != null && scope == _resultScope ? _result : null;
-    final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
+    final pending = scope == null
+        ? null
+        : ref.watch(pendingBookingRequestsProvider)[scope];
     if (scope != null &&
         _restoredScope != scope &&
         _restoringScope != scope &&
@@ -334,14 +354,16 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     }
     final restoring = scope != null && _restoredScope != scope;
 
-
     return Scaffold(
       appBar: AppBar(title: const Text('單人報名／候補')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (event.value != null)
-            Text(event.value!.title, style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              event.value!.title,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
           const SizedBox(height: 8),
           if (result != null) ...[
             StatusBox(

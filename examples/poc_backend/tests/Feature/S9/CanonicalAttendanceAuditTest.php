@@ -87,3 +87,14 @@ it('does not mistake a valid already-mapped attendance for a backfill candidate'
         ->and($report['safe_candidates'])->toBe(0)
         ->and($report['assigned_booking_mismatch'])->toBe(0);
 });
+
+it('rejects null member identities rather than treating null as integer zero', function () {
+    $report = inspectAuditRows([
+        auditRow(1, 301, ['attendee_member_id' => null, 'booking_member_id' => null]),
+        auditRow(2, 302, ['attendee_member_id' => null]),
+        auditRow(3, 303, ['booking_member_id' => null]),
+    ]);
+
+    expect($report['member_mismatch'])->toBe(3)
+        ->and($report['safe_candidates'])->toBe(0);
+});

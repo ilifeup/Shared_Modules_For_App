@@ -20,7 +20,7 @@ class EventAttendance extends Model
 
     public const REVOKED = 'revoked';
 
-    protected $fillable = ['calendar_event_id', 'event_booking_attendee_id', 'status', 'checked_in_at', 'checked_out_at', 'source', 'checked_in_by'];
+    protected $fillable = ['calendar_event_id', 'event_booking_attendee_id', 'event_booking_id', 'status', 'checked_in_at', 'checked_out_at', 'source', 'checked_in_by'];
 
     protected function casts(): array
     {
@@ -38,6 +38,16 @@ class EventAttendance extends Model
     public function attendee(): BelongsTo
     {
         return $this->belongsTo(EventBookingAttendee::class, 'event_booking_attendee_id');
+    }
+
+    /**
+     * Canonical booking relation; usable after event_booking_id migration.
+     *
+     * @return BelongsTo<EventBooking, $this>
+     */
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(EventBooking::class, 'event_booking_id');
     }
 
     /**

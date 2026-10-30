@@ -135,9 +135,9 @@ class CalendarEventResource extends Resource
             TextInput::make('waitlist_capacity')->label('候補名額上限')->numeric()->minValue(0)->maxValue(100000)->default(5)
                 ->required()
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
-            TextInput::make('booking_max_seats')->label('每筆報名最多人數（含本人）')->numeric()->minValue(1)->maxValue(50)->default(1)
-                ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
-            Toggle::make('waitlist_enabled')->label('額滿開放候補（依順序整組遞補）')->default(true)
+            TextInput::make('booking_max_seats')->label('每筆報名人數（固定 1 人）')->numeric()->minValue(1)->maxValue(1)->default(1)
+                ->disabled()->dehydrated()->visible(false),
+            Toggle::make('waitlist_enabled')->label('額滿開放候補（依會員報名順序遞補）')->default(true)
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
             TextInput::make('price_amount')->label('活動費用（TWD，0＝免費）')
                 ->numeric()->minValue(0)->default(0)->required()
@@ -156,7 +156,7 @@ class CalendarEventResource extends Resource
             DateTimePicker::make('booking_opens_at')->label('預約開放時間（空白＝立即）')->seconds(false)
                 ->timezone(static::displayTimezone())
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
-            DateTimePicker::make('booking_closes_at')->label('預約截止時間（空白＝活動開始時）')->seconds(false)
+            DateTimePicker::make('booking_closes_at')->label('停止預約時間（空白＝活動開始時）')->seconds(false)
                 ->timezone(static::displayTimezone())
                 ->after('booking_opens_at')
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
@@ -296,7 +296,7 @@ class CalendarEventResource extends Resource
         $capacity = (int) $record->booking_capacity;
         $waiting = $engine->waitingGroups($record);
 
-        return "已預約 {$booked} / {$capacity}（剩 ".max(0, $capacity - $booked).'）'.($waiting > 0 ? "｜候補 {$waiting} 組" : '');
+        return "已預約 {$booked} / {$capacity}（剩 ".max(0, $capacity - $booked).'）'.($waiting > 0 ? "｜候補 {$waiting} 人" : '');
     }
 
     /**

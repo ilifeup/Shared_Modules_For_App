@@ -1,9 +1,18 @@
 <?php
 
+use App\Models\EventBooking;
 use App\Models\EventBookingGroup;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
+use App\Services\Booking\BookingRequest;
+use App\Services\Course\CourseEnrollmentService;
+use App\Services\Payment\CashInvoiceService;
+use App\Support\Api\ApiException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 it('books exactly one seat for the verified member', function () {
     $event = s9Event(['booking_capacity' => 2]);
@@ -108,6 +117,127 @@ it('rejects obsolete multi-attendee payloads instead of silently booking a subse
     expect(seats($event))->toBe(0);
 });
 
+it('rejects unknown guest and group keys without creating a booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    foreach ([
+        ['seat_count' => 2],
+        ['guest_name' => 'Guest'],
+        ['guest_count' => 1],
+        ['booking_max_seats' => 2],
+        ['unexpected_future_field' => 'unsafe'],
+    ] as $extra) {
+        $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", array_merge([
+                'client_request_id' => (string) Str::uuid(),
+            ], $extra))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_FAILED')
+            ->assertJsonStructure(['error' => ['fields' => [array_key_first($extra)]]]);
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
+it('rejects legacy guest and multi-member requests at the shared engine boundary', function () {
+    $event = s9Event(['booking_capacity' => 3]);
+    $booker = User::factory()->create(['verified_status' => 2]);
+    $second = User::factory()->create(['verified_status' => 2]);
+
+    foreach ([
+        [null, [['name' => 'Visitor', 'member_user_id' => null]], 403, 'GUEST_NOT_ALLOWED'],
+        [$booker, [
+            ['name' => $booker->name, 'member_user_id' => $booker->id],
+            ['name' => $second->name, 'member_user_id' => $second->id],
+        ], 422, 'SINGLE_ATTENDEE_ONLY'],
+    ] as [$actor, $attendees, $status, $code]) {
+        try {
+            app(BookingEngine::class)->book(
+                $event,
+                new BookingRequest(
+                    booker: $actor,
+                    contactName: $actor?->name ?? 'Visitor',
+                    contactEmail: $actor?->email,
+                    contactPhone: $actor?->phone_e164,
+                    attendees: $attendees,
+                    clientRequestId: (string) Str::uuid(),
+                    actor: $actor,
+                ),
+            );
+            $this->fail('An unsupported guest or group booking was accepted.');
+        } catch (ApiException $e) {
+            expect($e->status)->toBe($status)->and($e->errorCode)->toBe($code);
+        }
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
+it('rejects non-integer member identities even for internal booking calls', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    foreach (['1.5', '1e2', 0, -1, null] as $invalidId) {
+        try {
+            app(BookingEngine::class)->book(
+                $event,
+                new BookingRequest(
+                    booker: $member,
+                    contactName: $member->name,
+                    contactEmail: $member->email,
+                    contactPhone: $member->phone_e164,
+                    attendees: [['name' => $member->name, 'member_user_id' => $invalidId]],
+                    clientRequestId: (string) Str::uuid(),
+                    actor: $member,
+                ),
+            );
+            $this->fail('Malformed member ID was accepted.');
+        } catch (ApiException $e) {
+            expect($e->status)->toBe(422)->and($e->errorCode)->toBe('MEMBER_ID_REQUIRED');
+        }
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
+it('rejects malformed member IDs on idempotent replay without disclosing the original booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $key = (string) Str::uuid();
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => $key,
+        ])->assertCreated();
+
+    foreach ([(string) $member->id.'.0', (string) $member->id.'e0'] as $invalidId) {
+        try {
+            app(BookingEngine::class)->book(
+                $event,
+                new BookingRequest(
+                    booker: $member,
+                    contactName: $member->name,
+                    contactEmail: $member->email,
+                    contactPhone: $member->phone_e164,
+                    attendees: [['name' => $member->name, 'member_user_id' => $invalidId]],
+                    clientRequestId: $key,
+                    actor: $member,
+                ),
+            );
+            $this->fail('Malformed member ID replay was accepted.');
+        } catch (ApiException $e) {
+            expect($e->status)->toBe(409)->and($e->errorCode)->toBe('IDEMPOTENCY_CONFLICT');
+        }
+    }
+
+    expect(seats($event))->toBe(1);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(1);
+});
+
 it('rejects an unverified member before booking or replay', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $member = User::factory()->create(['verified_status' => 1]);
@@ -147,6 +277,61 @@ it('rejects a disabled member even when reusing a valid booking request id', fun
     ])->assertForbidden();
 
     expect(seats($event))->toBe(1);
+});
+
+it('does not promote a waitlisted attendee whose event ledger was corrupted', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $unrelated = s9Event();
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+
+    $first = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waiting = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    // Simulate a stale or corrupt historical ledger before capacity is released.
+    DB::table('event_booking_attendees')->where('event_booking_group_id', $waiting)
+        ->update(['calendar_event_id' => $unrelated->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$first}/cancel")
+        ->assertOk();
+
+    expect(EventBookingGroup::query()->findOrFail($waiting)->status)->toBe('cancelled');
+    expect(seats($event))->toBe(0);
+});
+
+it('does not promote a waitlisted member when canonical booking identity disagrees', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+    $otherMember = User::factory()->create(['verified_status' => 2]);
+
+    $first = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waiting = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $waiting)->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $bookingId)
+        ->update(['member_user_id' => $otherMember->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$first}/cancel")->assertOk();
+
+    expect(EventBookingGroup::query()->findOrFail($waiting)->status)->toBe('cancelled')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $waiting)->value('status'))->toBe('skipped')
+        ->and(DB::table('event_bookings')->where('id', $bookingId)->value('status'))->toBe('waitlisted')
+        ->and(seats($event))->toBe(0);
 });
 
 it('cancels a delegated booking once and refuses a stale second cancellation', function () {
@@ -395,4 +580,683 @@ it('rejects legacy S6 booking on series-owned course occurrences', function () {
         expect(DB::table('event_bookings')
             ->where('calendar_event_id', $event->id)->count())->toBe(0);
     }
+});
+
+it('filters event-cancelled bookings explicitly without changing the cancelled aggregate', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $groupId = $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+
+    EventBookingGroup::query()->whereKey($groupId)->update(['status' => EventBookingGroup::STATUS_EVENT_CANCELLED]);
+
+    $this->getJson('/api/v1/me/booking-groups?status=event_cancelled')
+        ->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $groupId)
+        ->assertJsonPath('data.0.status', 'event_cancelled');
+
+    $this->getJson('/api/v1/me/booking-groups?status=cancelled')
+        ->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $groupId);
+});
+
+it('skips a cross-event waitlist ledger without cancelling the unrelated booking', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $otherEvent = s9Event(['booking_capacity' => 2]);
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+
+    $firstId = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waitingId = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    // The queue still belongs to the first event, but the booking group is
+    // incorrectly associated with a different event. Do not cancel that group.
+    DB::table('event_booking_groups')->where('id', $waitingId)
+        ->update(['calendar_event_id' => $otherEvent->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$firstId}/cancel")->assertOk();
+
+    expect(DB::table('event_waitlist_entries')->where('event_booking_group_id', $waitingId)
+        ->value('status'))->toBe('skipped');
+    expect(DB::table('event_booking_groups')->where('id', $waitingId)
+        ->value('status'))->toBe('waitlisted');
+    expect(seats($event))->toBe(0);
+});
+
+it('defines the canonical active booking statuses without treating cancelled history as active', function () {
+    $booking = new EventBooking(['status' => EventBooking::STATUS_CONFIRMED, 'active' => 1]);
+    expect($booking->isActive())->toBeTrue();
+
+    $booking->status = EventBooking::STATUS_WAITLISTED;
+    expect($booking->isActive())->toBeTrue();
+
+    $booking->status = EventBooking::STATUS_CANCELLED;
+    $booking->active = null;
+    expect($booking->isActive())->toBeFalse();
+
+    $booking->status = EventBooking::STATUS_EVENT_CANCELLED;
+    expect($booking->isActive())->toBeFalse();
+});
+
+it('creates the canonical booking identity columns directly in the fresh schema', function () {
+    expect(Schema::hasColumns('event_bookings', [
+        'member_user_id', 'booker_user_id', 'client_request_id', 'confirmed_at', 'cancel_reason',
+    ]))->toBeTrue();
+});
+
+it('dual-writes the canonical member and booker identities on S6 booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $row = DB::table('event_bookings')->where('id', $booking->id)->first();
+
+    expect((int) $row->user_id)->toBe($member->id)
+        ->and((int) $row->member_user_id)->toBe($member->id)
+        ->and((int) $row->booker_user_id)->toBe($member->id)
+        ->and($row->status)->toBe('confirmed')
+        ->and($row->confirmed_at)->not->toBeNull();
+});
+
+it('writes a single canonical row for an S9 booking and clears its active slot on cancellation', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $requestId = (string) Str::uuid();
+
+    $groupId = $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => $requestId,
+        ])->assertCreated()->json('data.id');
+
+    $group = DB::table('event_booking_groups')->where('id', $groupId)->first();
+    $booking = DB::table('event_bookings')->where('id', $group->legacy_booking_id)->first();
+    expect($booking)->not->toBeNull()
+        ->and((int) $booking->member_user_id)->toBe($member->id)
+        ->and((int) $booking->booker_user_id)->toBe($member->id)
+        ->and($booking->client_request_id)->toBe($requestId)
+        ->and($booking->status)->toBe('confirmed');
+
+    $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$groupId}/cancel")->assertOk();
+
+    $cancelled = DB::table('event_bookings')->where('id', $booking->id)->first();
+    expect($cancelled->status)->toBe('cancelled')
+        ->and($cancelled->active)->toBeNull()
+        ->and($cancelled->cancelled_at)->not->toBeNull();
+});
+
+it('keeps the canonical row in sync when a waitlisted member is promoted', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    $firstGroupId = $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waitingGroupId = $this->actingAs($second, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $waitingGroupId)->value('legacy_booking_id');
+    expect(DB::table('event_bookings')->where('id', $bookingId)->value('status'))->toBe('waitlisted');
+
+    $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$firstGroupId}/cancel")->assertOk();
+
+    $promoted = DB::table('event_bookings')->where('id', $bookingId)->first();
+    expect($promoted->status)->toBe('confirmed')
+        ->and($promoted->confirmed_at)->not->toBeNull()
+        ->and((int) $promoted->active)->toBe(1);
+});
+
+it('resolves a delegated booking member separately from its booker', function () {
+    $booker = User::factory()->create();
+    $member = User::factory()->create();
+    $booking = new EventBooking([
+        'member_user_id' => $member->id,
+        'booker_user_id' => $booker->id,
+    ]);
+
+    expect($booking->member->id)->toBe($member->id)
+        ->and($booking->booker->id)->toBe($booker->id);
+});
+
+it('counts capacity from confirmed active canonical bookings, not the obsolete attendee ledger', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $engine = app(BookingEngine::class);
+
+    expect($engine->confirmedSeats($event))->toBe(1);
+
+    // A stale attendee ledger must not change the canonical capacity count.
+    DB::table('event_booking_attendees')
+        ->where('calendar_event_id', $event->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->confirmedSeats($event))->toBe(1);
+
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->confirmedSeats($event))->toBe(0);
+});
+
+it('counts waitlist capacity from canonical active waitlisted bookings', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $this->actingAs($first, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+    $groupId = $this->actingAs($second, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $engine = app(BookingEngine::class);
+    expect($engine->waitingGroups($event))->toBe(1);
+
+    // The queue entry is not the source of the waitlist capacity count.
+    DB::table('event_waitlist_entries')->where('event_booking_group_id', $groupId)
+        ->update(['status' => 'skipped']);
+    expect($engine->waitingGroups($event))->toBe(1);
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $groupId)->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $bookingId)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->waitingGroups($event))->toBe(0);
+});
+
+it('detects an existing active canonical booking without relying on attendee rows', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+
+    DB::table('event_booking_attendees')->where('calendar_event_id', $event->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+
+    $existing = app(BookingEngine::class)->activeAttendeeOf($event, $member);
+    expect($existing)->toBeInstanceOf(EventBooking::class)
+        ->and($existing->id)->toBe($booking->id);
+
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect(app(BookingEngine::class)->activeAttendeeOf($event, $member))->toBeNull();
+});
+
+it('assigns the canonical FIFO sequence when joining the waitlist', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $third = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    foreach ([$first, $second, $third] as $member) {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated();
+    }
+
+    $rows = DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->where('status', 'waitlisted')->orderBy('waitlist_sequence')->get();
+    expect($rows)->toHaveCount(2)
+        ->and($rows[0]->member_user_id)->toBe($second->id)
+        ->and($rows[1]->member_user_id)->toBe($third->id)
+        ->and((int) $rows[0]->waitlist_sequence)->toBe(1)
+        ->and((int) $rows[1]->waitlist_sequence)->toBe(2);
+});
+
+it('promotes by canonical FIFO order even when the obsolete queue sequence differs', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $third = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $ids = [];
+    foreach ([$first, $second, $third] as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    // Swap canonical order only: the obsolete queue still has second before third.
+    DB::table('event_bookings')->where('id', $secondBookingId)->update(['waitlist_sequence' => 2]);
+    DB::table('event_bookings')->where('id', $thirdBookingId)->update(['waitlist_sequence' => 1]);
+
+    $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$ids[0]}/cancel")->assertOk();
+
+    expect(DB::table('event_bookings')->where('id', $thirdBookingId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBeNull()
+        ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $ids[2])->value('status'))->toBe('promoted')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $ids[1])->value('status'))->toBe('waiting');
+});
+
+it('uses canonical FIFO order when an administrator reorders waiting members', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(User::ADMIN_ROLE);
+    $groupIds = [];
+    foreach ($members as $member) {
+        $groupIds[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $groupIds[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $groupIds[2])->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $secondBookingId)->update(['waitlist_sequence' => 2]);
+    DB::table('event_bookings')->where('id', $thirdBookingId)->update(['waitlist_sequence' => 1]);
+
+    // Canonical order is third -> second, although the obsolete queue says second -> third.
+    // Move second to the front: a no-op based on the old queue would be incorrect.
+    $group = EventBookingGroup::query()->findOrFail($groupIds[1]);
+    app(BookingEngine::class)->moveInWaitlist($group, 1, $members[0], 'FIFO test');
+
+    expect((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(1)
+        ->and((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(2);
+    $queueOrder = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->where('status', 'waiting')->orderBy('sequence')->pluck('event_booking_group_id')->all();
+    expect(array_map('intval', $queueOrder))->toBe([(int) $groupIds[1], (int) $groupIds[2]]);
+});
+
+it('authorizes S6 cancellation by canonical original booker rather than obsolete user_id', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $booker = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $stranger = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $booker);
+
+    // Simulate a delegated canonical booking while retaining the old S6 user_id.
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['member_user_id' => $member->id, 'booker_user_id' => $booker->id]);
+    // A valid delegated booking has the same participant in the attendee ledger.
+    // The obsolete S6 user_id deliberately remains the original booker.
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)
+        ->update(['member_user_id' => $member->id]);
+    $engine = app(BookingEngine::class);
+    expect(fn () => $engine->cancelLegacy($booking->fresh(), $stranger))->toThrow(ApiException::class);
+
+    $cancelled = $engine->cancelLegacy($booking->fresh(), $booker);
+    expect($cancelled->status)->toBe('cancelled')
+        ->and(DB::table('event_bookings')->where('id', $booking->id)->value('active'))->toBeNull();
+});
+
+it('rejects mismatched canonical cancellation before changing legacy group or invoice', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $other = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+
+    // Corrupt only the canonical participant pointer; the caller still owns
+    // the booking as its original booker.
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['member_user_id' => $other->id]);
+
+    expect(fn () => app(BookingEngine::class)->cancelLegacy($booking->fresh(), $member))
+        ->toThrow(ApiException::class);
+
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)->value('status'))->toBe('confirmed');
+});
+
+it('allows cancelling an active waitlisted canonical booking through the S6 cancellation engine', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $engine = app(BookingEngine::class);
+    $engine->bookLegacy($event, $first);
+    $groupId = $this->actingAs($second, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+    $bookingId = DB::table('event_booking_groups')->where('id', $groupId)->value('legacy_booking_id');
+    $booking = EventBooking::query()->findOrFail($bookingId);
+
+    $cancelled = $engine->cancelLegacy($booking, $second);
+    expect($cancelled->status)->toBe('cancelled')
+        ->and($cancelled->active)->toBeNull()
+        ->and($cancelled->waitlist_sequence)->toBeNull()
+        ->and($engine->waitingGroups($event))->toBe(0);
+});
+
+it('rejects administrator reorder if canonical waitlist and legacy queue diverge', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(User::ADMIN_ROLE);
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $waitingGroup = EventBookingGroup::query()->findOrFail($ids[1]);
+    DB::table('event_waitlist_entries')->where('event_booking_group_id', $waitingGroup->id)
+        ->update(['status' => 'skipped']);
+
+    expect(fn () => app(BookingEngine::class)
+        ->moveInWaitlist($waitingGroup, 1, $members[0], 'divergent queue'))
+        ->toThrow(ApiException::class);
+    expect(DB::table('event_bookings')->where('id', $waitingGroup->legacy_booking_id)
+        ->value('status'))->toBe('waitlisted');
+});
+
+it('preserves unique legacy queue slots when canonical FIFO numbers differ', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(User::ADMIN_ROLE);
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    // Deliberately make canonical positions differ from queue positions.
+    DB::table('event_bookings')->where('id', $secondId)->update(['waitlist_sequence' => 20]);
+    DB::table('event_bookings')->where('id', $thirdId)->update(['waitlist_sequence' => 10]);
+
+    $group = EventBookingGroup::query()->findOrFail($ids[1]);
+    app(BookingEngine::class)
+        ->moveInWaitlist($group, 1, $members[0], 'independent queue slots');
+
+    expect((int) DB::table('event_bookings')->where('id', $secondId)->value('waitlist_sequence'))->toBe(10)
+        ->and((int) DB::table('event_bookings')->where('id', $thirdId)->value('waitlist_sequence'))->toBe(20);
+    $queueSlots = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->where('status', 'waiting')->orderBy('sequence')->pluck('sequence')->all();
+    expect(array_map('intval', $queueSlots))->toBe([1, 2]);
+});
+
+it('does not allow a forged admin flag to cancel another members standalone booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $owner = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $stranger = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = $this->actingAs($owner, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $group = EventBookingGroup::query()->findOrFail($id);
+
+    expect(fn () => app(BookingEngine::class)
+        ->cancelGroup($group, $stranger, true, 'course_payment_expired'))
+        ->toThrow(ApiException::class);
+    expect($group->fresh()->status)->toBe('confirmed');
+});
+
+it('rejects duplicate canonical FIFO positions before any administrator reorder writes', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(User::ADMIN_ROLE);
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $thirdBookingId)
+        ->update(['waitlist_sequence' => DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence')]);
+    $queueBefore = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('sequence')->all();
+    $canonicalBefore = DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('waitlist_sequence')->all();
+
+    expect(fn () => app(BookingEngine::class)
+        ->moveInWaitlist(EventBookingGroup::query()->findOrFail($ids[2]), 1, $members[0], 'duplicate positions'))
+        ->toThrow(ApiException::class);
+    expect(DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('sequence')->all())->toBe($queueBefore);
+    expect(DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('waitlist_sequence')->all())->toBe($canonicalBefore);
+});
+
+it('rolls back event cancellation when a linked canonical member does not match the legacy attendee', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $admin->assignRole(User::ADMIN_ROLE);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $other = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    DB::table('event_bookings')->where('id', $booking->id)->update(['member_user_id' => $other->id]);
+
+    expect(fn () => app(BookingEngine::class)->cancelEvent($event, 'mismatch regression', $admin))
+        ->toThrow(ApiException::class);
+
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)
+            ->where('invoice_status', 2)->exists())->toBeFalse();
+});
+
+it('blocks direct non-admin service calls that mutate event capacity or cancel the event', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+    $engine = app(BookingEngine::class);
+
+    expect(fn () => $engine->changeCapacity($event, 3, [], $member))
+        ->toThrow(ApiException::class);
+    expect(fn () => $engine->cancelEvent($event, 'forged cancellation', $member))
+        ->toThrow(ApiException::class);
+    expect((int) $event->fresh()->booking_capacity)->toBe(2);
+});
+
+it('does not allow a forged admin flag to bypass the booking opening window', function () {
+    $event = s9Event([
+        'booking_capacity' => 2,
+        'booking_opens_at' => now()->addDay(),
+    ]);
+    $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+    $request = new BookingRequest(
+        booker: $member,
+        contactName: $member->name,
+        contactEmail: $member->email,
+        contactPhone: null,
+        attendees: [['member_user_id' => $member->id, 'name' => $member->name]],
+        clientRequestId: (string) Str::uuid(),
+        byAdmin: true,
+    );
+
+    expect(fn () => app(BookingEngine::class)->book($event, $request))
+        ->toThrow(ApiException::class);
+    expect(seats($event))->toBe(0);
+});
+
+it('does not accept course enrollment before the administrator scheduled opening time', function () {
+    $booker = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Scheduled enrollment',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->addDay(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => app(CourseEnrollmentService::class)
+        ->enroll($termId, $booker, $booker))
+        ->toThrow(ValidationException::class);
+    expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
+});
+
+it('automatically closes course enrollment at its configured cutoff before classes begin', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Enrollment closed before first lesson',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->subDays(5),
+        'booking_closes_at' => now()->subMinute(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => app(CourseEnrollmentService::class)
+        ->enroll($termId, $member, $member))
+        ->toThrow(ValidationException::class);
+    expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
+});
+
+it('replays an existing authorized course enrollment after booking closes without allocating a second seat', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Closed term with prior enrollment',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->subDays(5),
+        'booking_closes_at' => now()->subMinute(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $enrollmentId = DB::table('course_enrollments')->insertGetId([
+        'course_term_id' => $termId,
+        'user_id' => $member->id,
+        'booker_user_id' => $member->id,
+        'status' => 'pending_payment',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $result = app(CourseEnrollmentService::class)
+        ->enroll($termId, $member, $member);
+
+    expect($result['id'])->toBe($enrollmentId)
+        ->and($result['replayed'])->toBeTrue()
+        ->and(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(1);
+});
+
+it('rejects an event refund when only the legacy group is cancelled', function () {
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin->assignRole(User::ADMIN_ROLE);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    DB::table('event_booking_groups')->where('id', $groupId)->update(['status' => 'cancelled']);
+    DB::table('invoices')->where('id', $invoiceId)->update(['invoice_status' => 1]);
+
+    expect(fn () => app(CashInvoiceService::class)->recordManualRefund((int) $invoiceId, $admin, 'legacy-only cancellation'))
+        ->toThrow(ValidationException::class);
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and((int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'))->toBe(1)
+        ->and(DB::table('invoice_refund_audits')->where('invoice_id', $invoiceId)->count())->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+            ->where('transaction_amount', '<', 0)->count())->toBe(0);
+});
+
+it('rejects an event refund before cancellation without changing its invoice or ledger', function () {
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin->assignRole(User::ADMIN_ROLE);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    DB::table('invoices')->where('id', $invoiceId)->update(['invoice_status' => 1]);
+    expect(fn () => app(CashInvoiceService::class)->recordManualRefund((int) $invoiceId, $admin, 'not cancelled'))
+        ->toThrow(ValidationException::class);
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and((int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'))->toBe(1)
+        ->and(DB::table('invoice_refund_audits')->where('invoice_id', $invoiceId)->count())->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+            ->where('transaction_amount', '<', 0)->count())->toBe(0);
+});
+
+it('rejects a refund while a cancelled canonical booking still occupies an active seat', function () {
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin->assignRole(User::ADMIN_ROLE);
+    $engine = app(BookingEngine::class);
+    $booking = $engine->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    $engine->cancelLegacy($booking, $member);
+    DB::table('invoices')->where('id', $invoiceId)->update(['invoice_status' => 1]);
+    DB::table('event_bookings')->where('id', $booking->id)->update(['active' => 1]);
+
+    expect(fn () => app(CashInvoiceService::class)->recordManualRefund((int) $invoiceId, $admin, 'stale active seat'))
+        ->toThrow(ValidationException::class);
+    expect((int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'))->toBe(1)
+        ->and(DB::table('invoice_refund_audits')->where('invoice_id', $invoiceId)->count())->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+            ->where('transaction_amount', '<', 0)->count())->toBe(0);
+});
+
+it('rejects an event refund when the cancelled canonical member no longer matches its invoice', function () {
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    $event = s9Event(['booking_capacity' => 2, 'price_amount' => '100.00']);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $other = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $admin->assignRole(User::ADMIN_ROLE);
+    $engine = app(BookingEngine::class);
+    $booking = $engine->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+    $invoiceId = DB::table('invoices')->where('booking_type', '01')->where('booking_id', $groupId)->value('id');
+    expect($invoiceId)->not->toBeNull();
+
+    $engine->cancelLegacy($booking, $member);
+    DB::table('invoices')->where('id', $invoiceId)->update(['invoice_status' => 1]);
+    DB::table('event_bookings')->where('id', $booking->id)->update(['member_user_id' => $other->id]);
+
+    expect(fn () => app(CashInvoiceService::class)->recordManualRefund((int) $invoiceId, $admin, 'identity mismatch'))
+        ->toThrow(ValidationException::class);
+    expect((int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'))->toBe(1)
+        ->and(DB::table('invoice_refund_audits')->where('invoice_id', $invoiceId)->count())->toBe(0)
+        ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)
+            ->where('transaction_amount', '<', 0)->count())->toBe(0);
 });

@@ -6,6 +6,7 @@ use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
 use App\Services\Payment\CashInvoiceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -249,12 +250,12 @@ class CourseEnrollmentServiceTest extends TestCase
         DB::table('invoices')->where('id', $invoiceId)->update(['member_id' => $other->id]);
         $result = $service->confirmationReadiness($enrollment['id'], $admin);
         $this->assertFalse($result['ready']);
-        $this->assertSame('整期帳單不存在、已逾期或與報名資料不符。', $result['reason']);
+        $this->assertSame('整期帳單不存在、已取消或與報名資料不符。', $result['reason']);
 
         DB::table('invoices')->where('id', $invoiceId)->update([
             'member_id' => $member->id, 'payment_due_at' => now()->subMinute(),
         ]);
-        $this->assertFalse($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        $this->assertTrue($service->confirmationReadiness($enrollment['id'], $admin)['ready']);
 
         DB::table('invoices')->where('id', $invoiceId)->update([
             'payment_due_at' => now()->addHour(), 'invoice_status' => 3,
@@ -829,6 +830,59 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('pending_payment', DB::table('course_enrollments')->where('id', $entry['id'])->value('status'));
     }
 
+    public function test_overdue_course_invoice_can_be_confirmed_without_releasing_booked_sessions(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = (int) DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'payment_due_at' => now()->subHour(),
+        ]);
+        $before = DB::table('event_booking_attendees')->where('member_user_id', $member->id)
+            ->where('status', 'confirmed')->count();
+
+        $this->assertSame(1, app(CashInvoiceService::class)->expireDue());
+        $this->assertTrue(app(CourseEnrollmentService::class)
+            ->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        $paid = app(CashInvoiceService::class)->confirmCash($invoiceId, $admin);
+
+        $this->assertSame(1, $paid['status']);
+        $this->assertSame('confirmed', DB::table('course_enrollments')
+            ->where('id', $enrollment['id'])->value('status'));
+        $this->assertNotNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $this->assertSame(1, (int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'));
+        $this->assertSame($before, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
+    public function test_late_cash_confirmation_marks_overdue_even_before_hourly_scan(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = (int) DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'payment_due_at' => now()->subMinute(),
+            'overdue_at' => null,
+        ]);
+        $this->assertNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $paid = app(CashInvoiceService::class)->confirmCash($invoiceId, $admin);
+        $this->assertSame(1, $paid['status']);
+        $this->assertNotNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $this->assertSame(0, app(CashInvoiceService::class)->expireDue());
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();
@@ -861,5 +915,49 @@ class CourseEnrollmentServiceTest extends TestCase
         $ids = array_column($response->json('data'), 'id');
         $this->assertContains($visibleTerm, $ids);
         $this->assertNotContains($hiddenTerm, $ids);
+    }
+
+    public function test_near_start_course_enrollment_caps_payment_deadline_at_first_session(): void
+    {
+        $term = $this->term();
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)
+            ->value('calendar_event_id');
+        $start = now()->addMinutes(30);
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => $start, 'booking_closes_at' => now()->addMinutes(20),
+        ]);
+        $member = $this->verified();
+        $result = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+
+        $this->assertSame('pending_payment', $result['status']);
+        $invoice = DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $result['id'])->first();
+        $this->assertNotNull($invoice);
+        $this->assertTrue(Carbon::parse($invoice->payment_due_at)->lte($start));
+        $this->assertTrue(Carbon::parse($invoice->payment_due_at)->gt(now()));
+    }
+
+    public function test_course_enrollment_after_first_session_start_creates_no_seats_or_invoice(): void
+    {
+        $term = $this->term();
+        $eventId = DB::table('course_sessions')->where('course_term_id', $term)
+            ->value('calendar_event_id');
+        DB::table('calendar_events')->where('id', $eventId)->update([
+            'starts_at' => now()->subMinute(),
+        ]);
+        $member = $this->verified();
+
+        try {
+            app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+            $this->fail('A started course cannot create a new paid enrollment.');
+        } catch (ValidationException $exception) {
+            $this->assertNotEmpty($exception->errors());
+        }
+        $this->assertSame(0, DB::table('course_enrollments')->where('course_term_id', $term)->count());
+        $this->assertSame(0, DB::table('invoices')->where('booking_type', '02')->count());
+        $this->assertSame(0, DB::table('event_bookings')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_groups')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_attendees')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('payment_transactions')->count());
     }
 }

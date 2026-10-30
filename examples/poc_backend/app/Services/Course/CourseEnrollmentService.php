@@ -128,8 +128,8 @@ final class CourseEnrollmentService
             && (int) $invoice->booker_user_id === (int) $entry->booker_user_id
             && (float) $invoice->invoice_amount >= 1
             && $invoice->currency === 'TWD'
-            && $invoice->payment_due_at !== null
-            && ! now()->gt($invoice->payment_due_at);
+            && $invoice->payment_due_at !== null;
+        // Past due is recoverable by an administrator; it is not a cancelled seat.
 
         $ready = $entry->status === 'pending_payment' && $sessionIds !== []
             && $invalidSessionIds === [] && $eligible && $invoiceReady;
@@ -145,7 +145,7 @@ final class CourseEnrollmentService
                 : ($invalidSessionIds !== []
                     ? '部分從屬場次預約關聯不存在或尚未確認。'
                     : (! $eligible ? '會員資格或代管權限不符。'
-                        : (! $invoiceReady ? '整期帳單不存在、已逾期或與報名資料不符。'
+                        : (! $invoiceReady ? '整期帳單不存在、已取消或與報名資料不符。'
                             : ($ready ? '從屬場次預約已建立，可確認實際現金收款。' : '此報名目前不可確認收費。')))),
         ];
     }
@@ -363,6 +363,23 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['member' => '此會員已報名或曾報名本期，請由管理員處理。']);
             }
 
+            // Existing authorized retries are read-only and must remain idempotent
+            // after the booking window closes. Only new seats are time-gated.
+            // Enforce the administrator-configured window for new enrollments.
+            if ($term->booking_opens_at !== null
+                && now()->lt(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程尚未開放預約。']);
+            }
+
+            if ($term->booking_closes_at !== null
+                && now()->gte(Carbon::parse($term->booking_closes_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程已停止接受預約。']);
+            }
+            if ($term->booking_opens_at !== null && $term->booking_closes_at !== null
+                && Carbon::parse($term->booking_closes_at)->lte(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '預約截止時間必須晚於開放時間。']);
+            }
+
             $occupied = DB::table('course_enrollments')->where('course_term_id', $termId)
                 ->whereIn('status', ['pending_payment', 'confirmed'])->count();
             $waiting = DB::table('course_enrollments')->where('course_term_id', $termId)
@@ -430,11 +447,12 @@ final class CourseEnrollmentService
                     ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
                     ->where('course_sessions.course_term_id', $termId)
                     ->min('calendar_events.starts_at');
-                if ($firstStart !== null && now()->copy()->addHours($hours)->gt($firstStart)) {
-                    throw ValidationException::withMessages(['payment' => '剩餘時間不足以保留完整付款期限。']);
+                if ($firstStart === null || now()->gte(Carbon::parse($firstStart))) {
+                    throw ValidationException::withMessages(['payment' => '第一堂課已開始或未設定，無法建立付款帳單。']);
                 }
+                $deadline = now()->addHours($hours)->min(Carbon::parse($firstStart));
                 app(CashInvoiceService::class)->create('02', $termId, '02', $id,
-                    $member->id, $booker->id, (string) $term->price_amount, $hours);
+                    $member->id, $booker->id, (string) $term->price_amount, $hours, $deadline);
             }
 
             return ['id' => $id, 'status' => $status, 'waitlist_sequence' => $sequence, 'replayed' => false];

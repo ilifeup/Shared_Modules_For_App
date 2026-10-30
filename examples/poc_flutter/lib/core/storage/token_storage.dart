@@ -53,7 +53,8 @@ Future<void> clearPendingBookingStorage(
   final secure = storage ?? const FlutterSecureStorage();
   final prefix = 'pending_booking_v1:${Uri.encodeComponent(memberId)}:';
   final values = await secure.readAll();
-  for (final key in values.keys.where((key) => key.startsWith(prefix))) {
+  for (final key
+      in values.keys.where((key) => key.startsWith(prefix)).toList()) {
     await secure.delete(key: key);
   }
 }

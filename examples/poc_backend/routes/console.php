@@ -23,9 +23,9 @@ Artisan::command('s9:purge-link-stats', function (LinkAnalytics $analytics) {
     $this->info('M17 cleanup: '.json_encode($result));
 })->purpose('Delete raw clicks after 90 days and aggregates after 24 months (M17-D22)');
 
-Artisan::command('payments:expire-holds', function (CashInvoiceService $cash) {
-    $this->info('Expired unpaid event/course holds: '.$cash->expireDue());
-})->purpose('Expire overdue unpaid event and course bookings; event FIFO promotion');
+Artisan::command('payments:mark-overdue', function (CashInvoiceService $cash) {
+    $this->info('Newly overdue unpaid invoices: '.$cash->expireDue());
+})->purpose('Mark unpaid invoices overdue without cancelling bookings or releasing seats');
 
 // Read-only: what an S9 rollback would delete (run before deciding on a rollback).
 Artisan::command('s9:data-report', function () {
@@ -42,4 +42,4 @@ Artisan::command('s9:data-report', function () {
 Schedule::command('s9:purge-checkins')->dailyAt('03:10');
 Schedule::command('s9:purge-link-stats')->dailyAt('03:20');
 
-Schedule::command('payments:expire-holds')->everyMinute()->withoutOverlapping();
+Schedule::command('payments:mark-overdue')->hourly()->withoutOverlapping();

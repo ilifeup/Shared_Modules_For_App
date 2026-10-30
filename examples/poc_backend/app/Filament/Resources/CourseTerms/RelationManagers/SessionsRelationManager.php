@@ -7,6 +7,7 @@ use App\Models\CalendarEvent;
 use App\Models\CourseSession;
 use App\Models\CourseTerm;
 use App\Services\Course\CourseMakeupAssignmentService;
+use App\Support\Settings;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
@@ -49,7 +50,7 @@ class SessionsRelationManager extends RelationManager
                             ->get()->mapWithKeys(fn (CalendarEvent $event): array => [
                                 $event->id => $event->title.' — '.$event->starts_at->timezone(CalendarEventResource::displayTimezone())->format('Y-m-d H:i'),
                             ])->all()),
-                    TextInput::make('makeup_capacity')->label('補課名額')->integer()->minValue(0)->default(1)->required(),
+                    TextInput::make('makeup_capacity')->label('補課名額')->integer()->minValue(0)->default(fn (): int => app(Settings::class)->int('booking_makeup_default_capacity'))->required(),
                 ])
                 ->action(function (array $data): void {
                     DB::transaction(function () use ($data): void {

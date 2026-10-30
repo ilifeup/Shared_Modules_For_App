@@ -2,13 +2,16 @@
 
 namespace App\Services\Payment;
 
+use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -27,16 +30,19 @@ final class CashInvoiceService
         }
 
         $hours = $event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours');
-        if (now()->copy()->addHours($hours)->gt($event->starts_at)) {
-            throw ValidationException::withMessages(['payment' => '剩餘時間不足以保留完整付款期限，無法取得付費名額。']);
+        // Late booking exception: never generate an already-expired invoice.
+        // Payment is due at the earlier of the configured hold and class start.
+        if (! $event->starts_at->isFuture()) {
+            throw ValidationException::withMessages(['payment' => '活動已開始，無法建立付款帳單。']);
         }
+        $deadline = now()->addHours($hours)->min($event->starts_at);
 
         $this->create('01', $event->id, '01', $group->id, $memberId,
-            (int) $group->booker_user_id, (string) $event->price_amount, $hours);
+            (int) $group->booker_user_id, (string) $event->price_amount, $hours, $deadline);
     }
 
     public function create(string $type, int $productId, string $bookingType, int $bookingId,
-        int $memberId, int $bookerId, string $amount, int $hours): void
+        int $memberId, int $bookerId, string $amount, int $hours, ?Carbon $deadline = null): void
     {
         if (DB::table('invoices')->where('booking_type', $bookingType)->where('booking_id', $bookingId)->exists()) {
             return;
@@ -55,7 +61,7 @@ final class CashInvoiceService
             'app_stage' => 0,
             'payment_method' => 0,
             'invoice_datetime' => now(),
-            'payment_due_at' => now()->addHours($hours),
+            'payment_due_at' => $deadline ?? now()->addHours($hours),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -70,63 +76,29 @@ final class CashInvoiceService
      */
     public function expireDue(int $limit = 100): int
     {
-        $due = DB::table('invoices')->where('invoice_status', 0)
-            ->where('booking_type', '01')->whereNotNull('payment_due_at')
-            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
-            ->get(['id', 'booking_id']);
-        $expired = 0;
-        foreach ($due as $invoice) {
-            if (app(BookingEngine::class)->expireCashHold((int) $invoice->booking_id, (int) $invoice->id)) {
-                $expired++;
+        // Legacy compatibility entry point. Expiry must NEVER cancel bookings.
+        // The only automated action is marking invoices as overdue.
+        $count = 0;
+        do {
+            $ids = DB::table('invoices')
+                ->where('invoice_status', 0)
+                ->whereNull('overdue_at')
+                ->whereNotNull('payment_due_at')
+                ->where('payment_due_at', '<=', now())
+                ->orderBy('id')->limit($limit)->pluck('id');
+            if ($ids->isEmpty()) {
+                break;
             }
-        }
+            // Recheck the due date at UPDATE time. An administrator may have
+            // extended it after the candidate IDs were selected.
+            $changed = DB::table('invoices')->whereIn('id', $ids)
+                ->where('invoice_status', 0)->whereNull('overdue_at')
+                ->whereNotNull('payment_due_at')->where('payment_due_at', '<=', now())
+                ->update(['overdue_at' => now(), 'updated_at' => now()]);
+            $count += $changed;
+        } while ($changed > 0 && $ids->count() === $limit);
 
-        // Course expiration must also release its session bookings before a waitlist promotion.
-        $courseDue = DB::table('invoices')->where('invoice_status', 0)
-            ->where('booking_type', '02')->whereNotNull('payment_due_at')
-            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
-            ->get(['id', 'booking_id']);
-        foreach ($courseDue as $item) {
-            $didExpire = DB::transaction(function () use ($item): bool {
-                // Resolve the parent without a write lock, then acquire locks
-                // in the shared order: term -> enrollment -> invoice.
-                $hint = DB::table('invoices')->where('id', $item->id)->first();
-                if ($hint === null || $hint->booking_type !== '02') {
-                    return false;
-                }
-                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
-                    ->value('course_term_id');
-                if ($termId === null || DB::table('course_terms')->where('id', $termId)
-                    ->lockForUpdate()->first() === null) {
-                    return false;
-                }
-                $entry = DB::table('course_enrollments')->where('id', $hint->booking_id)
-                    ->lockForUpdate()->first();
-                $invoice = DB::table('invoices')->where('id', $item->id)->lockForUpdate()->first();
-                if ($entry === null || (int) $entry->course_term_id !== (int) $termId
-                    || $entry->status !== 'pending_payment'
-                    || $invoice === null || $invoice->booking_type !== '02'
-                    || (int) $invoice->booking_id !== (int) $entry->id
-                    || (int) $invoice->invoice_status !== 0
-                    || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
-                    return false;
-                }
-                DB::table('course_enrollments')->where('id', $entry->id)
-                    ->update(['status' => 'cancelled', 'updated_at' => now()]);
-                DB::table('invoices')->where('id', $invoice->id)
-                    ->update(['invoice_status' => 3, 'updated_at' => now()]);
-                $this->releaseCourseBookings($entry);
-                // Same FIFO fill as cancellation and capacity changes (term still locked).
-                $this->fillCourseWaitlistAfterCapacityChange((int) $entry->course_term_id);
-
-                return true;
-            }, 3);
-            if ($didExpire) {
-                $expired++;
-            }
-        }
-
-        return $expired;
+        return $count;
     }
 
     /**
@@ -219,7 +191,7 @@ final class CashInvoiceService
             ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
             ->where('course_sessions.course_term_id', $termId)
             ->min('calendar_events.starts_at');
-        if ($firstStart === null || now()->copy()->addHours($hours)->gt($firstStart)) {
+        if ($firstStart === null || now()->gte(Carbon::parse($firstStart))) {
             return false;
         }
         $member = User::query()->find($head->user_id);
@@ -281,6 +253,78 @@ final class CashInvoiceService
     }
 
     /**
+     * Extend the deadline of an active unpaid booking only.
+     * Do not revive cancelled reservations or rewrite payment history.
+     */
+    public function extendPaymentDeadline(int $invoiceId, User $admin, string $newDeadline, string $reason): void
+    {
+        if (! $admin->is_active || ! $admin->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', '僅管理員可延長付款期限。');
+        }
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => '請填寫延長原因。']);
+        }
+        try {
+            $deadline = Carbon::parse($newDeadline);
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['payment_due_at' => '付款期限格式不正確。']);
+        }
+        if ($deadline->lte(now())) {
+            throw ValidationException::withMessages(['payment_due_at' => '新的付款期限必須晚於現在。']);
+        }
+
+        DB::transaction(function () use ($invoiceId, $admin, $deadline, $reason): void {
+            $hint = DB::table('invoices')->where('id', $invoiceId)->first();
+            if ($hint === null) {
+                throw ValidationException::withMessages(['invoice' => '帳單不存在。']);
+            }
+            if ($hint->booking_type === '02') {
+                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)->value('course_term_id');
+                if ($termId === null || DB::table('course_terms')->where('id', $termId)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '課程預約不存在。']);
+                }
+                $entry = DB::table('course_enrollments')->where('id', $hint->booking_id)->lockForUpdate()->first();
+                if ($entry === null || $entry->status !== 'pending_payment') {
+                    throw ValidationException::withMessages(['invoice' => '只有有效且待付款的課程預約可延長期限。']);
+                }
+            } elseif ($hint->booking_type === '01') {
+                $groupHint = EventBookingGroup::query()->find($hint->booking_id);
+                if ($groupHint === null || CalendarEvent::query()->whereKey($groupHint->calendar_event_id)->lockForUpdate()->first() === null) {
+                    throw ValidationException::withMessages(['invoice' => '活動預約不存在。']);
+                }
+                $group = EventBookingGroup::query()->whereKey($hint->booking_id)->lockForUpdate()->first();
+                if ($group === null || $group->status !== EventBookingGroup::STATUS_CONFIRMED) {
+                    throw ValidationException::withMessages(['invoice' => '只有有效的活動預約可延長期限。']);
+                }
+            } else {
+                throw ValidationException::withMessages(['invoice' => '不支援此帳單類型。']);
+            }
+
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
+            if ($invoice === null || $invoice->booking_type !== $hint->booking_type
+                || (int) $invoice->booking_id !== (int) $hint->booking_id
+                || (int) $invoice->invoice_status !== 0) {
+                throw ValidationException::withMessages(['invoice' => '帳單已付款、取消或資料已變更。']);
+            }
+            if ($invoice->overdue_at !== null || $invoice->payment_due_at === null
+                || Carbon::parse($invoice->payment_due_at)->lte(now())) {
+                throw ValidationException::withMessages(['invoice' => '付款期限已到期，請使用管理員逾期收款流程。']);
+            }
+            if ($deadline->lte(Carbon::parse($invoice->payment_due_at))) {
+                throw ValidationException::withMessages(['payment_due_at' => '新期限必須晚於原付款期限。']);
+            }
+            DB::table('invoices')->where('id', $invoiceId)->update([
+                'payment_due_at' => $deadline, 'updated_at' => now(),
+            ]);
+            AuditEvent::record('invoice.payment_deadline_extended', $admin->id, Invoice::find($invoiceId), [
+                'old_payment_due_at' => $invoice->payment_due_at,
+                'new_payment_due_at' => $deadline->toDateTimeString(),
+                'reason' => trim($reason),
+            ]);
+        }, 3);
+    }
+
+    /**
      * Manual cash refund only. Does not reassign an issued invoice number.
      * The operator must complete the real-world refund before recording it here.
      */
@@ -333,6 +377,13 @@ final class CashInvoiceService
                 throw ValidationException::withMessages(['invoice' => '帳單預約類型不受支援。']);
             }
 
+            // Lock the canonical booking before the invoice, matching cancellation.
+            $canonical = null;
+            if ($hint->booking_type === '01') {
+                $canonical = DB::table('event_bookings')
+                    ->where('id', $group->legacy_booking_id)
+                    ->lockForUpdate()->first();
+            }
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($invoice === null || $invoice->booking_type !== $hint->booking_type
                 || (int) $invoice->booking_id !== (int) $hint->booking_id) {
@@ -349,13 +400,26 @@ final class CashInvoiceService
             }
             // The invoice must belong to the cancelled parent it is refunded for.
             if ($invoice->booking_type === '01') {
+                // R1: a cancelled legacy group alone is not sufficient proof
+                // of refund eligibility. Its canonical booking must identify
+                // the same event, original booker and single member, and must
+                // already be cancelled before any refund transaction is written.
+                if ($canonical === null
+                    || (int) $canonical->calendar_event_id !== (int) $group->calendar_event_id
+                    || (int) $canonical->booker_user_id !== (int) $group->booker_user_id
+                    || (int) $canonical->user_id !== (int) $canonical->member_user_id
+                    || $canonical->active !== null
+                    || ! in_array($canonical->status, ['cancelled', 'event_cancelled'], true)) {
+                    throw ValidationException::withMessages(['invoice' => '正式預約尚未取消或關聯不一致，禁止退款。']);
+                }
                 $memberIds = DB::table('event_booking_attendees')
                     ->where('event_booking_group_id', $group->id)->pluck('member_user_id')
                     ->map(static fn ($id): int => (int) $id)->all();
                 $matches = $invoice->transaction_type === '01'
                     && (int) $invoice->product_id === (int) $group->calendar_event_id
                     && (int) $invoice->booker_user_id === (int) $group->booker_user_id
-                    && in_array((int) $invoice->member_id, $memberIds, true);
+                    && (int) $canonical->member_user_id === (int) $invoice->member_id
+                    && $memberIds === [(int) $invoice->member_id];
             } else {
                 $matches = $invoice->transaction_type === '02'
                     && (int) $invoice->product_id === (int) $enrollment->course_term_id
@@ -446,9 +510,12 @@ final class CashInvoiceService
             if ((int) $invoice->invoice_status === 1) {
                 return ['id' => $invoiceId, 'status' => 1, 'replayed' => true];
             }
-            if ((int) $invoice->invoice_status !== 0 || now()->gt($invoice->payment_due_at)) {
-                throw ValidationException::withMessages(['invoice' => '帳單已取消、過期或不允許付款。']);
+            if ((int) $invoice->invoice_status !== 0) {
+                throw ValidationException::withMessages(['invoice' => '帳單已取消、退款或不允許付款。']);
             }
+            // Overdue is an accounting marker, not a cancelled reservation.
+            // The administrator may confirm recovered cash after the due date,
+            // provided the original booking remains active and valid.
             if ($invoice->booking_type === '02') {
                 $enrollment = DB::table('course_enrollments')
                     ->where('id', $invoice->booking_id)->lockForUpdate()->first();
@@ -545,8 +612,16 @@ final class CashInvoiceService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            // A cash payment may arrive after its deadline but before the hourly
+            // overdue job runs. Preserve that overdue history at settlement time.
+            $overdueAt = $invoice->overdue_at;
+            if ($overdueAt === null && $invoice->payment_due_at !== null
+                && now()->gt(Carbon::parse($invoice->payment_due_at))) {
+                $overdueAt = now();
+            }
             DB::table('invoices')->where('id', $invoiceId)->update([
-                'invoice_status' => 1, 'paid_at' => now(), 'staff_id' => $admin->id, 'updated_at' => now(),
+                'invoice_status' => 1, 'paid_at' => now(), 'staff_id' => $admin->id,
+                'overdue_at' => $overdueAt, 'updated_at' => now(),
             ]);
             if ($invoice->booking_type === '02') {
                 DB::table('course_enrollments')->where('id', $invoice->booking_id)->update([

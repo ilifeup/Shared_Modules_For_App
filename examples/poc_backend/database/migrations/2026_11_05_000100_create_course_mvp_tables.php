@@ -17,6 +17,9 @@ return new class extends Migration
             $table->unsignedInteger('enrollment_capacity');
             $table->unsignedInteger('waitlist_capacity')->default(5);
             $table->unsignedInteger('cancel_cutoff_days')->default(10);
+            // Administrators schedule the opening of term enrollment (UTC).
+            $table->timestamp('booking_opens_at')->nullable();
+            $table->timestamp('booking_closes_at')->nullable();
             $table->timestamps();
         });
 
@@ -24,7 +27,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('course_term_id')->constrained()->cascadeOnDelete();
             $table->foreignId('calendar_event_id')->unique()->constrained('calendar_events')->restrictOnDelete();
-            $table->unsignedInteger('makeup_capacity')->default(1);
+            $table->unsignedInteger('makeup_capacity')->default(0);
             $table->timestamps();
         });
 

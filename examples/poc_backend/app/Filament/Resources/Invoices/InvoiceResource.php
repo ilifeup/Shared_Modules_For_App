@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Services\Payment\CashInvoiceService;
 use App\Services\Payment\InvoiceNumberAllocator;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -14,6 +15,7 @@ use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceResource extends Resource
@@ -81,13 +83,30 @@ class InvoiceResource extends Resource
             TextColumn::make('id')->label('#')->sortable(),
             TextColumn::make('invoice_code')->label('帳單編號')->searchable(),
             TextColumn::make('invoice_amount')->label('金額'),
-            TextColumn::make('invoice_status')->label('狀態')->formatStateUsing(fn ($state) => [
-                0 => '未付', 1 => '已付', 2 => '取消', 3 => '逾期', 4 => '退款中', 5 => '已退款',
-            ][$state] ?? (string) $state),
+            TextColumn::make('invoice_status')->label('狀態')->formatStateUsing(fn ($state, Invoice $record) => (int) $state === 0
+                ? ($record->overdue_at !== null ? '欠費' : '待付款')
+                : ([1 => $record->overdue_at !== null ? '欠費已繳' : '已付款', 2 => '取消', 3 => '舊版逾期狀態', 4 => '退款中', 5 => '已退款'][(int) $state] ?? (string) $state)),
             TextColumn::make('invoice_no')->label('發票號碼')->placeholder('未配號'),
             TextColumn::make('created_at')->label('建立')->dateTime('Y-m-d H:i'),
         ])->defaultSort('id', 'desc')->recordActions([
-            Action::make('confirmCash')->label('確認現金收款')
+            Action::make('extendDue')->label('延長付款期限')
+                ->visible(fn (Invoice $record): bool => (int) $record->invoice_status === 0
+                    && $record->overdue_at === null
+                    && $record->payment_due_at !== null
+                    && $record->payment_due_at->isFuture())
+                ->schema([
+                    DateTimePicker::make('payment_due_at')->label('新付款截止時間')->required()
+                        ->seconds(false)->timezone('Asia/Taipei'),
+                    Textarea::make('reason')->label('延長原因')->required()->maxLength(1000),
+                ])
+                ->requiresConfirmation()
+                ->action(function (Invoice $record, array $data): void {
+                    app(CashInvoiceService::class)->extendPaymentDeadline(
+                        $record->id, auth()->user(), Carbon::parse((string) $data['payment_due_at'], 'Asia/Taipei')->toIso8601String(), (string) $data['reason']
+                    );
+                    Notification::make()->title('付款期限已延長')->success()->send();
+                }),
+            Action::make('confirmCash')->label('確認收款／欠費已繳')
                 ->visible(fn (Invoice $record) => (int) $record->invoice_status === 0)
                 ->requiresConfirmation()
                 ->action(function (Invoice $record): void {

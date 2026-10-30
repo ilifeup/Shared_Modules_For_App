@@ -28,10 +28,10 @@ final myBookingGroupsProvider = FutureProvider.autoDispose<BookingGroupPage>(
   (ref) => ref.watch(bookingGroupApiProvider).mine(),
 );
 
-final manageableFamilyMembersProvider = FutureProvider.autoDispose<List<ManageableFamilyMember>>(
-  (ref) => ref.watch(bookingGroupApiProvider).manageableMembers(),
-);
-
+final manageableFamilyMembersProvider =
+    FutureProvider.autoDispose<List<ManageableFamilyMember>>(
+      (ref) => ref.watch(bookingGroupApiProvider).manageableMembers(),
+    );
 
 /// Persist unresolved booking attempts before sending HTTP, so a lost response
 /// followed by an app restart reuses the exact same idempotency key and member.
@@ -46,7 +46,8 @@ class PendingBookingRequest {
 int? bookingMemberForRetry(PendingBookingRequest? saved, int? selected) =>
     saved == null ? selected : saved.memberUserId;
 
-class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>> {
+class PendingBookingRequests
+    extends Notifier<Map<String, PendingBookingRequest>> {
   FlutterSecureStorage get _storage => ref.read(pendingBookingStorageProvider);
   final Set<String> _loaded = {};
   final Set<String> _loading = {};
@@ -82,13 +83,17 @@ class PendingBookingRequests extends Notifier<Map<String, PendingBookingRequest>
       final authBefore = ref.read(authControllerProvider);
       if (authBefore.status != AuthStatus.signedIn ||
           authBefore.profile == null ||
-          !scope.startsWith('${Uri.encodeComponent(authBefore.profile!.id)}:')) {
+          !scope.startsWith(
+            '${Uri.encodeComponent(authBefore.profile!.id)}:',
+          )) {
         throw StateError('登入會員已變更，請重新開啟預約畫面。');
       }
       if (raw != null) {
         final parts = raw.split('|');
         if (parts.length == 2 &&
-            RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$').hasMatch(parts[0])) {
+            RegExp(
+              r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+            ).hasMatch(parts[0])) {
           final member = parts[1] == 'self' ? null : int.tryParse(parts[1]);
           if (parts[1] == 'self' || (member != null && member > 0)) {
             restored = PendingBookingRequest(parts[0], member);
@@ -143,9 +148,10 @@ final pendingBookingStorageProvider = Provider<FlutterSecureStorage>(
 );
 
 final pendingBookingRequestsProvider =
-    NotifierProvider<PendingBookingRequests, Map<String, PendingBookingRequest>>(
-      PendingBookingRequests.new,
-    );
+    NotifierProvider<
+      PendingBookingRequests,
+      Map<String, PendingBookingRequest>
+    >(PendingBookingRequests.new);
 
 String bookingRequestScope(String memberId, String eventId) =>
     '${Uri.encodeComponent(memberId)}:${Uri.encodeComponent(eventId)}';
@@ -216,15 +222,27 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       setState(() => _error = '請先登入會員帳號。');
       return;
     }
-    if (_busy || _restoringScope == scope ||
-        _restoredScope != scope || _restoreErrorScope == scope) return;
-    setState(() { _busy = true; _error = null; });
+    if (_busy ||
+        _restoringScope == scope ||
+        _restoredScope != scope ||
+        _restoreErrorScope == scope) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final pendingStore = ref.read(pendingBookingRequestsProvider.notifier);
     PendingBookingRequest? saved;
     try {
       saved = await pendingStore.load(scope);
     } catch (error) {
-      if (mounted) setState(() { _busy = false; _error = error; });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = error;
+        });
+      }
       return;
     }
     if (!mounted || _requestScope != scope) {
@@ -236,16 +254,27 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     if (saved == null && selected != null) {
       final allowed = ref.read(manageableFamilyMembersProvider).value;
       if (allowed == null || !allowed.any((member) => member.id == selected)) {
-        setState(() { _busy = false; _error = '請選擇已授權的家庭會員。'; });
+        setState(() {
+          _busy = false;
+          _error = '請選擇已授權的家庭會員。';
+        });
         return;
       }
     }
     try {
       if (saved == null) {
-        await pendingStore.save(scope, PendingBookingRequest(requestId, selected));
+        await pendingStore.save(
+          scope,
+          PendingBookingRequest(requestId, selected),
+        );
       }
     } catch (error) {
-      if (mounted) setState(() { _busy = false; _error = error; });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = error;
+        });
+      }
       return;
     }
     if (!mounted || _requestScope != scope) {
@@ -315,7 +344,9 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
       _restoreError = null;
     }
     final result = scope != null && scope == _resultScope ? _result : null;
-    final pending = scope == null ? null : ref.watch(pendingBookingRequestsProvider)[scope];
+    final pending = scope == null
+        ? null
+        : ref.watch(pendingBookingRequestsProvider)[scope];
     if (scope != null &&
         _restoredScope != scope &&
         _restoringScope != scope &&
@@ -325,14 +356,16 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     }
     final restoring = scope != null && _restoredScope != scope;
 
-
     return Scaffold(
       appBar: AppBar(title: const Text('單人報名／候補')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (event.value != null)
-            Text(event.value!.title, style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              event.value!.title,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
           const SizedBox(height: 8),
           if (result != null) ...[
             StatusBox(
@@ -346,20 +379,32 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             ),
           ] else ...[
             DropdownButtonFormField<int?>(
-              key: ValueKey('booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}'),
-              initialValue: availableMembers == null ||
-                      !(availableMembers.any((m) => m.id == (bookingMemberForRetry(pending, _memberUserId))))
+              key: ValueKey(
+                'booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}',
+              ),
+              initialValue:
+                  availableMembers == null ||
+                      !(availableMembers.any(
+                        (m) =>
+                            m.id ==
+                            (bookingMemberForRetry(pending, _memberUserId)),
+                      ))
                   ? null
                   : bookingMemberForRetry(pending, _memberUserId),
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
-                for (final member in availableMembers ?? <ManageableFamilyMember>[])
+                for (final member
+                    in availableMembers ?? <ManageableFamilyMember>[])
                   DropdownMenuItem<int?>(
                     value: member.id,
                     child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || restoring || pending != null || availableMembers == null
+              onChanged:
+                  _busy ||
+                      restoring ||
+                      pending != null ||
+                      availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(
@@ -368,11 +413,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ),
             ),
             if (restoring)
-              Text(_restoreErrorScope != scope
-                  ? '正在還原上次報名資料…'
-                  : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError'),
-            if (pending != null)
-              const Text('偵測到未確認的報名請求；重試將沿用原參加會員及識別碼。'),
+              Text(
+                _restoreErrorScope != scope
+                    ? '正在還原上次報名資料…'
+                    : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError',
+              ),
+            if (pending != null) const Text('偵測到未確認的報名請求；重試將沿用原參加會員及識別碼。'),
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),
@@ -387,10 +433,20 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ErrorBox(error: _error!),
             FilledButton(
               key: const Key('group-submit'),
-              onPressed: _busy || restoring || scope == null || availableMembers == null
+              onPressed:
+                  _busy ||
+                      restoring ||
+                      scope == null ||
+                      availableMembers == null
                   ? null
                   : _submit,
-              child: Text(_busy ? '處理中…' : restoring ? '還原報名資料中…' : '送出報名／重試'),
+              child: Text(
+                _busy
+                    ? '處理中…'
+                    : restoring
+                    ? '還原報名資料中…'
+                    : '送出報名／重試',
+              ),
             ),
           ],
         ],

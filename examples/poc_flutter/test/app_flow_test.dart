@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -206,6 +207,30 @@ class FakeBackend implements ApiTransport {
         };
     }
     return null;
+  }
+
+  Map<String, dynamic> _groupBooking(String eventId) {
+    final event = events.firstWhere((e) => e['id'] == eventId);
+    final active = bookings[eventId]!['mine'] == true;
+    return {
+      'id': 'g$eventId',
+      'event_id': eventId,
+      'status': active ? 'confirmed' : 'cancelled',
+      'seat_count': 1,
+      'is_guest': false,
+      'booked_at': '2026-12-01T00:00:00Z',
+      'cancel_deadline': '2026-12-29T00:00:00Z',
+      'can_cancel': active,
+      'attendees': [
+        {
+          'id': 'a$eventId',
+          'name': '王小明',
+          'status': active ? 'confirmed' : 'cancelled',
+          'is_me': true,
+        },
+      ],
+      'event': event,
+    };
   }
 
   /// Whether the App is signed in (set by the test; the fake has no token).
@@ -508,6 +533,41 @@ class FakeBackend implements ApiTransport {
       }
       return {'data': _bookingInfo(eventId)};
     }
+    if (path == '/api/v1/me/family-memberships') {
+      return {'data': <Map<String, dynamic>>[]};
+    }
+    if (method == 'POST' &&
+        path.startsWith('/api/v1/events/') &&
+        path.endsWith('/booking-groups')) {
+      final eventId = path.split('/')[4];
+      await bookingGate?.future;
+      if (bookingRaceFull) {
+        throw const ApiException(
+          code: 'BOOKING_FULL',
+          message: '名額已滿。',
+          statusCode: 409,
+        );
+      }
+      bookings[eventId]!['mine'] = true;
+      return {'data': _groupBooking(eventId)};
+    }
+    if (method == 'POST' &&
+        path.startsWith('/api/v1/me/booking-groups/') &&
+        path.endsWith('/cancel')) {
+      final groupId = path.split('/')[5];
+      final eventId = groupId.substring(1);
+      bookings[eventId]!['mine'] = false;
+      return {'data': _groupBooking(eventId)};
+    }
+    if (path == '/api/v1/me/booking-groups') {
+      return {
+        'data': [
+          for (final entry in bookings.entries)
+            if (entry.value['mine'] == true) _groupBooking(entry.key),
+        ],
+        'meta': {'current_page': 1, 'last_page': 1},
+      };
+    }
     final article = await _articles(method, path, body);
     if (article != null) return article;
     final cancelMatch = RegExp(
@@ -635,6 +695,7 @@ Future<void> pumpApp(
   MemoryTokenStorage storage, {
   FakeAvatars? avatars,
 }) async {
+  FlutterSecureStorage.setMockInitialValues({});
   await tester.pumpWidget(
     ProviderScope(
       retry: (retryCount, error) => null,
@@ -1291,68 +1352,79 @@ void main() {
     expect(find.text('社區講座'), findsOneWidget);
   });
 
-  testWidgets('books an event once, then cancels the booking', (tester) async {
+  testWidgets('books one verified member and cancels through S9', (
+    tester,
+  ) async {
     final backend = FakeBackend();
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-calendar')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('社區講座'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('event-booking-s9')));
+    await tester.pumpAndSettle();
 
-    expect(find.text('名額 2，已預約 1，剩餘 1'), findsOneWidget);
-
-    // A second tap while the request is in flight sends nothing.
+    expect(find.text('單人報名／候補'), findsOneWidget);
+    expect(find.text('我本人'), findsOneWidget);
     backend.bookingGate = Completer<void>();
-    await tester.tap(find.byKey(const Key('booking-book')));
+    await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pump();
-    expect(find.text('處理中…'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('booking-book')),
-      warnIfMissed: false,
-    );
+    // The durable idempotency-key write may precede the network busy state.
+    // Assert the single request after the gate is released instead of relying
+    // on a frame-specific loading label.
+    expect(find.byKey(const Key('group-submit')), findsOneWidget);
     backend.bookingGate!.complete();
     await tester.pumpAndSettle();
 
     expect(
-      backend.calls.where((c) => c == 'POST /api/v1/events/1/bookings'),
+      backend.calls.where((c) => c == 'POST /api/v1/events/1/booking-groups'),
       hasLength(1),
     );
-    expect(find.text('【預約成功】已為您保留名額。'), findsOneWidget);
-    expect(find.text('【已預約】'), findsOneWidget);
-    expect(find.text('名額 2，已預約 2，剩餘 0'), findsOneWidget);
+    final sent = backend
+        .bodies[backend.calls.indexOf('POST /api/v1/events/1/booking-groups')]!;
+    expect(sent.keys, contains('client_request_id'));
+    expect(sent, isNot(contains('attendees')));
+    expect(sent, isNot(contains('member_user_id')));
+    expect(find.byKey(const Key('group-result')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('booking-cancel')));
+    await tester.tap(find.text('查看我的報名'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('booking-cancel-confirm')));
+    expect(find.text('社區講座'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('group-cancel-g1')));
     await tester.pumpAndSettle();
-
-    expect(backend.calls, contains('POST /api/v1/me/bookings/b1/cancel'));
-    expect(find.text('【已取消】預約已取消。'), findsOneWidget);
-    expect(find.byKey(const Key('booking-book')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('group-cancel-confirm')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('POST /api/v1/me/booking-groups/g1/cancel'));
+    expect(find.text('【沒有報名】'), findsOneWidget);
   });
 
-  testWidgets('shows full and cancelled-event booking states', (tester) async {
+  testWidgets('shows full booking error and cancelled event state', (
+    tester,
+  ) async {
     final backend = FakeBackend()..bookingRaceFull = true;
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
     await tester.tap(find.byKey(const Key('open-calendar')));
     await tester.pumpAndSettle();
-
-    // The last seat was taken by someone else in the meantime.
     await tester.tap(find.text('社區講座'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('booking-book')));
+    await tester.tap(find.byKey(const Key('event-booking-s9')));
     await tester.pumpAndSettle();
-    expect(find.text('【錯誤】名額已滿。'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('group-submit')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('名額已滿'), findsWidgets);
+    expect(find.byKey(const Key('group-result')), findsNothing);
 
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('【已取消】戶外活動'));
     await tester.pumpAndSettle();
-    expect(find.text('活動已取消，無法預約'), findsOneWidget);
-    expect(find.byKey(const Key('booking-book')), findsNothing);
+    expect(find.byKey(const Key('event-cancelled')), findsOneWidget);
+    expect(find.byKey(const Key('event-booking-s9')), findsNothing);
   });
 
-  testWidgets('lists my bookings', (tester) async {
+  testWidgets('lists confirmed S9 member bookings', (tester) async {
     final backend = FakeBackend();
     backend.bookings['1']!['mine'] = true;
     await pumpApp(tester, backend, MemoryTokenStorage('saved-token'));
@@ -1360,9 +1432,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('open-my-bookings')));
     await tester.pumpAndSettle();
-
     expect(find.text('社區講座'), findsOneWidget);
-    expect(find.textContaining('已預約'), findsOneWidget);
+    expect(find.textContaining('【正式報名】'), findsOneWidget);
+    expect(backend.calls, contains('GET /api/v1/me/booking-groups'));
   });
 
   testWidgets('lists featured and categorized articles and opens one', (

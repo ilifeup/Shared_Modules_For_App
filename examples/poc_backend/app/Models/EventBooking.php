@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,12 +19,17 @@ class EventBooking extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
-    protected $fillable = ['calendar_event_id', 'user_id', 'status', 'active', 'booked_at'];
+    public const STATUS_WAITLISTED = 'waitlisted';
+
+    public const STATUS_EVENT_CANCELLED = 'event_cancelled';
+
+    protected $fillable = ['calendar_event_id', 'user_id', 'member_user_id', 'booker_user_id', 'client_request_id', 'status', 'active', 'booked_at', 'confirmed_at', 'cancel_reason'];
 
     protected function casts(): array
     {
         return [
             'booked_at' => 'datetime',
+            'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
     }
@@ -34,11 +40,52 @@ class EventBooking extends Model
     }
 
     /**
+     * Active reservations occupy a unique member/event slot, whether they are
+     * confirmed or still waiting. Cancelled rows remain as immutable history.
+     */
+    public function isActive(): bool
+    {
+        return in_array($this->status, [self::STATUS_CONFIRMED, self::STATUS_WAITLISTED], true)
+            && (int) $this->active === 1;
+    }
+
+    /**
+     * Canonical single-member attendance relation; activated after the
+     * event_attendances.event_booking_id migration is deployed.
+     *
+     * @return HasOne<EventAttendance, $this>
+     */
+    public function canonicalAttendance(): HasOne
+    {
+        return $this->hasOne(EventAttendance::class, 'event_booking_id');
+    }
+
+    /**
      * @return BelongsTo<CalendarEvent, $this>
      */
     public function event(): BelongsTo
     {
         return $this->belongsTo(CalendarEvent::class, 'calendar_event_id');
+    }
+
+    /**
+     * The member who occupies the event seat, distinct from a family booker.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'member_user_id');
+    }
+
+    /**
+     * The verified member who submitted this booking.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function booker(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'booker_user_id');
     }
 
     /**

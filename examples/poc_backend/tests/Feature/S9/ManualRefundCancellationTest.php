@@ -3,6 +3,7 @@
 namespace Tests\Feature\S9;
 
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Services\Payment\CashInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -112,27 +113,10 @@ class ManualRefundCancellationTest extends TestCase
         $admin = $this->admin();
         $member = User::factory()->create();
         $event = s9Event(['booking_capacity' => 2]);
-        $group = DB::table('event_booking_groups')->insertGetId([
-            'calendar_event_id' => $event->id,
-            'booker_user_id' => $member->id,
-            'contact_name' => $member->name,
-            'status' => 'confirmed',
-            'seat_count' => 1,
-            'client_request_id' => (string) Str::uuid(),
-            'booked_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        DB::table('event_booking_attendees')->insert([
-            'event_booking_group_id' => $group,
-            'calendar_event_id' => $event->id,
-            'member_user_id' => $member->id,
-            'name' => $member->name,
-            'status' => 'confirmed',
-            'active' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $engine = app(BookingEngine::class);
+        $booking = $engine->bookLegacy($event, $member);
+        $group = (int) DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+        $this->assertGreaterThan(0, $group);
         $invoice = $this->invoice('01', $group, $member->id, $event->id);
 
         try {
@@ -144,7 +128,8 @@ class ManualRefundCancellationTest extends TestCase
         $this->assertSame(0, $this->refunds($invoice));
         $this->assertSame(0, DB::table('invoice_refund_audits')->count());
 
-        DB::table('event_booking_groups')->where('id', $group)->update(['status' => 'cancelled']);
+        $engine->cancelLegacy($booking, $member);
+        $this->assertSame('cancelled', DB::table('event_bookings')->where('id', $booking->id)->value('status'));
         $result = app(CashInvoiceService::class)->recordManualRefund($invoice, $admin, 'After cancellation');
         $this->assertSame(5, $result['status']);
         $this->assertSame('cancelled', DB::table('event_booking_groups')->where('id', $group)->value('status'));

@@ -11,6 +11,7 @@ use App\Services\Checkin\CheckinTokens;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -494,4 +495,61 @@ it('rejects cross-member checkout before audit insertion, leaving both records u
         ->toBe(EventAttendance::CHECKED_IN)
         ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
+});
+
+it('signs canonical booking QR independently of legacy attendee QR', function () {
+    $tokens = app(CheckinTokens::class);
+    $now = now()->getTimestamp();
+    $bookingId = 12345;
+    $token = $tokens->booking($bookingId, $now);
+
+    expect($tokens->verify($token, 'b', $now))->toBe($bookingId)
+        ->and($tokens->verify($token, 'a', $now))->toBeNull()
+        ->and($tokens->verify($tokens->attendee($bookingId, $now), 'b', $now))->toBeNull();
+
+    $nextWindow = ($tokens->window($now) + 1) * CheckinTokens::WINDOW_SECONDS;
+    expect($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS - 1))->toBe($bookingId)
+        ->and($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS))->toBeNull();
+});
+
+it('rejects tampered canonical booking QR and expired previous windows', function () {
+    $tokens = app(CheckinTokens::class);
+    $windowStart = $tokens->window() * CheckinTokens::WINDOW_SECONDS;
+    $bookingId = 12345;
+    $token = $tokens->booking($bookingId, $windowStart);
+    $parts = explode('.', $token);
+    $parts[1] = (string) ($bookingId + 1);
+
+    expect($tokens->verify(implode('.', $parts), 'b', $windowStart))->toBeNull()
+        ->and($tokens->verify($token, 'b', $windowStart + CheckinTokens::WINDOW_SECONDS + CheckinTokens::GRACE_SECONDS))->toBeNull()
+        ->and($tokens->verify($token, 'e', $windowStart))->toBeNull();
+});
+
+it('has the additive canonical booking attendance column without removing legacy attendee support', function () {
+    expect(Schema::hasColumn('event_attendances', 'event_booking_id'))->toBeTrue()
+        ->and(Schema::hasColumn('event_attendances', 'event_booking_attendee_id'))->toBeTrue()
+        ->and((new EventAttendance)->booking()->getForeignKeyName())->toBe('event_booking_id')
+        ->and((new EventAttendance)->attendee()->getForeignKeyName())->toBe('event_booking_attendee_id');
+});
+
+it('enforces a unique canonical booking attendance index in the migrated schema', function () {
+    $indexes = collect(Schema::getIndexes('event_attendances'));
+    $canonical = $indexes->first(fn (array $index): bool => $index['name'] === 'event_attendances_booking_unique');
+
+    expect($canonical)->not->toBeNull()
+        ->and($canonical['unique'])->toBeTrue()
+        ->and($canonical['columns'])->toBe(['event_booking_id']);
+});
+
+it('keeps canonical attendance nullable and linked to event bookings during transition', function () {
+    $column = collect(Schema::getColumns('event_attendances'))
+        ->first(fn (array $item): bool => $item['name'] === 'event_booking_id');
+    $foreignKey = collect(Schema::getForeignKeys('event_attendances'))
+        ->first(fn (array $item): bool => $item['columns'] === ['event_booking_id']);
+
+    expect($column)->not->toBeNull()
+        ->and($column['nullable'])->toBeTrue()
+        ->and($foreignKey)->not->toBeNull()
+        ->and($foreignKey['foreign_table'])->toBe('event_bookings')
+        ->and($foreignKey['foreign_columns'])->toBe(['id']);
 });

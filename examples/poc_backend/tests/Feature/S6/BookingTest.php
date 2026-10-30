@@ -7,7 +7,9 @@ use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBooking;
 use App\Models\User;
+use App\Services\Booking\BookingEngine;
 use App\Services\BookingService;
+use App\Support\Api\ApiException;
 use Filament\Facades\Filament;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
@@ -214,8 +216,8 @@ it('enforces legacy cancellation ownership inside the service even when bypassin
     try {
         app(BookingService::class)->cancel($booking, $stranger);
         test()->fail('An ordinary member must not cancel another member booking');
-    } catch (\App\Support\Api\ApiException $exception) {
-        expect($exception)->toBeInstanceOf(\App\Support\Api\ApiException::class);
+    } catch (ApiException $exception) {
+        expect($exception)->toBeInstanceOf(ApiException::class);
     }
 
     expect($booking->refresh()->status)->toBe('confirmed');
@@ -240,10 +242,10 @@ it('rejects a forged administrator flag passed directly to the booking engine', 
     $booking = app(BookingService::class)->book($event, $owner);
 
     try {
-        app(\App\Services\Booking\BookingEngine::class)->cancelLegacy($booking, $stranger, true);
+        app(BookingEngine::class)->cancelLegacy($booking, $stranger, true);
         test()->fail('A forged admin flag must not bypass ownership');
-    } catch (\App\Support\Api\ApiException $exception) {
-        expect($exception)->toBeInstanceOf(\App\Support\Api\ApiException::class);
+    } catch (ApiException $exception) {
+        expect($exception)->toBeInstanceOf(ApiException::class);
     }
 
     expect($booking->refresh()->status)->toBe('confirmed');

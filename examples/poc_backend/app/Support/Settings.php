@@ -50,7 +50,16 @@ final class Settings
         // S9 M09 calendar: M02 level codes counted as "高級 VIP" (D22), default zone (D21).
         'calendar_vip_level_codes' => '',
         'calendar_default_timezone' => 'Asia/Taipei',
-        'payment_hold_hours' => 38,
+        'payment_hold_hours' => 72,
+        'booking_single_payment_before_hours' => 48,
+        'booking_no_show_payment_hours' => 26,
+        'booking_series_cancel_before_hours' => 72,
+        'booking_single_cancel_before_hours' => 48,
+        'booking_waitlist_default_capacity' => 5,
+        'booking_makeup_default_capacity' => 0,
+        'booking_notice_early_hours' => 48,
+        'booking_notice_day_hours' => 24,
+        'booking_notice_near_hours' => 3,
 
         // S9 M11 check-in App defaults (events may override GPS, D26) and retention (D24).
         'checkin_gps_required' => false,
@@ -173,7 +182,16 @@ final class Settings
         }
 
         foreach (['article_like_weight' => [0, 1000], 'article_view_dedupe_minutes' => [1, 1440], 'comment_report_threshold' => [1, 100],
-            'payment_hold_hours' => [1, 8760], 'checkin_gps_radius_m' => [10, 5000], 'checkin_retention_days' => [1, 3650]] as $key => [$min, $max]) {
+            'payment_hold_hours' => [1, 8760],
+            'booking_single_payment_before_hours' => [1, 8760],
+            'booking_no_show_payment_hours' => [1, 8760],
+            'booking_series_cancel_before_hours' => [0, 8760],
+            'booking_single_cancel_before_hours' => [0, 8760],
+            'booking_waitlist_default_capacity' => [0, 100000],
+            'booking_makeup_default_capacity' => [0, 100000],
+            'booking_notice_early_hours' => [1, 8760],
+            'booking_notice_day_hours' => [1, 8760],
+            'booking_notice_near_hours' => [1, 8760], 'checkin_gps_radius_m' => [10, 5000], 'checkin_retention_days' => [1, 3650]] as $key => [$min, $max]) {
             if ($merged[$key] < $min || $merged[$key] > $max) {
                 throw new InvalidArgumentException("Setting [{$key}] must be between {$min} and {$max}.");
             }

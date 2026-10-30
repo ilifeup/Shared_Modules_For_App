@@ -9,6 +9,7 @@ use App\Filament\Resources\CourseTerms\Pages\ListCourseTerms;
 use App\Filament\Resources\CourseTerms\RelationManagers\EnrollmentsRelationManager;
 use App\Filament\Resources\CourseTerms\RelationManagers\SessionsRelationManager;
 use App\Models\CourseTerm;
+use App\Support\Settings;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\TextInput;
@@ -53,7 +54,7 @@ class CourseTermResource extends Resource
             TextInput::make('floor_landmark')->label('樓層／地標')->maxLength(255),
             TextInput::make('studio')->label('教室')->maxLength(255),
             TextInput::make('enrollment_capacity')->label('正式名額')->integer()->minValue(1)->required(),
-            TextInput::make('waitlist_capacity')->label('候補名額')->integer()->minValue(0)->default(5)->required(),
+            TextInput::make('waitlist_capacity')->label('候補名額')->integer()->minValue(0)->default(fn (): int => app(Settings::class)->int('booking_waitlist_default_capacity'))->required(),
             TextInput::make('cancel_cutoff_days')->label('取消截止（開課前天數）')->integer()->minValue(0)->default(10)->required(),
             TextInput::make('price_amount')->label('整期課程金額（NT$）')->numeric()->minValue(1)->step(1)->default(1)->required(),
             TextInput::make('payment_hold_hours')->label('付款保留時數（空白採全域預設）')->integer()->minValue(1)->nullable(),

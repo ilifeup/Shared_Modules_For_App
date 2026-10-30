@@ -237,11 +237,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
     try {
       saved = await pendingStore.load(scope);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _error = error;
         });
+      }
       return;
     }
     if (!mounted || _requestScope != scope) {
@@ -268,11 +269,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
         );
       }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _error = error;
         });
+      }
       return;
     }
     if (!mounted || _requestScope != scope) {

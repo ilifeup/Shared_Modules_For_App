@@ -47,3 +47,19 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 完整 Flutter DTO/Client/provider/router、Filament 其他 relation manager、Jobs、通知、Policy、測試。
 - course_groups 與 course_terms 是否承擔不同且仍必要的課程業務。
 - Invoice 多型關聯的所有交易與退款例外。
+
+## R1.4 原始 Migration 核對補充（2026-10-30）
+以下均已直接讀取 main 上的實際檔案，尚未執行資料庫 Migration。
+- 2026_11_05_000100_create_course_mvp_tables.php：course_makeups.event_booking_group_id 有 UNIQUE + FK；須同步修改 CourseMakeup Model、CourseEnrollmentService、CashInvoiceService 的相關查詢，不能先刪舊表。
+- 2026_11_09_000100_create_course_group_booking_tables.php：invoice_booking_items.event_booking_group_id 有 UNIQUE/FK，course_group_members 有 course_group_id/member_user_id 唯一約束、request_key 冪等、FIFO queue index。這是「系列課程會員」而非一筆多人活動報名，禁止因 group 字眼直接刪除。
+- 2026_11_06_000100_create_invoice_payment_foundation.php：invoices.booking_type + booking_id 有唯一索引但沒有實體 FK；payment_transactions 有 idempotency_key、transaction_code 及 provider/external_transaction_id 唯一性。不得只將 invoice.booking_id 當作活動預約外鍵，因 course enrollment 也共用此欄。
+- 2026_11_07_000200_create_invoice_refund_audits.php：退款稽核 FK 指向 invoice，不需跟隨活動預約 ID 重命名。
+- 2026_11_04_000100_add_event_waitlist_capacity.php：waitlist_capacity 是候補總容量，不是每筆報名人數，必須保留。
+
+## 實作前鎖定事項
+1. 找到最初建立 event_bookings/event_booking_groups/event_booking_attendees/event_waitlist_entries/event_attendances 的 migration，確認現有 FK/index/default，不能憑 Model 推斷。
+2. 列出 course_terms/course_groups 是否為兩種必要業務；保持 course_group_members 與 event_booking_groups 語意區分。
+3. 對 invoices.booking_type 做逐值對照，決定分型 FK 或受控關聯驗證，不可任意改變 01/02 既有語意。
+4. CheckinService 的 QR 'a' token 目前指 attendee ID；改 booking ID 前必須同步更改產生/驗證與所有 API 契約及測試。
+5. 前台 Flutter 有舊 S6 我的預約頁和 S9 單人預約頁；須檢查 router、provider、API client、tests 以防刪除仍在使用的路由。
+6. 已有 Filament 防呆修改僅為過渡：booking_max_seats 欄位仍在 DB，正式完成 schema 之後應刪掉隱藏表單欄位，不可誤以為完成資料模型統一。

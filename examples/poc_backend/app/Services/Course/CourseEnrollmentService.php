@@ -348,6 +348,15 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['term' => '本期課程尚未開放預約。']);
             }
 
+            if ($term->booking_closes_at !== null
+                && now()->gte(Carbon::parse($term->booking_closes_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程已停止接受預約。']);
+            }
+            if ($term->booking_opens_at !== null && $term->booking_closes_at !== null
+                && Carbon::parse($term->booking_closes_at)->lte(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '預約截止時間必須晚於開放時間。']);
+            }
+
             if ($term->price_amount === null || (float) $term->price_amount < 1) {
                 throw ValidationException::withMessages(['price_amount' => '課程最低實收 NT$1。']);
             }

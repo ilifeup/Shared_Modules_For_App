@@ -97,6 +97,13 @@ it('allows an administrator to extend an active unpaid deadline and records an a
         'payment_due_at' => $original, 'created_at' => now(), 'updated_at' => now(),
     ]);
 
+    $nonAdmin = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+    expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
+        $invoiceId, $nonAdmin, $newDeadline->toIso8601String(), 'unauthorized extension'
+    ))->toThrow(\App\Support\Api\ApiException::class);
+    expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
+        ->toBe($original->timestamp);
+
     app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, $newDeadline->toIso8601String(), 'member requested more time'
     );

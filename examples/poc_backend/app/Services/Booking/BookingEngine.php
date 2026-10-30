@@ -23,8 +23,8 @@ use Ramsey\Uuid\Uuid;
 /**
  * S9 M08 the only seat / waitlist engine (S9-L06 A).
  *
- * - Seats = confirmed rows in event_booking_attendees (one per real attendee); the
- *   S6 API also writes a group + attendee, so old and new entry points share one count.
+ * - Seats = confirmed active event_bookings rows (one per verified member).
+ *   Both current entry points write the canonical booking row transactionally.
  * - Every write first locks the calendar_events row (SELECT ... FOR UPDATE), then
  *   groups / bookings, so all entry points are serialised per occurrence.
  * - Waitlist is strict FIFO by sequence; a group is promoted only as a whole and the
@@ -80,9 +80,12 @@ final class BookingEngine
 
     public function confirmedSeats(CalendarEvent $event): int
     {
-        return EventBookingAttendee::query()
+        // One canonical booking row occupies exactly one confirmed seat.
+        // Both current entry points write this row in the same transaction.
+        return EventBooking::query()
             ->where('calendar_event_id', $event->id)
-            ->where('status', EventBookingAttendee::STATUS_CONFIRMED)
+            ->where('status', EventBooking::STATUS_CONFIRMED)
+            ->where('active', 1)
             ->count();
     }
 

@@ -75,7 +75,7 @@ class BookingGroupController extends Controller
     {
         $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
-            'status' => ['sometimes', 'in:active,confirmed,waitlisted,cancelled'],
+            'status' => ['sometimes', 'in:active,confirmed,waitlisted,cancelled,event_cancelled'],
         ]);
         $status = $request->input('status');
         $actorId = $request->user()->id;
@@ -92,7 +92,7 @@ class BookingGroupController extends Controller
             })
             ->when($status === 'active', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CONFIRMED, EventBookingGroup::STATUS_WAITLISTED]))
             ->when($status === 'cancelled', fn ($q) => $q->whereIn('status', [EventBookingGroup::STATUS_CANCELLED, EventBookingGroup::STATUS_EVENT_CANCELLED]))
-            ->when(in_array($status, ['confirmed', 'waitlisted'], true), fn ($q) => $q->where('status', $status))
+            ->when(in_array($status, ['confirmed', 'waitlisted', 'event_cancelled'], true), fn ($q) => $q->where('status', $status))
             ->with('event', 'attendees.attendance', 'waitlistEntry')
             ->orderByDesc('booked_at')->orderByDesc('id')->paginate(20);
 

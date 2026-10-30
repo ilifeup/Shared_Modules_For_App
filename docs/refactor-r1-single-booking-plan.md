@@ -181,3 +181,19 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 3. 新 event_booking_id FK 必須同批覆蓋 waitlist、attendance、course_makeups、invoice_booking_items；attendance corrections 仍引用 attendance 主鍵，不必更動。
 4. 發票 `booking_type=01/02` 是兩種業務，不可直接將所有 invoices.booking_id 加 FK 指向 event_bookings；保留付款交易與退款稽核關係。
 5. 以上是**第一批原始建表核對**；仍須盤點後續增量 Migration 與全量程式引用，尚未開始 schema 修改、未執行測試或 CI。
+
+
+## R1.18｜後續增量 Migration 實際核對（2026-10-30）
+
+已從 GitHub commit 歷史定位並直接讀取下列 R1 分支 Migration（靜態審查）：
+
+- `2026_11_02_000100_remove_guest_bookings.php`：先清除 guest / booker_user_id=NULL / member_user_id=NULL 的舊預約與相關簽到、候補、通知；刪除 event_categories.allow_guest_booking、groups.is_guest/claimed_at；**保留 groups.contact_email/contact_phone**；移除原 nullOnDelete FK 後將 groups.booker_user_id、attendees.member_user_id 改 NOT NULL + restrictOnDelete。production 有 `GUEST_PURGE_BACKUP_VERIFIED=yes` 閘門；MySQL DDL 不受 row-delete transaction 回滾保護；down() 不可逆。R1 只允許隔離開發 DB，禁止因重構繞過保護。
+- `2026_11_08_000100_remove_invoice_number_unique_constraints.php`：依 Schema::getIndexes 判斷，移除 invoices.invoice_no 及 invoice_number_corrections.old_number 的舊唯一索引；down() 刻意不恢復唯一性。R1 必須保留可編輯、非唯一發票號碼政策。
+
+### 對 R1 目標 Schema 的直接影響
+
+1. S9 原始 Migration 的 guest/nullable member 定義**不是**完整 migrate 後的最終契約；不能以原始 Schema 誤判目前可允許訪客或無會員預約。
+2. `contact_email/contact_phone` 仍在已部署後的 group Schema；R1 移除舊 group 時須確認合法會員通知／收款／顯示資料已由 user/member/profile 取得，不可只刪欄位。
+3. Migration 的不可逆資料清除與 production 備份閘門是既有安全設計；R1 只能對隔離 DB 做 fresh，不得執行正式環境破壞性變更。
+4. 發票唯一性須保留 invoices(booking_type,booking_id)、invoice_code、付款冪等索引；不得恢復 invoice_no 的唯一索引。
+5. 本階段只核對兩支增量 Migration；其他增量與全量引用仍需持續檢查。未執行程式測試、Migration 或 CI。

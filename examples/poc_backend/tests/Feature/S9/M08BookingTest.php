@@ -17,6 +17,7 @@ use App\Services\BookingService;
 use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -395,9 +396,8 @@ it('confirms standalone event cash only once after validating its booking', func
         ->where('booking_id', $groupId)->value('id');
     expect($invoiceId)->not->toBeNull();
     $invoice = DB::table('invoices')->find($invoiceId);
-    expect(\Illuminate\Support\Carbon::parse($invoice->payment_due_at)->lessThanOrEqualTo($event->starts_at))->toBeTrue();
-    expect(\Illuminate\Support\Carbon::parse($invoice->payment_due_at)->isFuture())->toBeTrue();
-
+    expect(Carbon::parse($invoice->payment_due_at)->lessThanOrEqualTo($event->starts_at))->toBeTrue();
+    expect(Carbon::parse($invoice->payment_due_at)->isFuture())->toBeTrue();
 
     $first = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);
     $second = app(CashInvoiceService::class)->confirmCash((int) $invoiceId, $admin);

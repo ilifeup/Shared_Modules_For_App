@@ -26,6 +26,9 @@ it('allows a rollback when only rebuildable S9 data exists', function () {
 it('refuses a rollback that would delete S9 data unless the loss is accepted', function () {
     Tag::query()->create(['name' => '共修']);
     groupBook(s9Event(), User::factory()->create())->assertCreated();
+    // Normal single-member bookings are mirrored to S6 and can be rebuilt.
+    // Simulate an S9-only ledger entry to verify the irreversible-data guard.
+    \Illuminate\Support\Facades\DB::table('event_booking_groups')->update(['legacy_booking_id' => null]);
 
     $report = S9DataGuard::report();
     expect($report)->toMatchArray([

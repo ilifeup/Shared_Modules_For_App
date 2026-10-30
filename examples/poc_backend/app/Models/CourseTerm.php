@@ -26,6 +26,7 @@ class CourseTerm extends Model
         return [
             'price_amount' => 'decimal:2',
             'booking_closes_at' => 'datetime',
+            'booking_opens_at' => 'datetime',
         ];
     }
 }

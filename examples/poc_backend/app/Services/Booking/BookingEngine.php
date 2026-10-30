@@ -745,7 +745,12 @@ final class BookingEngine
      */
     public function promote(CalendarEvent $event): array
     {
-        if ($event->status !== CalendarEvent::STATUS_PUBLISHED || ! $event->booking_enabled || now()->gte($event->ends_at)) {
+        // Once an event has started, paid waitlist promotion cannot create a valid
+        // invoice. Stop promotion without rolling back the cancellation that
+        // released the seat; free events retain the existing end-time rule.
+        if ($event->status !== CalendarEvent::STATUS_PUBLISHED || ! $event->booking_enabled
+            || now()->gte($event->ends_at)
+            || ((float) $event->price_amount > 0 && now()->gte($event->starts_at))) {
             return [];
         }
 

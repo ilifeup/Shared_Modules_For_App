@@ -337,7 +337,10 @@ final class BookingEngine
                     }
                     $status = EventBookingGroup::STATUS_CONFIRMED;
                 } else {
-                    $reason = $this->unavailableReason($locked, $seats, $request->byAdmin);
+                    // A forged byAdmin flag must not bypass event booking windows.
+                    $ignoreWindow = $request->byAdmin && $request->booker->is_active
+                        && ! $request->booker->FamilyUser && $request->booker->isAdmin();
+                    $reason = $this->unavailableReason($locked, $seats, $ignoreWindow);
                     $status = match (true) {
                         $reason === null => EventBookingGroup::STATUS_CONFIRMED,
                         $reason === 'full' && $locked->waitlist_enabled => EventBookingGroup::STATUS_WAITLISTED,

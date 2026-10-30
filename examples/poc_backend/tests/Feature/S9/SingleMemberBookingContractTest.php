@@ -957,3 +957,32 @@ it('does not allow a forged admin flag to cancel another members standalone book
         ->toThrow(\App\Support\Api\ApiException::class);
     expect($group->fresh()->status)->toBe('confirmed');
 });
+
+
+it('rejects duplicate canonical FIFO positions before any administrator reorder writes', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $thirdBookingId)
+        ->update(['waitlist_sequence' => DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence')]);
+    $queueBefore = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('sequence')->all();
+
+    expect(fn () => app(\App\Services\Booking\BookingEngine::class)
+        ->moveInWaitlist(EventBookingGroup::query()->findOrFail($ids[2]), 1, $members[0], 'duplicate positions'))
+        ->toThrow(\App\Support\Api\ApiException::class);
+    expect(DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('sequence')->all())->toBe($queueBefore);
+});

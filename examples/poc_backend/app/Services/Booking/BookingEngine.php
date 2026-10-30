@@ -15,7 +15,6 @@ use App\Models\MemberVerification;
 use App\Models\User;
 use App\Services\Payment\CashInvoiceService;
 use App\Support\Api\ApiException;
-use App\Support\Settings;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;

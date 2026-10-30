@@ -495,3 +495,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `0f362d31`：M11CheckinTest 驗證 `event_attendances` 同時存在 `event_booking_id` 與 legacy `event_booking_attendee_id`，並檢查 EventAttendance 的 canonical/legacy belongsTo FK。
 - 此測試只確認 schema 與 Model 關聯；尚未驗證資料庫 unique/FK 約束、SQLite/MySQL rollback、歷史資料 backfill 或新 API 端到端簽到。
 - 新 Commit CI 尚未完成；保持 PR #63 Draft，禁止正式 DB 遷移及自動合併。
+
+### R1.61｜簽到唯一索引 schema 驗收（2026-10-30）
+
+- `f975ff70`：M11CheckinTest 透過 Laravel `Schema::getIndexes('event_attendances')` 驗證 `event_attendances_booking_unique` 是 `event_booking_id` 單欄唯一索引。
+- 此測試尚待 CI；仍需測試真實重複寫入、外鍵違規、MySQL/SQLite rollback 與歷史資料 backfill，不能據此宣告完成 R1 遷移。
+- PR #63 Draft，不執行正式資料庫 Migration，不自動合併。

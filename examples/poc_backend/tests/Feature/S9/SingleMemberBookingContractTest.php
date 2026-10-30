@@ -131,6 +131,34 @@ it('rejects unknown guest and group keys without creating a booking', function (
     expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
 });
 
+it('rejects non-integer member identities even for internal booking calls', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    foreach (['1.5', '1e2', 0, -1, null] as $invalidId) {
+        try {
+            app(\App\Services\Booking\BookingEngine::class)->book(
+                $event,
+                new \App\Services\Booking\BookingRequest(
+                    booker: $member,
+                    contactName: $member->name,
+                    contactEmail: $member->email,
+                    contactPhone: $member->phone_e164,
+                    attendees: [['name' => $member->name, 'member_user_id' => $invalidId]],
+                    clientRequestId: (string) Str::uuid(),
+                    actor: $member,
+                ),
+            );
+            $this->fail('Malformed member ID was accepted.');
+        } catch (\App\Support\Api\ApiException $e) {
+            expect($e->getCode())->toBe(422);
+        }
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
 it('rejects an unverified member before booking or replay', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $member = User::factory()->create(['verified_status' => 1]);

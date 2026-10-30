@@ -228,7 +228,7 @@ final class BookingEngine
                 && (int) $locked->booker_user_id !== (int) $actor->id) {
                 throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有預約會員或原代訂人可以取消此預約。');
             }
-            if (! $locked->isConfirmed()) {
+            if (! $locked->isActive()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此預約已取消。');
             }
             if (! $byAdmin && now()->gte($event->cancelClosesAt())) {
@@ -246,7 +246,7 @@ final class BookingEngine
 
             AuditEvent::record('booking.cancelled', $actor->id, $locked, [
                 'event_id' => $locked->calendar_event_id,
-                'by' => $actor->id === $locked->user_id ? 'member' : 'admin',
+                'by' => $byAdmin ? 'admin' : ((int) $actor->id === (int) $locked->booker_user_id ? 'booker' : 'member'),
             ]);
 
             return $locked->refresh();

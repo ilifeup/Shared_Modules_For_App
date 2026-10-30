@@ -419,3 +419,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 
 - 新增 `SingleMemberBookingContractTest.php` 活動取消回歸案例：建立正常單人預約後，刻意將 canonical `member_user_id` 改為另一會員；管理員呼叫 `cancelEvent()` 必須拋出 `ApiException`，且 canonical、舊版群組與參加者狀態仍為 confirmed，帳單不得被設為取消狀態。
 - 測試 commit：`9d294658b03811524421c2c80d12b8b038477770`。仍需由最新 HEAD CI 實證；候補隔離及全模組依賴清除尚未完成。
+
+
+### R1.45｜活動退款 canonical 關聯防護（2026-10-30）
+
+- `CashInvoiceService::recordManualRefund()` 對 `booking_type=01` 退款，在記錄負向交易之前額外鎖定 `event_bookings`，要求 canonical 已為 `cancelled` 或 `event_cancelled`，且 event/booker/member 與舊版群組、帳單、唯一參加者一致；防止只改動舊版 group 狀態就完成退款。
+- 程式 commit：`331d9f6850a8c44a204b3b191e122abbd1f6b2c6`。需補充退款 canonical mismatch / 重試回歸測試，並等待本 HEAD 完整 CI；仍屬過渡防護，最終需移除舊版群組依賴。
+- 依賴盤點：`CashInvoiceService.php` 仍有活動帳單與舊版群組/參加者的讀取；`BookingEngine.php` 候補仍 join 舊版候補表。先完成下游資料來源切換，再移除 legacy schema。

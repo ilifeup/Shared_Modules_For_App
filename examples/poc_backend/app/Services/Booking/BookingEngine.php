@@ -833,7 +833,7 @@ final class BookingEngine
                 // Skip this event's queue entry without cancelling a different event's
                 // booking, invoice, attendance or calendar sync.
                 if ((int) $group->calendar_event_id === (int) $event->id) {
-                    $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent);
+                    $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent, quarantineInvalidWaitlist: true);
                 }
                 AuditEvent::record('booking.waitlist_skipped', null, $group, ['event_id' => $event->id, 'reason' => $permanent]);
 
@@ -999,7 +999,7 @@ final class BookingEngine
         }
     }
 
-    private function endGroup(EventBookingGroup $group, string $status, ?User $actor, ?string $reason): void
+    private function endGroup(EventBookingGroup $group, string $status, ?User $actor, ?string $reason, bool $quarantineInvalidWaitlist = false): void
     {
         // Lock canonical identity before any legacy invoice or attendance mutation.
         $legacy = null;
@@ -1015,6 +1015,9 @@ final class BookingEngine
                 ->where('member_user_id', $attendeeMemberId)
                 ->whereIn('status', [EventBooking::STATUS_CONFIRMED, EventBooking::STATUS_WAITLISTED])
                 ->lockForUpdate()->first();
+            if ($legacy === null && ! $quarantineInvalidWaitlist) {
+                throw new ApiException(409, 'CANONICAL_BOOKING_MISMATCH', '預約資料關聯不一致，請洽管理員。');
+            }
         }
 
         DB::table('invoices')->where('booking_type', '01')->where('booking_id', $group->id)
@@ -1032,7 +1035,7 @@ final class BookingEngine
             ->update(['status' => EventWaitlistEntry::CANCELLED, 'resolved_at' => now(), 'updated_at' => now()]);
 
         if ($legacy !== null) {
-                $legacy->forceFill([
+            $legacy->forceFill([
                     'status' => $status === EventBookingGroup::STATUS_EVENT_CANCELLED
                         ? EventBooking::STATUS_EVENT_CANCELLED : EventBooking::STATUS_CANCELLED,
                     'active' => null,
@@ -1040,7 +1043,7 @@ final class BookingEngine
                     'cancelled_at' => now(),
                     'cancelled_by' => $actor?->id,
                     'cancel_reason' => $reason !== null ? mb_substr($reason, 0, 255) : null,
-                ])->save();
+            ])->save();
         }
 
         if ($group->booker_user_id !== null) {

@@ -161,3 +161,23 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 3. 已確認五張核心表的原始 Migration 路徑，接下來須讀取上述 S9 Migration 第 190–295 行的完整欄位／索引、後續所有增量 Migration，並逐一核對 Model/Service 的 FK 引用，才能開始 schema 整批修改。
 4. 特別注意：S9 Migration 的 event_attendances 是指向 attendee 而非 group；不能只把 group_id 重新命名成 booking_id。S6 的 user_id 也需與新 member_user_id/booker_user_id 語意整合。
 5. 本階段沒有修改應用程式碼、沒有執行 Pest/Flutter/CI、沒有操作 DB，也沒有合併 main。下一階段進入完整 FK/索引與增量 Migration 核對，之後集中實作。
+
+
+## R1.17｜原始欄位／索引／FK 核對完成第一批（2026-10-30）
+
+已直接讀取 R1 分支原始 Migration 內容（靜態審查，非 migrate 成功證明）：
+
+- S6 `2026_10_30_000100_s6_event_bookings.php`：`event_bookings` 原欄位 calendar_event_id、user_id、status、active、booked_at、cancelled_at、cancelled_by、timestamps；UNIQUE(calendar_event_id,user_id,active)。取消以 active=NULL 保留歷史。
+- S9 `2026_11_01_000100_s9_modules.php` 第 194–247 行：groups 含 legacy_booking_id UNIQUE FK、booker_user_id nullable、is_guest/contact_*、seat_count、client_request_id UNIQUE、status/時間/取消資訊；attendees 含 group_id FK cascade、event_id FK restrict、member_user_id nullable FK nullOnDelete、name/status/active，UNIQUE(calendar_event_id,member_user_id,active)；waitlist_entries 含 group_id UNIQUE FK cascade、UNIQUE(event_id,sequence)、(event_id,status,sequence) 索引。
+- 同檔第 266–294 行：event_attendances.event_booking_attendee_id FK restrict，UNIQUE(calendar_event_id,event_booking_attendee_id)，status/source/簽到簽退時間與操作者；event_attendance_corrections.event_attendance_id FK cascade。
+- `2026_11_05_000100_create_course_mvp_tables.php`：course_makeups.event_booking_group_id UNIQUE FK restrict；course_sessions.calendar_event_id UNIQUE FK；course_enrollments(course_term_id,user_id) UNIQUE。
+- `2026_11_09_000100_create_course_group_booking_tables.php`：invoice_booking_items.event_booking_group_id FK restrict 且全域 UNIQUE；course_group_members 的 member、request_key、FIFO 唯一約束應保留。
+- `2026_11_06_000100_create_invoice_payment_foundation.php`：invoices.booking_type/booking_id 複合 UNIQUE 無實體 FK；payment_transactions.invoice_id FK restrict，transaction_code、idempotency_key、provider/external_transaction_id 唯一性需保留。
+
+### 新契約前的具體注意事項
+
+1. 不可直接在 S6 `event_bookings` 上只新增 member_user_id 而保留舊 (calendar_event_id,user_id,active) UNIQUE 作為唯一防線；S9 原本靠 attendee 表的獨立唯一約束，兩者須合一並保留取消後再預約。
+2. 待付款、候補、取消、活動取消及歷史須對應同一預約主鍵；client_request_id 冪等與 course term deterministic key 需核對，不可丟失。
+3. 新 event_booking_id FK 必須同批覆蓋 waitlist、attendance、course_makeups、invoice_booking_items；attendance corrections 仍引用 attendance 主鍵，不必更動。
+4. 發票 `booking_type=01/02` 是兩種業務，不可直接將所有 invoices.booking_id 加 FK 指向 event_bookings；保留付款交易與退款稽核關係。
+5. 以上是**第一批原始建表核對**；仍須盤點後續增量 Migration 與全量程式引用，尚未開始 schema 修改、未執行測試或 CI。

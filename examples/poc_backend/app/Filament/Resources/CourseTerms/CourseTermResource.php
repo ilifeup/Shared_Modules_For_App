@@ -57,7 +57,11 @@ class CourseTermResource extends Resource
             TextInput::make('cancel_cutoff_days')->label('取消截止（開課前天數）')->integer()->minValue(0)->default(10)->required(),
             TextInput::make('price_amount')->label('整期課程金額（NT$）')->numeric()->minValue(1)->step(1)->default(1)->required(),
             TextInput::make('payment_hold_hours')->label('付款保留時數（空白採全域預設）')->integer()->minValue(1)->nullable(),
-            DateTimePicker::make('booking_closes_at')->label('報名截止時間')->seconds(false)->timezone(CalendarEventResource::displayTimezone())->nullable(),
+            DateTimePicker::make('booking_opens_at')->label('開放預約時間（空白＝立即開放）')
+                ->seconds(false)->timezone(CalendarEventResource::displayTimezone())->nullable(),
+            DateTimePicker::make('booking_closes_at')->label('停止預約時間（空白＝不另設截止）')
+                ->seconds(false)->timezone(CalendarEventResource::displayTimezone())
+                ->after('booking_opens_at')->nullable(),
         ]);
     }
 

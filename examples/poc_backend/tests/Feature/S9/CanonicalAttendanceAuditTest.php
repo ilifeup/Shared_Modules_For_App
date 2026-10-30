@@ -24,7 +24,8 @@ function inspectAuditRows(array $rows): array
     $builder = Mockery::mock();
     $builder->shouldReceive('leftJoin')->times(3)->andReturnSelf();
     $builder->shouldReceive('select')->once()->andReturnSelf();
-    $builder->shouldReceive('get')->once()->andReturn(collect($rows));
+    $builder->shouldReceive('orderBy')->twice()->with('attendance.id')->andReturnSelf();
+    $builder->shouldReceive('cursor')->twice()->andReturnUsing(fn () => collect($rows));
     DB::shouldReceive('table')->once()->with('event_attendances as attendance')->andReturn($builder);
 
     return app(CanonicalAttendanceAudit::class)->inspect();

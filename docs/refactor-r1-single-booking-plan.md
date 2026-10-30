@@ -446,3 +446,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.51 回歸測試：新增僅舊 `event_booking_groups.status=cancelled`、正式 `event_bookings.status=confirmed` 的不一致情境，必須拒絕退款並維持帳單/交易/稽核原狀；commit `0550f3fb93b0a01b3633aed07561c1385a891ed9`。此案例直接驗證 canonical 取消才是退款必要條件；待新 HEAD CI。
 
 - R1.52 CI 實際失敗修正：HEAD `0170b654` 的 Backend Pest 579 pass / 1 fail，失敗為既有 `ManualRefundCancellationTest` 只取消 legacy group、未建立/取消 canonical booking；改為透過 `BookingEngine::bookLegacy()` 建立正式預約及 `cancelLegacy()` 取消後驗證退款（`c429733b`）。同時修正 `BookingEngine.php` Pint array indentation（`9c64642e`）。原 CI 的 S0 與 Shared Core 成功，Mobile E2E 成功、Android 當時尚在執行。新 HEAD 待 CI 驗證；未合併。
+
+- R1.53 CI 驗證：R1.52 HEAD `780b68ea` 的 Backend Pest **580 passed / 3603 assertions**；HTTP E2E、OTP/booking/S9/M11/course concurrency、rollback 均成功。唯一失敗是 `ManualRefundCancellationTest.php` 的 Pint `ordered_imports`，已按 Pint 要求調整 `BookingEngine` / `CashInvoiceService` 匯入順序（`6341c054`），未變更業務邏輯。後續新 HEAD 仍須 CI 確認 Pint 綠燈；PR 保持 Draft、不自動合併。

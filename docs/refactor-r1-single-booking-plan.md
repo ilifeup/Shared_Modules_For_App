@@ -432,3 +432,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.45 靜態審查發現前一提交的 canonical lock 插入位置未落在 `recordManualRefund()`，導致 `$canonical` 未初始化。已在退款方法的 invoice lock 前正確加入 canonical 查詢與鎖定，commit `0d5141534f26612b044b6dfb19e989c76f6c4de4`；前述 CI 不能作為此修正的驗收，須以新 HEAD 重新測試。
 
 - R1.45 擴展靜態審查：確認 `recordManualRefund()` 已於 invoice lock 前初始化 canonical；同時發現第一次錯誤插入的鎖區塊殘留在帳單期限延長方法，已移除，避免影響課程帳單與無關路徑。修正 commit `1cc9f831d16a386d84aac8e0d650f27bb591ec9c`，以新 HEAD CI 驗證。
+
+- R1.46 測試穩定性：活動取消 rollback 回歸測試先 `Role::findOrCreate(User::ADMIN_ROLE, 'web')` 再 assignRole，避免測試單獨執行時依賴其他測試建立管理員角色；commit `4ae3ce781864a2b10e111f94dd76e92860873d98`。待最新 HEAD CI 驗證，尚未宣稱完整退款競態驗收。

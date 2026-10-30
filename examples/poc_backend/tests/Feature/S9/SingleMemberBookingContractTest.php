@@ -940,3 +940,20 @@ it('preserves unique legacy queue slots when canonical FIFO numbers differ', fun
         ->where('status', 'waiting')->orderBy('sequence')->pluck('sequence')->all();
     expect(array_map('intval', $queueSlots))->toBe([1, 2]);
 });
+
+
+it('does not allow a forged admin flag to cancel another members standalone booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $owner = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $stranger = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $id = $this->actingAs($owner, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $group = EventBookingGroup::query()->findOrFail($id);
+
+    expect(fn () => app(\App\Services\Booking\BookingEngine::class)
+        ->cancelGroup($group, $stranger, true, 'course_payment_expired'))
+        ->toThrow(\App\Support\Api\ApiException::class);
+    expect($group->fresh()->status)->toBe('confirmed');
+});

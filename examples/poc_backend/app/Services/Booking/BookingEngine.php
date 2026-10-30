@@ -790,7 +790,8 @@ final class BookingEngine
             if ($group->legacy_booking_id !== null) {
                 EventBooking::query()->whereKey($group->legacy_booking_id)
                     ->where('status', EventBooking::STATUS_WAITLISTED)
-                    ->update(['status' => EventBooking::STATUS_CONFIRMED, 'confirmed_at' => $confirmedAt, 'updated_at' => $confirmedAt]);
+                    ->update(['status' => EventBooking::STATUS_CONFIRMED, 'confirmed_at' => $confirmedAt,
+                        'waitlist_sequence' => null, 'updated_at' => $confirmedAt]);
             }
             app(CashInvoiceService::class)->forEvent($event, $group, (int) $attendees->first()->member_user_id);
             EventBookingAttendee::query()->where('event_booking_group_id', $group->id)->where('status', EventBookingAttendee::STATUS_WAITLISTED)
@@ -955,6 +956,7 @@ final class BookingEngine
                     'status' => $status === EventBookingGroup::STATUS_EVENT_CANCELLED
                         ? EventBooking::STATUS_EVENT_CANCELLED : EventBooking::STATUS_CANCELLED,
                     'active' => null,
+                    'waitlist_sequence' => null,
                     'cancelled_at' => now(),
                     'cancelled_by' => $actor?->id,
                     'cancel_reason' => $reason !== null ? mb_substr($reason, 0, 255) : null,
@@ -972,6 +974,7 @@ final class BookingEngine
         $booking->forceFill([
             'status' => EventBooking::STATUS_CANCELLED,
             'active' => null,
+            'waitlist_sequence' => null,
             'cancelled_at' => now(),
             'cancelled_by' => $actor?->id,
         ])->save();

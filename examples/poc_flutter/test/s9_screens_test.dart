@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:eachcore_shared_core/eachcore_shared_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -79,6 +80,7 @@ Future<void> pumpScreen(
   Future<bool> Function(Uri)? openUrl,
   DateTime Function()? clock,
 }) async {
+  FlutterSecureStorage.setMockInitialValues({});
   await tester.pumpWidget(
     ProviderScope(
       retry: (retryCount, error) => null,

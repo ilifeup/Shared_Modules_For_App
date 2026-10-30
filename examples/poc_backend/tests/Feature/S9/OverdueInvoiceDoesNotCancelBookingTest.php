@@ -124,6 +124,6 @@ it('does not extend an already overdue invoice or revive a cancelled enrollment'
     ]);
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, now()->addDay()->toIso8601String(), 'attempt to extend overdue'
-    ))->toThrow(\\Illuminate\\Validation\\ValidationException::class);
+    ))->toThrow(\Illuminate\Validation\ValidationException::class);
     expect(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'))->not->toBeNull();
 });

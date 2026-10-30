@@ -11,6 +11,7 @@ use App\Services\Checkin\CheckinTokens;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -522,4 +523,11 @@ it('rejects tampered canonical booking QR and expired previous windows', functio
     expect($tokens->verify(implode('.', $parts), 'b', $windowStart))->toBeNull()
         ->and($tokens->verify($token, 'b', $windowStart + CheckinTokens::WINDOW_SECONDS + CheckinTokens::GRACE_SECONDS))->toBeNull()
         ->and($tokens->verify($token, 'e', $windowStart))->toBeNull();
+});
+
+it('has the additive canonical booking attendance column without removing legacy attendee support', function () {
+    expect(Schema::hasColumn('event_attendances', 'event_booking_id'))->toBeTrue()
+        ->and(Schema::hasColumn('event_attendances', 'event_booking_attendee_id'))->toBeTrue()
+        ->and((new EventAttendance)->booking()->getForeignKeyName())->toBe('event_booking_id')
+        ->and((new EventAttendance)->attendee()->getForeignKeyName())->toBe('event_booking_attendee_id');
 });

@@ -2,7 +2,11 @@
 
 use App\Models\User;
 use App\Services\Payment\CashInvoiceService;
+use App\Support\Api\ApiException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 it('marks an overdue invoice without changing the existing course enrollment or releasing its seat', function () {
     $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
@@ -73,7 +77,7 @@ it('marks an overdue invoice without changing the existing course enrollment or 
 });
 
 it('allows an administrator to extend an active unpaid deadline and records an audit event', function () {
-    \Spatie\Permission\Models\Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
     $admin = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
     $admin->assignRole(User::ADMIN_ROLE);
     $termId = DB::table('course_terms')->insertGetId([
@@ -100,17 +104,17 @@ it('allows an administrator to extend an active unpaid deadline and records an a
     $nonAdmin = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $nonAdmin, $newDeadline->toIso8601String(), 'unauthorized extension'
-    ))->toThrow(\App\Support\Api\ApiException::class);
-    expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
+    ))->toThrow(ApiException::class);
+    expect(Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
         ->toBe($original->timestamp);
 
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, $newDeadline->toIso8601String(), '  '
-    ))->toThrow(\Illuminate\Validation\ValidationException::class);
+    ))->toThrow(ValidationException::class);
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, $original->toIso8601String(), 'same deadline'
-    ))->toThrow(\Illuminate\Validation\ValidationException::class);
-    expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
+    ))->toThrow(ValidationException::class);
+    expect(Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
         ->toBe($original->timestamp);
     expect(DB::table('audit_events')->where('event', 'invoice.payment_deadline_extended')->count())->toBe(0);
 
@@ -118,7 +122,7 @@ it('allows an administrator to extend an active unpaid deadline and records an a
         $invoiceId, $admin, $newDeadline->toIso8601String(), 'member requested more time'
     );
 
-    expect(\Illuminate\Support\Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
+    expect(Carbon::parse(DB::table('invoices')->where('id', $invoiceId)->value('payment_due_at'))->timestamp)
         ->toBe($newDeadline->timestamp)
         ->and(DB::table('course_enrollments')->where('id', $enrollmentId)->value('status'))
         ->toBe('pending_payment')
@@ -127,7 +131,7 @@ it('allows an administrator to extend an active unpaid deadline and records an a
 });
 
 it('does not extend an already overdue invoice or revive a cancelled enrollment', function () {
-    \Spatie\Permission\Models\Role::findOrCreate(User::ADMIN_ROLE, 'web');
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
     $admin = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
     $admin->assignRole(User::ADMIN_ROLE);
     $termId = DB::table('course_terms')->insertGetId([
@@ -151,7 +155,7 @@ it('does not extend an already overdue invoice or revive a cancelled enrollment'
 
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, now()->addDay()->toIso8601String(), 'attempt to revive'
-    ))->toThrow(\Illuminate\Validation\ValidationException::class);
+    ))->toThrow(ValidationException::class);
     expect(DB::table('course_enrollments')->where('id', $enrollmentId)->value('status'))->toBe('cancelled');
 
     // A cancelled booking is never resurrected even if the due date is still in the future.
@@ -162,6 +166,6 @@ it('does not extend an already overdue invoice or revive a cancelled enrollment'
     ]);
     expect(fn () => app(CashInvoiceService::class)->extendPaymentDeadline(
         $invoiceId, $admin, now()->addDay()->toIso8601String(), 'attempt to extend overdue'
-    ))->toThrow(\Illuminate\Validation\ValidationException::class);
+    ))->toThrow(ValidationException::class);
     expect(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'))->not->toBeNull();
 });

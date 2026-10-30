@@ -507,3 +507,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `d10ca847`：M11CheckinTest 新增 Schema::getColumns/getForeignKeys 斷言，檢查 `event_booking_id` 可空及 FK 指向 `event_bookings.id`。
 - **未完成**：實際寫入重複與外鍵違規、雙資料庫引擎 Migration/rollback、舊資料映射、Service/Controller/Flutter 切換。待 CI 執行驗證；不能宣告完成。
 - PR #63 Draft，禁止自動合併或執行正式 DB Migration。
+
+### R1.63｜歷史簽到 canonical 映射唯讀預檢（2026-10-30）
+
+- `c2361f8b`：新增 `App\\Services\\Checkin\\CanonicalAttendanceAudit::inspect()`，唯讀 LEFT JOIN `event_attendances → event_booking_attendees → event_booking_groups → event_bookings`，回傳遺失關聯、活動/會員不一致、既有 canonical 指派不一致、重複 target 與候選筆數。
+- 本階段不執行回填、更新或刪除；僅供確認歷史資料是否可一對一映射。**注意**：目前為記憶體聚合，未針對大量資料做分批，尚未建立自動執行入口或 CI 實測。
+- 下一步：測試正常/異常 fixture、確認舊欄位 NOT NULL 約束、制定 backfill 阻斷條件；其後才允許 Service/Controller 切換與舊欄位移除。
+- PR #63 保持 Draft，不自動合併、不操作正式資料庫。

@@ -678,7 +678,17 @@ final class BookingEngine
             $order['after'] = $ids;
 
             $base = (int) EventWaitlistEntry::query()->where('calendar_event_id', $event->id)->max('sequence') + 1;
-            $sequences = $entries->pluck('sequence')->sort()->values()->all();
+            // Preserve the canonical FIFO slots, not the obsolete queue's order.
+            $sequences = EventBooking::query()
+                ->where('calendar_event_id', $event->id)
+                ->where('status', EventBooking::STATUS_WAITLISTED)
+                ->where('active', 1)
+                ->whereNotNull('waitlist_sequence')
+                ->orderBy('waitlist_sequence')
+                ->pluck('waitlist_sequence')->all();
+            if (count($sequences) !== count($ids)) {
+                throw new ApiException(409, 'WAITLIST_STATE_INCONSISTENT', '候補排序資料不一致，請先檢查報名狀態。');
+            }
             // Two passes keep UNIQUE(calendar_event_id, sequence) valid.
             foreach ($entries as $i => $entry) {
                 $entry->forceFill(['sequence' => $base + $i])->save();

@@ -156,7 +156,7 @@ class CalendarEventResource extends Resource
             DateTimePicker::make('booking_opens_at')->label('預約開放時間（空白＝立即）')->seconds(false)
                 ->timezone(static::displayTimezone())
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),
-            DateTimePicker::make('booking_closes_at')->label('預約截止時間（空白＝活動開始時）')->seconds(false)
+            DateTimePicker::make('booking_closes_at')->label('停止預約時間（空白＝活動開始時）')->seconds(false)
                 ->timezone(static::displayTimezone())
                 ->after('booking_opens_at')
                 ->visible(fn (Get $get): bool => (bool) $get('booking_enabled')),

@@ -908,3 +908,35 @@ it('rejects administrator reorder if canonical waitlist and legacy queue diverge
     expect(DB::table('event_bookings')->where('id', $waitingGroup->legacy_booking_id)
         ->value('status'))->toBe('waitlisted');
 });
+
+
+it('preserves unique legacy queue slots when canonical FIFO numbers differ', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    $ids = [];
+    foreach ($members as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    // Deliberately make canonical positions differ from queue positions.
+    DB::table('event_bookings')->where('id', $secondId)->update(['waitlist_sequence' => 20]);
+    DB::table('event_bookings')->where('id', $thirdId)->update(['waitlist_sequence' => 10]);
+
+    $group = EventBookingGroup::query()->findOrFail($ids[1]);
+    app(\App\Services\Booking\BookingEngine::class)
+        ->moveInWaitlist($group, 1, $members[0], 'independent queue slots');
+
+    expect((int) DB::table('event_bookings')->where('id', $secondId)->value('waitlist_sequence'))->toBe(10)
+        ->and((int) DB::table('event_bookings')->where('id', $thirdId)->value('waitlist_sequence'))->toBe(20);
+    $queueSlots = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
+        ->where('status', 'waiting')->orderBy('sequence')->pluck('sequence')->all();
+    expect(array_map('intval', $queueSlots))->toBe([1, 2]);
+});

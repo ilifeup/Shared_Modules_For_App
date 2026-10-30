@@ -856,7 +856,7 @@ it('authorizes S6 cancellation by canonical original booker rather than obsolete
     DB::table('event_bookings')->where('id', $booking->id)
         ->update(['member_user_id' => $member->id, 'booker_user_id' => $booker->id]);
     $engine = app(\App\Services\Booking\BookingEngine::class);
-    expect(fn () => $engine->cancelLegacy($booking->fresh(), $stranger))->toThrow(\App\Exceptions\ApiException::class);
+    expect(fn () => $engine->cancelLegacy($booking->fresh(), $stranger))->toThrow(\App\Support\Api\ApiException::class);
 
     $cancelled = $engine->cancelLegacy($booking->fresh(), $booker);
     expect($cancelled->status)->toBe('cancelled')
@@ -904,7 +904,7 @@ it('rejects administrator reorder if canonical waitlist and legacy queue diverge
 
     expect(fn () => app(\App\Services\Booking\BookingEngine::class)
         ->moveInWaitlist($waitingGroup, 1, $members[0], 'divergent queue'))
-        ->toThrow(\App\Exceptions\ApiException::class);
+        ->toThrow(\App\Support\Api\ApiException::class);
     expect(DB::table('event_bookings')->where('id', $waitingGroup->legacy_booking_id)
         ->value('status'))->toBe('waitlisted');
 });

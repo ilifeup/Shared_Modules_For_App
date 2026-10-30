@@ -495,3 +495,18 @@ it('rejects cross-member checkout before audit insertion, leaving both records u
         ->and(EventAttendance::query()->where('event_booking_attendee_id', $attendees[1]->id)->count())->toBe(0)
         ->and(AuditEvent::query()->where('event', 'checkin.checked_out')->count())->toBe(0);
 });
+
+it('signs canonical booking QR independently of legacy attendee QR', function () {
+    $tokens = app(CheckinTokens::class);
+    $now = now()->getTimestamp();
+    $bookingId = 12345;
+    $token = $tokens->booking($bookingId, $now);
+
+    expect($tokens->verify($token, 'b', $now))->toBe($bookingId)
+        ->and($tokens->verify($token, 'a', $now))->toBeNull()
+        ->and($tokens->verify($tokens->attendee($bookingId, $now), 'b', $now))->toBeNull();
+
+    $nextWindow = ($tokens->window($now) + 1) * CheckinTokens::WINDOW_SECONDS;
+    expect($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS - 1))->toBe($bookingId)
+        ->and($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS))->toBeNull();
+});

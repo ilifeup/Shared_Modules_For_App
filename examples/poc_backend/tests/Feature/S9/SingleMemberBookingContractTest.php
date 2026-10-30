@@ -633,3 +633,18 @@ it('provides the additive canonical member and booker columns on event bookings'
     // legacy user_id until the coordinated engine cutover.
     expect(DB::table('event_bookings')->where('id', $booking->id)->exists())->toBeTrue();
 });
+
+
+it('dual-writes the canonical member and booker identities on S6 booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    $booking = app(\App\Services\Booking\BookingEngine::class)->bookLegacy($event, $member);
+    $row = DB::table('event_bookings')->where('id', $booking->id)->first();
+
+    expect((int) $row->user_id)->toBe($member->id)
+        ->and((int) $row->member_user_id)->toBe($member->id)
+        ->and((int) $row->booker_user_id)->toBe($member->id)
+        ->and($row->status)->toBe('confirmed')
+        ->and($row->confirmed_at)->not->toBeNull();
+});

@@ -501,3 +501,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `f975ff70`：M11CheckinTest 透過 Laravel `Schema::getIndexes('event_attendances')` 驗證 `event_attendances_booking_unique` 是 `event_booking_id` 單欄唯一索引。
 - 此測試尚待 CI；仍需測試真實重複寫入、外鍵違規、MySQL/SQLite rollback 與歷史資料 backfill，不能據此宣告完成 R1 遷移。
 - PR #63 Draft，不執行正式資料庫 Migration，不自動合併。
+
+### R1.62｜簽到 canonical FK schema 驗收（2026-10-30）
+
+- `d10ca847`：M11CheckinTest 新增 Schema::getColumns/getForeignKeys 斷言，檢查 `event_booking_id` 可空及 FK 指向 `event_bookings.id`。
+- **未完成**：實際寫入重複與外鍵違規、雙資料庫引擎 Migration/rollback、舊資料映射、Service/Controller/Flutter 切換。待 CI 執行驗證；不能宣告完成。
+- PR #63 Draft，禁止自動合併或執行正式 DB Migration。

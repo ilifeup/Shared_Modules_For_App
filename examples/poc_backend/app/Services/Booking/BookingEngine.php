@@ -689,6 +689,10 @@ final class BookingEngine
             if (count($sequences) !== count($ids)) {
                 throw new ApiException(409, 'WAITLIST_STATE_INCONSISTENT', '候補排序資料不一致，請先檢查報名狀態。');
             }
+            // Queue sequence has a UNIQUE(event, sequence) constraint across all
+            // statuses, including cancelled/promoted rows. Preserve the existing
+            // active queue slots independently of canonical FIFO slots.
+            $queueSequences = $entries->pluck('sequence')->sort()->values()->all();
             // Reserve temporary positions in both tables before assigning the
             // final order. This avoids collisions with unique queue positions.
             $canonicalBase = (int) EventBooking::query()
@@ -702,7 +706,7 @@ final class BookingEngine
                     ->update(['waitlist_sequence' => $canonicalBase + $i, 'updated_at' => now()]);
             }
             foreach ($ids as $i => $groupId) {
-                $byGroup[$groupId]->forceFill(['sequence' => $sequences[$i]])->save();
+                $byGroup[$groupId]->forceFill(['sequence' => $queueSequences[$i]])->save();
                 EventBooking::query()->whereKey($bookingIds[$groupId])
                     ->update(['waitlist_sequence' => $sequences[$i], 'updated_at' => now()]);
             }

@@ -829,6 +829,37 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame('pending_payment', DB::table('course_enrollments')->where('id', $entry['id'])->value('status'));
     }
 
+    public function test_overdue_course_invoice_can_be_confirmed_without_releasing_booked_sessions(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = (int) DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'payment_due_at' => now()->subHour(),
+        ]);
+        $before = DB::table('event_booking_attendees')->where('member_user_id', $member->id)
+            ->where('status', 'confirmed')->count();
+
+        $this->assertSame(1, app(CashInvoiceService::class)->expireDue());
+        $this->assertTrue(app(CourseEnrollmentService::class)
+            ->confirmationReadiness($enrollment['id'], $admin)['ready']);
+        $paid = app(CashInvoiceService::class)->confirmCash($invoiceId, $admin);
+
+        $this->assertSame(1, $paid['status']);
+        $this->assertSame('confirmed', DB::table('course_enrollments')
+            ->where('id', $enrollment['id'])->value('status'));
+        $this->assertNotNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $this->assertSame(1, (int) DB::table('invoices')->where('id', $invoiceId)->value('invoice_status'));
+        $this->assertSame($before, DB::table('event_booking_attendees')
+            ->where('member_user_id', $member->id)->where('status', 'confirmed')->count());
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

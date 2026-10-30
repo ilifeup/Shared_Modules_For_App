@@ -898,6 +898,26 @@ it('authorizes S6 cancellation by canonical original booker rather than obsolete
         ->and(DB::table('event_bookings')->where('id', $booking->id)->value('active'))->toBeNull();
 });
 
+it('rejects mismatched canonical cancellation before changing legacy group or invoice', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $other = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(BookingEngine::class)->bookLegacy($event, $member);
+    $groupId = DB::table('event_booking_groups')->where('legacy_booking_id', $booking->id)->value('id');
+
+    // Corrupt only the canonical participant pointer; the caller still owns
+    // the booking as its original booker.
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['member_user_id' => $other->id]);
+
+    expect(fn () => app(BookingEngine::class)->cancelLegacy($booking->fresh(), $member))
+        ->toThrow(ApiException::class);
+
+    expect(DB::table('event_bookings')->where('id', $booking->id)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_groups')->where('id', $groupId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_booking_attendees')->where('event_booking_group_id', $groupId)->value('status'))->toBe('confirmed');
+});
+
 it('allows cancelling an active waitlisted canonical booking through the S6 cancellation engine', function () {
     $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
     $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);

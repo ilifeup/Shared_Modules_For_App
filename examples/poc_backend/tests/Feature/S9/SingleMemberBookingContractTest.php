@@ -305,6 +305,33 @@ it('does not promote a waitlisted attendee whose event ledger was corrupted', fu
     expect(seats($event))->toBe(0);
 });
 
+it('does not promote a waitlisted member when canonical booking identity disagrees', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+    $otherMember = User::factory()->create(['verified_status' => 2]);
+
+    $first = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waiting = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $waiting)->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $bookingId)
+        ->update(['member_user_id' => $otherMember->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$first}/cancel")->assertOk();
+
+    expect(EventBookingGroup::query()->findOrFail($waiting)->status)->toBe('cancelled')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $waiting)->value('status'))->toBe('skipped')
+        ->and(seats($event))->toBe(0);
+});
+
 it('cancels a delegated booking once and refuses a stale second cancellation', function () {
     $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
     $manager = User::factory()->create(['verified_status' => 2]);

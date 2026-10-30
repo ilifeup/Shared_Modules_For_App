@@ -746,3 +746,21 @@ it('counts waitlist capacity from canonical active waitlisted bookings', functio
         ->update(['status' => 'cancelled', 'active' => null]);
     expect($engine->waitingGroups($event))->toBe(0);
 });
+
+
+it('detects an existing active canonical booking without relying on attendee rows', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(\App\Services\Booking\BookingEngine::class)->bookLegacy($event, $member);
+
+    DB::table('event_booking_attendees')->where('calendar_event_id', $event->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+
+    $existing = app(\App\Services\Booking\BookingEngine::class)->activeAttendeeOf($event, $member);
+    expect($existing)->toBeInstanceOf(\App\Models\EventBooking::class)
+        ->and($existing->id)->toBe($booking->id);
+
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect(app(\App\Services\Booking\BookingEngine::class)->activeAttendeeOf($event, $member))->toBeNull();
+});

@@ -595,3 +595,19 @@ it('skips a cross-event waitlist ledger without cancelling the unrelated booking
         ->value('status'))->toBe('waitlisted');
     expect(seats($event))->toBe(0);
 });
+
+
+it('defines the canonical active booking statuses without treating cancelled history as active', function () {
+    $booking = new \App\Models\EventBooking(['status' => \App\Models\EventBooking::STATUS_CONFIRMED, 'active' => 1]);
+    expect($booking->isActive())->toBeTrue();
+
+    $booking->status = \App\Models\EventBooking::STATUS_WAITLISTED;
+    expect($booking->isActive())->toBeTrue();
+
+    $booking->status = \App\Models\EventBooking::STATUS_CANCELLED;
+    $booking->active = null;
+    expect($booking->isActive())->toBeFalse();
+
+    $booking->status = \App\Models\EventBooking::STATUS_EVENT_CANCELLED;
+    expect($booking->isActive())->toBeFalse();
+});

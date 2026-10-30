@@ -95,14 +95,11 @@ Future<void> pumpScreen(
   await tester.pumpAndSettle();
 }
 
-Future<void> selectFamilyMember(
-  WidgetTester tester,
-  int slot,
-  int memberId,
-) async {
-  await tester.tap(find.byKey(Key('group-member-$slot')));
+Future<void> selectFamilyMember(WidgetTester tester, int memberId) async {
+  final selector = find.byType(DropdownButtonFormField<int?>);
+  await tester.tap(selector);
   await tester.pumpAndSettle();
-  await tester.tap(find.text('會員 ID $memberId').last);
+  await tester.tap(find.text('家人$memberId（ID $memberId）').last);
   await tester.pumpAndSettle();
 }
 
@@ -120,7 +117,7 @@ void main() {
     expect(newRequestId(), isNot(a));
   });
 
-  testWidgets('M08 books a group once and shows the waitlist position', (
+  testWidgets('M08 books one member once and shows waitlist position', (
     tester,
   ) async {
     final backend = S9Backend();
@@ -128,44 +125,31 @@ void main() {
     backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
     backend.routes['GET /api/v1/me/family-memberships'] = (_) => {
       'data': [
-        {'member_user_id': 17},
-        {'member_user_id': 18},
+        {'member_user_id': 17, 'name': '家人17'},
+        {'member_user_id': 18, 'name': '家人18'},
       ],
     };
     backend.routes['POST /api/v1/events/7/booking-groups'] = (body) async {
       await gate.future;
-      return {
-        'data': group('waitlisted', ['我', '家人']),
-      };
+      return {'data': group('waitlisted', ['家人17'])};
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
-
-    await tester.tap(find.byKey(const Key('group-add-member')));
-    await tester.pump();
-    await selectFamilyMember(tester, 0, 17);
+    await selectFamilyMember(tester, 17);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pump();
-    expect(find.text('處理中…'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('group-submit')),
-      warnIfMissed: false,
-    );
     gate.complete();
     await tester.pumpAndSettle();
-
     final posts = backend.calls.where((c) => c.startsWith('POST')).toList();
     expect(posts, hasLength(1));
     final body = backend.bodies[backend.calls.indexOf(posts.single)]!;
-    expect(body['include_self'], isTrue);
-    expect(body['attendees'], [
-      {'member_user_id': 17},
-    ]);
+    expect(body['member_user_id'], 17);
+    expect(body, isNot(contains('attendees')));
+    expect(body, isNot(contains('include_self')));
     expect(body['client_request_id'], isA<String>());
     expect(find.text('【候補中】第 2 順位'), findsOneWidget);
-    expect(find.text('共 2 位：我、家人'), findsOneWidget);
   });
 
-  testWidgets('M08 timeout retry preserves the exact payload and request ID', (
+  testWidgets('M08 timeout retry preserves exact single-member payload', (
     tester,
   ) async {
     final backend = S9Backend();
@@ -173,8 +157,8 @@ void main() {
     backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
     backend.routes['GET /api/v1/me/family-memberships'] = (_) => {
       'data': [
-        {'member_user_id': 17},
-        {'member_user_id': 18},
+        {'member_user_id': 17, 'name': '家人17'},
+        {'member_user_id': 18, 'name': '家人18'},
       ],
     };
     backend.routes['POST /api/v1/events/7/booking-groups'] = (_) {
@@ -182,33 +166,14 @@ void main() {
       if (attempts == 1) {
         throw const ApiException(code: 'NETWORK_ERROR', message: '連線中斷');
       }
-      return {
-        'data': group('confirmed', ['我', '家人']),
-      };
+      return {'data': group('confirmed', ['家人17'])};
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
-    await tester.tap(find.byKey(const Key('group-add-member')));
-    await tester.pump();
-    await selectFamilyMember(tester, 0, 17);
+    await selectFamilyMember(tester, 17);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-
-    expect(find.text('重試原請求'), findsOneWidget);
-    expect(find.text('【結果待確認】'), findsOneWidget);
-    expect(
-      tester
-          .widget<DropdownButtonFormField<int>>(
-            find.byKey(const Key('group-member-0')),
-          )
-          .onChanged,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<SwitchListTile>(find.byKey(const Key('group-include-self')))
-          .onChanged,
-      isNull,
-    );
+    final selector = find.byType(DropdownButtonFormField<int?>);
+    expect(tester.widget<DropdownButtonFormField<int?>>(selector).onChanged, isNull);
     final firstBody = Map<String, dynamic>.from(
       backend.bodies[backend.calls.lastIndexOf(
         'POST /api/v1/events/7/booking-groups',
@@ -216,16 +181,16 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final secondBody =
-        backend.bodies[backend.calls.lastIndexOf(
-          'POST /api/v1/events/7/booking-groups',
-        )]!;
+    final secondBody = backend.bodies[backend.calls.lastIndexOf(
+      'POST /api/v1/events/7/booking-groups',
+    )]!;
     expect(attempts, 2);
     expect(secondBody, firstBody);
+    expect(secondBody['member_user_id'], 17);
     expect(find.text('【正式報名】'), findsOneWidget);
   });
 
-  testWidgets('M08 definitive validation error permits corrected new request', (
+  testWidgets('M08 validation failure allows corrected single member', (
     tester,
   ) async {
     final backend = S9Backend();
@@ -233,8 +198,8 @@ void main() {
     backend.routes['GET /api/v1/events/7'] = (_) => {'data': event};
     backend.routes['GET /api/v1/me/family-memberships'] = (_) => {
       'data': [
-        {'member_user_id': 17},
-        {'member_user_id': 18},
+        {'member_user_id': 17, 'name': '家人17'},
+        {'member_user_id': 18, 'name': '家人18'},
       ],
     };
     backend.routes['POST /api/v1/events/7/booking-groups'] = (_) {
@@ -246,39 +211,30 @@ void main() {
           statusCode: 422,
         );
       }
-      return {
-        'data': group('confirmed', ['我', '新同行者']),
-      };
+      return {'data': group('confirmed', ['家人18'])};
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
-    await tester.tap(find.byKey(const Key('group-add-member')));
-    await tester.pump();
-    await selectFamilyMember(tester, 0, 17);
+    await selectFamilyMember(tester, 17);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final first =
-        backend.bodies[backend.calls.lastIndexOf(
-          'POST /api/v1/events/7/booking-groups',
-        )]!;
+    final first = backend.bodies[backend.calls.lastIndexOf(
+      'POST /api/v1/events/7/booking-groups',
+    )]!;
     expect(
-      tester
-          .widget<DropdownButtonFormField<int>>(
-            find.byKey(const Key('group-member-0')),
-          )
-          .onChanged,
+      tester.widget<DropdownButtonFormField<int?>>(
+        find.byType(DropdownButtonFormField<int?>),
+      ).onChanged,
       isNotNull,
     );
-    await selectFamilyMember(tester, 0, 18);
+    await selectFamilyMember(tester, 18);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final second =
-        backend.bodies[backend.calls.lastIndexOf(
-          'POST /api/v1/events/7/booking-groups',
-        )]!;
+    final second = backend.bodies[backend.calls.lastIndexOf(
+      'POST /api/v1/events/7/booking-groups',
+    )]!;
     expect(first['client_request_id'], isNot(second['client_request_id']));
-    expect(second['attendees'], [
-      {'member_user_id': 18},
-    ]);
+    expect(second['member_user_id'], 18);
+    expect(second, isNot(contains('attendees')));
     expect(find.text('【正式報名】'), findsOneWidget);
   });
 

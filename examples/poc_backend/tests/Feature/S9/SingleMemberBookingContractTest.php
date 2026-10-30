@@ -986,3 +986,16 @@ it('rejects duplicate canonical FIFO positions before any administrator reorder 
     expect(DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
         ->orderBy('id')->pluck('sequence')->all())->toBe($queueBefore);
 });
+
+
+it('blocks direct non-admin service calls that mutate event capacity or cancel the event', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+    $engine = app(\App\Services\Booking\BookingEngine::class);
+
+    expect(fn () => $engine->changeCapacity($event, 3, [], $member))
+        ->toThrow(\App\Support\Api\ApiException::class);
+    expect(fn () => $engine->cancelEvent($event, 'forged cancellation', $member))
+        ->toThrow(\App\Support\Api\ApiException::class);
+    expect((int) $event->fresh()->booking_capacity)->toBe(2);
+});

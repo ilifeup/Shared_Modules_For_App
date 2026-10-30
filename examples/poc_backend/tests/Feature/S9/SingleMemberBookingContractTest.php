@@ -811,6 +811,7 @@ it('promotes by canonical FIFO order even when the obsolete queue sequence diffe
         ->postJson("/api/v1/me/booking-groups/{$ids[0]}/cancel")->assertOk();
 
     expect(DB::table('event_bookings')->where('id', $thirdBookingId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBeNull()
         ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted');
 });
 
@@ -879,5 +880,6 @@ it('allows cancelling an active waitlisted canonical booking through the S6 canc
     $cancelled = $engine->cancelLegacy($booking, $second);
     expect($cancelled->status)->toBe('cancelled')
         ->and($cancelled->active)->toBeNull()
+        ->and($cancelled->waitlist_sequence)->toBeNull()
         ->and($engine->waitingGroups($event))->toBe(0);
 });

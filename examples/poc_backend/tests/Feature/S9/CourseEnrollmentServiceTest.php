@@ -860,6 +860,28 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
     }
 
+    public function test_late_cash_confirmation_marks_overdue_even_before_hourly_scan(): void
+    {
+        $term = $this->term();
+        $member = $this->verified();
+        $admin = $this->verified();
+        $admin->assignRole(User::ADMIN_ROLE);
+        $enrollment = app(CourseEnrollmentService::class)->enroll($term, $member, $member);
+        $invoiceId = (int) DB::table('invoices')->where('booking_type', '02')
+            ->where('booking_id', $enrollment['id'])->value('id');
+
+        DB::table('invoices')->where('id', $invoiceId)->update([
+            'payment_due_at' => now()->subMinute(),
+            'overdue_at' => null,
+        ]);
+        $this->assertNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $paid = app(CashInvoiceService::class)->confirmCash($invoiceId, $admin);
+        $this->assertSame(1, $paid['status']);
+        $this->assertNotNull(DB::table('invoices')->where('id', $invoiceId)->value('overdue_at'));
+        $this->assertSame(0, app(CashInvoiceService::class)->expireDue());
+        $this->assertSame(1, DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count());
+    }
+
     public function test_non_admin_cannot_read_fee_confirmation_readiness(): void
     {
         $term = $this->term();

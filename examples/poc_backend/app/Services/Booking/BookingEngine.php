@@ -221,8 +221,12 @@ final class BookingEngine
             // The engine, not only the API controller, enforces ownership.
             // An administrator may cancel on behalf of a member; ordinary
             // members can only cancel their own legacy single-member booking.
-            if (! $byAdmin && (int) $locked->user_id !== (int) $actor->id) {
-                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有原預約會員可以取消此預約。');
+            // Canonical booking identity determines cancellation ownership.
+            // The original booker can cancel a delegated family booking; a
+            // different family manager cannot silently take over that booking.
+            if (! $byAdmin && (int) $locked->member_user_id !== (int) $actor->id
+                && (int) $locked->booker_user_id !== (int) $actor->id) {
+                throw new ApiException(403, 'ATTENDEE_NOT_AUTHORIZED', '只有預約會員或原代訂人可以取消此預約。');
             }
             if (! $locked->isConfirmed()) {
                 throw new ApiException(409, 'BOOKING_NOT_ACTIVE', '此預約已取消。');

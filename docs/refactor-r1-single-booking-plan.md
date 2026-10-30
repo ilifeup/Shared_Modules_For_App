@@ -273,3 +273,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `69a7ff78`：刪除 `2026_11_10_000100_prepare_canonical_event_bookings.php` 過渡 Migration。
 - **尚未完成**：目前舊 S6 `user_id` 與 S9 group/attendee 還存在，為了保持未完成重構分支可讀，下一步須集中修改 BookingEngine、check-in、payment、course、API、Filament、相關 Migration 和 Pest，最後移除所有舊表／欄位，不能將目前暫留視為新決策已完整落地。
 - 不觸碰正式資料庫；尚未執行 migrate:fresh／Pest／CI；未合併 main。
+
+
+## R1.27｜實際預約生命週期測試補強（2026-10-30）
+
+- `9a4b451a`：修正已過時的「additive migration 回填」測試說明，改檢查新建 schema 直接具有 canonical 欄位。
+- 新增 S9 API 預約→event_bookings canonical row→取消清除 active 的整體回歸測試，核對 member/booker/client_request_id/status/cancelled_at。
+- **重要：** 目前測試是對既有 S9 過渡寫入路徑的契約檢查，仍引用 group 表，**不是最終單表實作**。依使用者最新指示，最終不需舊資料或雙寫；下一階段要移除 group/attendee 及相關外鍵依賴，不應繼續增加相容層。
+- 尚未執行測試、CI 或資料庫重建，未合併 main。

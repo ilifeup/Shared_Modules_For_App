@@ -366,3 +366,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 此測試僅保護過渡階段的新舊佇列一致性；不是認可長期保留雙表。新提交 CI/Pest 尚未驗證。
 - 提交前 `9f2b9a33` 的 S0 success、Shared Core in_progress、Backend pending、Mobile queued（當時快照）。
 - 下一階段應將 queue 消費者逐一改讀 canonical booking，並同步處理付款、通知、簽到及 migration 的舊 FK；仍不可自動合併 main 或碰正式 DB。
+
+
+## R1.38｜候補晉升 canonical 身分交叉驗證（2026-10-30）
+
+- `4c88586ed363c819adb71d40bb5108a9a1c2917c`：`BookingEngine::promote()` 在晉升前鎖定 canonical `event_bookings`，檢查同活動、有效候補、`member_user_id` 與 attendee 一致、`booker_user_id` 與 group 一致；不一致以 `canonical_booking_mismatch` 跳過，避免授予錯誤會員名額。
+- `5f3fc7c8e88ca3bfbe37a1394819836a82b4e94d`：新增 `SingleMemberBookingContractTest.php` 身分不一致案例，模擬 canonical 會員 ID 被更改後釋出名額，要求候補被取消、舊 queue 標記 skipped 且不占用席次。
+- **未驗證**：新增測試尚待 Backend CI/Pest 實際執行。此為過渡期防錯，不是舊表移除完成；後續須直接以 canonical booking 為唯一晉升來源並重構下游付款、通知、簽到、課程及 migration。
+- 查詢前一 HEAD `de7651b8` 時 S0/Shared Core 執行中，Backend/Mobile pending；勿視為本次提交的結果。未合併 main，未操作正式 DB。

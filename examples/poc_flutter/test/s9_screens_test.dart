@@ -131,7 +131,9 @@ void main() {
     };
     backend.routes['POST /api/v1/events/7/booking-groups'] = (body) async {
       await gate.future;
-      return {'data': group('waitlisted', ['家人17'])};
+      return {
+        'data': group('waitlisted', ['家人17']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
     await selectFamilyMember(tester, 17);
@@ -166,14 +168,19 @@ void main() {
       if (attempts == 1) {
         throw const ApiException(code: 'NETWORK_ERROR', message: '連線中斷');
       }
-      return {'data': group('confirmed', ['家人17'])};
+      return {
+        'data': group('confirmed', ['家人17']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
     await selectFamilyMember(tester, 17);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
     final selector = find.byType(DropdownButtonFormField<int?>);
-    expect(tester.widget<DropdownButtonFormField<int?>>(selector).onChanged, isNull);
+    expect(
+      tester.widget<DropdownButtonFormField<int?>>(selector).onChanged,
+      isNull,
+    );
     final firstBody = Map<String, dynamic>.from(
       backend.bodies[backend.calls.lastIndexOf(
         'POST /api/v1/events/7/booking-groups',
@@ -181,9 +188,10 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final secondBody = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final secondBody =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(attempts, 2);
     expect(secondBody, firstBody);
     expect(secondBody['member_user_id'], 17);
@@ -211,27 +219,33 @@ void main() {
           statusCode: 422,
         );
       }
-      return {'data': group('confirmed', ['家人18'])};
+      return {
+        'data': group('confirmed', ['家人18']),
+      };
     };
     await pumpScreen(tester, backend, const GroupBookingScreen(eventId: '7'));
     await selectFamilyMember(tester, 17);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final first = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final first =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(
-      tester.widget<DropdownButtonFormField<int?>>(
-        find.byType(DropdownButtonFormField<int?>),
-      ).onChanged,
+      tester
+          .widget<DropdownButtonFormField<int?>>(
+            find.byType(DropdownButtonFormField<int?>),
+          )
+          .onChanged,
       isNotNull,
     );
     await selectFamilyMember(tester, 18);
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pumpAndSettle();
-    final second = backend.bodies[backend.calls.lastIndexOf(
-      'POST /api/v1/events/7/booking-groups',
-    )]!;
+    final second =
+        backend.bodies[backend.calls.lastIndexOf(
+          'POST /api/v1/events/7/booking-groups',
+        )]!;
     expect(first['client_request_id'], isNot(second['client_request_id']));
     expect(second['member_user_id'], 18);
     expect(second, isNot(contains('attendees')));

@@ -30,6 +30,7 @@ return new class extends Migration
             $table->foreignId('booker_user_id')->nullable()->constrained('users')->restrictOnDelete();
             $table->uuid('client_request_id')->nullable();
             $table->timestamp('confirmed_at')->nullable();
+            $table->unsignedInteger('waitlist_sequence')->nullable();
             $table->string('cancel_reason')->nullable();
             $table->string('status', 20)->default('confirmed'); // confirmed | cancelled
             $table->unsignedTinyInteger('active')->nullable()->default(1);
@@ -42,6 +43,7 @@ return new class extends Migration
             $table->unique(['calendar_event_id', 'member_user_id', 'active'], 'event_bookings_member_active_unique');
             $table->unique('client_request_id', 'event_bookings_request_unique');
             $table->index(['booker_user_id', 'booked_at'], 'event_bookings_booker_history_index');
+            $table->index(['calendar_event_id', 'status', 'waitlist_sequence'], 'event_bookings_waitlist_order_index');
             $table->index(['calendar_event_id', 'status']);
             $table->index(['user_id', 'status']);
         });

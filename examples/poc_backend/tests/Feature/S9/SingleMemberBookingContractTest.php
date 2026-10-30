@@ -786,3 +786,30 @@ it('assigns the canonical FIFO sequence when joining the waitlist', function () 
         ->and((int) $rows[0]->waitlist_sequence)->toBe(1)
         ->and((int) $rows[1]->waitlist_sequence)->toBe(2);
 });
+
+
+it('promotes by canonical FIFO order even when the obsolete queue sequence differs', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $third = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $ids = [];
+    foreach ([$first, $second, $third] as $member) {
+        $ids[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $ids[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $ids[2])->value('legacy_booking_id');
+    // Swap canonical order only: the obsolete queue still has second before third.
+    DB::table('event_bookings')->where('id', $secondBookingId)->update(['waitlist_sequence' => 2]);
+    DB::table('event_bookings')->where('id', $thirdBookingId)->update(['waitlist_sequence' => 1]);
+
+    $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$ids[0]}/cancel")->assertOk();
+
+    expect(DB::table('event_bookings')->where('id', $thirdBookingId)->value('status'))->toBe('confirmed')
+        ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted');
+});

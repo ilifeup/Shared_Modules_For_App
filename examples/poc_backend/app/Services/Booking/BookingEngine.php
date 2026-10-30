@@ -648,8 +648,20 @@ final class BookingEngine
         $order = [];
         $this->transaction(function () use ($group, $position, $actor, $reason, &$order): void {
             $event = $this->lock($group->event);
-            $entries = EventWaitlistEntry::query()->where('calendar_event_id', $event->id)->where('status', EventWaitlistEntry::WAITING)
-                ->orderBy('sequence')->lockForUpdate()->get();
+            // Administrator reordering reads the same canonical FIFO order as promotion.
+            // Legacy queue rows remain only for existing downstream consumers.
+            $entries = EventWaitlistEntry::query()
+                ->join('event_booking_groups', 'event_booking_groups.id', '=', 'event_waitlist_entries.event_booking_group_id')
+                ->join('event_bookings', 'event_bookings.id', '=', 'event_booking_groups.legacy_booking_id')
+                ->where('event_waitlist_entries.calendar_event_id', $event->id)
+                ->where('event_waitlist_entries.status', EventWaitlistEntry::WAITING)
+                ->where('event_bookings.calendar_event_id', $event->id)
+                ->where('event_bookings.status', EventBooking::STATUS_WAITLISTED)
+                ->where('event_bookings.active', 1)
+                ->orderBy('event_bookings.waitlist_sequence')
+                ->orderBy('event_bookings.id')
+                ->select('event_waitlist_entries.*')
+                ->lockForUpdate()->get();
 
             $ids = $entries->pluck('event_booking_group_id')->all();
             if (! in_array($group->id, $ids, true)) {

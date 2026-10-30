@@ -411,11 +411,12 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ),
             ),
             if (restoring)
-              Text(_restoreErrorScope != scope
-                  ? '正在還原上次報名資料…'
-                  : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError'),
-            if (pending != null)
-              const Text('偵測到未確認的報名請求；重試將沿用原參加會員及識別碼。'),
+              Text(
+                _restoreErrorScope != scope
+                    ? '正在還原上次報名資料…'
+                    : '上次報名資料無法還原，已停止送出以避免重複報名：$_restoreError',
+              ),
+            if (pending != null) const Text('偵測到未確認的報名請求；重試將沿用原參加會員及識別碼。'),
             if (family.hasError)
               ErrorRetry(
                 error: ErrorBox(error: family.error!),
@@ -430,10 +431,20 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
               ErrorBox(error: _error!),
             FilledButton(
               key: const Key('group-submit'),
-              onPressed: _busy || restoring || scope == null || availableMembers == null
+              onPressed:
+                  _busy ||
+                      restoring ||
+                      scope == null ||
+                      availableMembers == null
                   ? null
                   : _submit,
-              child: Text(_busy ? '處理中…' : restoring ? '還原報名資料中…' : '送出報名／重試'),
+              child: Text(
+                _busy
+                    ? '處理中…'
+                    : restoring
+                    ? '還原報名資料中…'
+                    : '送出報名／重試',
+              ),
             ),
           ],
         ],
@@ -546,4 +557,3 @@ class _MyBookingGroupsScreenState extends ConsumerState<MyBookingGroupsScreen> {
     );
   }
 }
-

@@ -334,3 +334,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 查詢該新 SHA 的 PR workflow runs 回傳空清單，**新提交尚無已驗證 CI 結果**。下一步確認新 HEAD CI、Pint/Pest；尤其審查接近開課付款期限、開課後拒絕報名與交易回滾，必要時再集中修正。
 - R1 canonical 單表重構仍未完成，不能將本次 CI 修正當成整體完成；不得自動 merge main，不操作正式資料庫。
 - 後續每階段須同步更新本計畫書：實際變更、SHA、測試結果、剩餘風險、下一步。
+
+
+## R1.34｜CI 等待期間並行補強開課後回滾驗收（2026-10-30）
+
+- `b8e5297ec9b65f39538450bc0af979b43cf0b25d`：擴充 `CourseEnrollmentServiceTest.php` 開課後拒絕報名測試，除 enrollment/invoice 為零外，亦要求 canonical `event_bookings`、過渡 `event_booking_groups`/`event_booking_attendees` 及 `payment_transactions` 均無殘留，防止失敗路徑留下部分寫入。
+- 提交前 CI 狀態（對 `d1f1f99c`）：S0 Documentation success；Backend pending；Mobile queued；Shared Core in_progress。這是當時快照，不代表本提交 CI 結果。
+- **未驗證**：新增測試尚待新 HEAD CI/Pest 執行。仍須完成 FIFO、付款、課程、簽到、Migration 與 Flutter/Filament 對 canonical 單表的整體切換；目前舊表斷言僅保護過渡期一致性，非保留舊表的最終決策。
+- 未合併 main、未操作正式資料庫。

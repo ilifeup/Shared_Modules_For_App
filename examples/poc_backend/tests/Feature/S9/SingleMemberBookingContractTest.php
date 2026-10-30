@@ -700,3 +700,23 @@ it('resolves a delegated booking member separately from its booker', function ()
     expect($booking->member->id)->toBe($member->id)
         ->and($booking->booker->id)->toBe($booker->id);
 });
+
+
+it('counts capacity from confirmed active canonical bookings, not the obsolete attendee ledger', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $booking = app(\App\Services\Booking\BookingEngine::class)->bookLegacy($event, $member);
+    $engine = app(\App\Services\Booking\BookingEngine::class);
+
+    expect($engine->confirmedSeats($event))->toBe(1);
+
+    // A stale attendee ledger must not change the canonical capacity count.
+    DB::table('event_booking_attendees')
+        ->where('calendar_event_id', $event->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->confirmedSeats($event))->toBe(1);
+
+    DB::table('event_bookings')->where('id', $booking->id)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->confirmedSeats($event))->toBe(0);
+});

@@ -861,3 +861,23 @@ it('authorizes S6 cancellation by canonical original booker rather than obsolete
     expect($cancelled->status)->toBe('cancelled')
         ->and(DB::table('event_bookings')->where('id', $booking->id)->value('active'))->toBeNull();
 });
+
+
+it('allows cancelling an active waitlisted canonical booking through the S6 cancellation engine', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $engine = app(\App\Services\Booking\BookingEngine::class);
+    $engine->bookLegacy($event, $first);
+    $groupId = $this->actingAs($second, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+    $bookingId = DB::table('event_booking_groups')->where('id', $groupId)->value('legacy_booking_id');
+    $booking = \App\Models\EventBooking::query()->findOrFail($bookingId);
+
+    $cancelled = $engine->cancelLegacy($booking, $second);
+    expect($cancelled->status)->toBe('cancelled')
+        ->and($cancelled->active)->toBeNull()
+        ->and($engine->waitingGroups($event))->toBe(0);
+});

@@ -9,12 +9,20 @@ import 'package:go_router/go_router.dart';
 import 'package:s1_poc_app/core/device/device_services.dart';
 import 'package:s1_poc_app/core/network/api_exception.dart';
 import 'package:s1_poc_app/core/providers.dart';
+import 'package:s1_poc_app/features/auth/auth_controller.dart';
 import 'package:s1_poc_app/features/s9/checkin_screens.dart';
 import 'package:s1_poc_app/features/s9/discovery_screens.dart';
 import 'package:s1_poc_app/features/s9/group_booking_screen.dart';
 import 'package:s1_poc_app/features/s9/my_calendar_screen.dart';
 import 'package:s1_poc_app/features/s9/verification_marketing.dart';
 import 'package:s1_poc_app/ui/content_unavailable.dart';
+
+class _SignedInAuthController extends AuthController {
+  @override
+  AuthState build() => const AuthState.signedIn(
+    MemberProfile(id: '1', displayName: '測試會員'),
+  );
+}
 
 typedef Handler =
     FutureOr<Map<String, dynamic>> Function(Map<String, dynamic>? body);
@@ -86,6 +94,7 @@ Future<void> pumpScreen(
       retry: (retryCount, error) => null,
       overrides: [
         apiTransportProvider.overrideWithValue(backend),
+        authControllerProvider.overrideWith(_SignedInAuthController.new),
         if (qr != null) qrScannerProvider.overrideWithValue(qr),
         if (gps != null) gpsProvider.overrideWithValue(gps),
         if (openUrl != null) openUrlProvider.overrideWithValue(openUrl),

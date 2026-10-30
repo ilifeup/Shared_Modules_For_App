@@ -350,3 +350,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 目的：在過渡階段避免管理員排序失敗時造成新舊 FIFO 狀態不一致；此測試**不代表**已完成候補流程單表化。
 - 提交時前一 HEAD `1a9fce8d` 的 S0 文件檢查 success；Backend/Mobile pending、Shared Core in_progress（當時快照）。本次新增測試的 CI/Pest 尚未驗證。
 - 下一批：統一 canonical 候補晉升、管理員排序及下游付款/通知依賴，分階段移除舊表；需保持原有 FIFO、併發、回滾與審計語意。不得自動合併 main，不操作正式資料庫。
+
+
+## R1.36｜Canonical FIFO 晉升的佇列狀態一致性（2026-10-30）
+
+- `c6b02aa07d46740f341ebc97ba1972ac66a82fe9`：補強 `SingleMemberBookingContractTest.php` 的 canonical FIFO 晉升案例。故意使 canonical 排序與舊 queue 排序不同，取消原已確認預約後，除了驗證 canonical 第三位晉升／第二位等待，也驗證**被選中**的舊 queue 狀態為 `promoted`，未選中的仍為 `waiting`，避免跨資料表狀態錯置。
+- 新增測試尚未取得本次 HEAD CI 結果。先前 `6721c918` 的 S0 Documentation success，Backend/Mobile pending、Shared Core in_progress（查詢當時）。
+- 這是過渡期回歸防護，不是完成單表切換。後續仍須移除晉升對舊 queue/group/attendee 的依賴，並同步付款、通知、課程、簽到、Migration 與 Flutter 契約。
+- 不操作正式 DB，不自動合併 main。

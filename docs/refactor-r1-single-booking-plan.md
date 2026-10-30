@@ -224,3 +224,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 測試 commit `b24f8d7`：`SingleMemberBookingContractTest` 新增活動取消歷史明確查詢及取消彙總查詢的回歸案例。
 - 本階段已實際修改 PHP controller 與 Pest test，**但尚未執行測試**，不得宣稱通過。此修正是 R1 過渡期的局部契約修復，並非 event_bookings 主鍵統一完成。
 - 下一批仍需一次處理新 Schema、BookingEngine、付款／課程／簽到及 Flutter/OpenAPI；不得以此小修代替主重構。未合併 main。
+
+
+## R1.21｜跨活動候補誤取消防護（2026-10-30）
+
+- 程式 commit `816cb601`：`BookingEngine::promote` 發現候補 head 指向的 group.calendar_event_id 不屬於目前活動時，仍標記本活動的 queue entry 為 skipped，但**不呼叫 endGroup**，避免錯誤取消另一活動的預約、發票、參加者狀態或觸發跨活動同步。
+- 測試 commit `b10cf42d`：新增跨活動 queue/group 不一致情境；取消第一位確認會員釋出名額後，錯誤 queue 必須 skipped，另一活動 group 仍維持 waitlisted。
+- 已實際修改 BookingEngine 與 Pest 測試；**尚未執行測試／CI**。不代表完成 R1 主 Schema 統一。未合併 main。

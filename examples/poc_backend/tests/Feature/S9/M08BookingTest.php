@@ -509,3 +509,27 @@ it('rejects standalone event cash when invoice participant no longer matches the
     expect((int) DB::table('invoices')->find($invoiceId)->invoice_status)->toBe(0)
         ->and(DB::table('payment_transactions')->where('invoice_id', $invoiceId)->count())->toBe(0);
 });
+
+it('cancels a paid booking after event start without promoting a waiting member', function () {
+    $event = s9Event(['booking_capacity' => 1, 'price_amount' => 100,
+        'starts_at' => now()->addMinutes(30),
+        'ends_at' => now()->addHours(2),
+        'booking_closes_at' => now()->addMinutes(20)]);
+    $first = User::factory()->create(['verified_status' => 2]);
+    $waiting = User::factory()->create(['verified_status' => 2]);
+
+    groupBook($event, $first)->assertCreated()->assertJsonPath('data.status', 'confirmed');
+    groupBook($event, $waiting)->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+
+    $event->forceFill(['starts_at' => now()->subMinutes(5)])->save();
+    $firstGroup = EventBookingGroup::query()->where('booker_user_id', $first->id)
+        ->where('calendar_event_id', $event->id)->firstOrFail();
+    app(BookingEngine::class)->cancelGroup($firstGroup, makeAdmin(), true, 'seat released after start');
+
+    $waitingGroup = EventBookingGroup::query()->where('booker_user_id', $waiting->id)
+        ->where('calendar_event_id', $event->id)->firstOrFail();
+    expect($firstGroup->fresh()->status)->toBe('cancelled')
+        ->and($waitingGroup->status)->toBe('waitlisted')
+        ->and(DB::table('invoices')->where('booking_type', '01')->where('booking_id', $waitingGroup->id)->exists())->toBeFalse()
+        ->and(seats($event))->toBe(0);
+});

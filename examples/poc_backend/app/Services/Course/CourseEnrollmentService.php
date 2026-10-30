@@ -447,11 +447,12 @@ final class CourseEnrollmentService
                     ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
                     ->where('course_sessions.course_term_id', $termId)
                     ->min('calendar_events.starts_at');
-                if ($firstStart !== null && now()->copy()->addHours($hours)->gt($firstStart)) {
-                    throw ValidationException::withMessages(['payment' => '剩餘時間不足以保留完整付款期限。']);
+                if ($firstStart === null || now()->gte(Carbon::parse($firstStart))) {
+                    throw ValidationException::withMessages(['payment' => '第一堂課已開始或未設定，無法建立付款帳單。']);
                 }
+                $deadline = now()->addHours($hours)->min(Carbon::parse($firstStart));
                 app(CashInvoiceService::class)->create('02', $termId, '02', $id,
-                    $member->id, $booker->id, (string) $term->price_amount, $hours);
+                    $member->id, $booker->id, (string) $term->price_amount, $hours, $deadline);
             }
 
             return ['id' => $id, 'status' => $status, 'waitlist_sequence' => $sequence, 'replayed' => false];

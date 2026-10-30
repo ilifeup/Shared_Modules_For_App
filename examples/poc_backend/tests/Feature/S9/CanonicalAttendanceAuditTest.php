@@ -99,3 +99,16 @@ it('rejects null member identities rather than treating null as integer zero', f
     expect($report['member_mismatch'])->toBe(3)
         ->and($report['safe_candidates'])->toBe(0);
 });
+
+it('classifies canonical-only attendance without a legacy attendee as migrated data', function () {
+    $report = inspectAuditRows([auditRow(1, null, [
+        'assigned_booking_id' => 301,
+        'attendee_id' => null,
+        'group_id' => null,
+    ])]);
+
+    expect($report['canonical_only'])->toBe(1)
+        ->and($report['missing_legacy_attendee'])->toBe(0)
+        ->and($report['unmapped'])->toBe(0)
+        ->and($report['safe_candidates'])->toBe(0);
+});

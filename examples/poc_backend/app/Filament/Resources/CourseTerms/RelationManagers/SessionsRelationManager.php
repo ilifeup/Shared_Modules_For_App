@@ -49,7 +49,7 @@ class SessionsRelationManager extends RelationManager
                             ->get()->mapWithKeys(fn (CalendarEvent $event): array => [
                                 $event->id => $event->title.' — '.$event->starts_at->timezone(CalendarEventResource::displayTimezone())->format('Y-m-d H:i'),
                             ])->all()),
-                    TextInput::make('makeup_capacity')->label('補課名額')->integer()->minValue(0)->default(1)->required(),
+                    TextInput::make('makeup_capacity')->label('補課名額')->integer()->minValue(0)->default(0)->required(),
                 ])
                 ->action(function (array $data): void {
                     DB::transaction(function () use ($data): void {

@@ -583,8 +583,16 @@ final class CashInvoiceService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            // A cash payment may arrive after its deadline but before the hourly
+            // overdue job runs. Preserve that overdue history at settlement time.
+            $overdueAt = $invoice->overdue_at;
+            if ($overdueAt === null && $invoice->payment_due_at !== null
+                && now()->gt(\Illuminate\Support\Carbon::parse($invoice->payment_due_at))) {
+                $overdueAt = now();
+            }
             DB::table('invoices')->where('id', $invoiceId)->update([
-                'invoice_status' => 1, 'paid_at' => now(), 'staff_id' => $admin->id, 'updated_at' => now(),
+                'invoice_status' => 1, 'paid_at' => now(), 'staff_id' => $admin->id,
+                'overdue_at' => $overdueAt, 'updated_at' => now(),
             ]);
             if ($invoice->booking_type === '02') {
                 DB::table('course_enrollments')->where('id', $invoice->booking_id)->update([

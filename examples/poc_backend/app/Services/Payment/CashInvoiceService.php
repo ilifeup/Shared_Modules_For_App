@@ -83,8 +83,11 @@ final class CashInvoiceService
             if ($ids->isEmpty()) {
                 break;
             }
+            // Recheck the due date at UPDATE time. An administrator may have
+            // extended it after the candidate IDs were selected.
             $changed = DB::table('invoices')->whereIn('id', $ids)
                 ->where('invoice_status', 0)->whereNull('overdue_at')
+                ->whereNotNull('payment_due_at')->where('payment_due_at', '<=', now())
                 ->update(['overdue_at' => now(), 'updated_at' => now()]);
             $count += $changed;
         } while ($changed > 0 && $ids->count() === $limit);

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -46,6 +47,17 @@ class EventBooking extends Model
     {
         return in_array($this->status, [self::STATUS_CONFIRMED, self::STATUS_WAITLISTED], true)
             && (int) $this->active === 1;
+    }
+
+    /**
+     * Canonical single-member attendance relation; activated after the
+     * event_attendances.event_booking_id migration is deployed.
+     *
+     * @return HasOne<EventAttendance, $this>
+     */
+    public function canonicalAttendance(): HasOne
+    {
+        return $this->hasOne(EventAttendance::class, 'event_booking_id');
     }
 
     /**

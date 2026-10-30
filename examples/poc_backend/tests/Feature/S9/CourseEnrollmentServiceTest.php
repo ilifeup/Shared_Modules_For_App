@@ -6,6 +6,7 @@ use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Course\CourseEnrollmentService;
 use App\Services\Payment\CashInvoiceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -915,6 +916,7 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertContains($visibleTerm, $ids);
         $this->assertNotContains($hiddenTerm, $ids);
     }
+
     public function test_near_start_course_enrollment_caps_payment_deadline_at_first_session(): void
     {
         $term = $this->term();
@@ -931,8 +933,8 @@ class CourseEnrollmentServiceTest extends TestCase
         $invoice = DB::table('invoices')->where('booking_type', '02')
             ->where('booking_id', $result['id'])->first();
         $this->assertNotNull($invoice);
-        $this->assertTrue(\Carbon\Carbon::parse($invoice->payment_due_at)->lte($start));
-        $this->assertTrue(\Carbon\Carbon::parse($invoice->payment_due_at)->gt(now()));
+        $this->assertTrue(Carbon::parse($invoice->payment_due_at)->lte($start));
+        $this->assertTrue(Carbon::parse($invoice->payment_due_at)->gt(now()));
     }
 
     public function test_course_enrollment_after_first_session_start_creates_no_seats_or_invoice(): void
@@ -954,5 +956,4 @@ class CourseEnrollmentServiceTest extends TestCase
         $this->assertSame(0, DB::table('course_enrollments')->where('course_term_id', $term)->count());
         $this->assertSame(0, DB::table('invoices')->where('booking_type', '02')->count());
     }
-
 }

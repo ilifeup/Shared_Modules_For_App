@@ -660,3 +660,30 @@ it('writes a single canonical row for an S9 booking and clears its active slot o
         ->and($cancelled->active)->toBeNull()
         ->and($cancelled->cancelled_at)->not->toBeNull();
 });
+
+
+it('keeps the canonical row in sync when a waitlisted member is promoted', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    $firstGroupId = $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waitingGroupId = $this->actingAs($second, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $waitingGroupId)->value('legacy_booking_id');
+    expect(DB::table('event_bookings')->where('id', $bookingId)->value('status'))->toBe('waitlisted');
+
+    $this->actingAs($first, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$firstGroupId}/cancel")->assertOk();
+
+    $promoted = DB::table('event_bookings')->where('id', $bookingId)->first();
+    expect($promoted->status)->toBe('confirmed')
+        ->and($promoted->confirmed_at)->not->toBeNull()
+        ->and((int) $promoted->active)->toBe(1);
+});

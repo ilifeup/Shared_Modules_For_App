@@ -399,3 +399,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `bed4e9e38e3f16ae9e999750dd917c867185c4e3`：新增 canonical member pointer 損壞的取消回歸測試，要求 canonical/group/attendee 保持 confirmed。
 - **驗證狀態：新提交尚待 CI。** 本階段僅封鎖 S6 取消入口的部分更新風險；`endGroup()` 其他呼叫路徑、異常候補跳過及 invoice 生命週期仍需完整檢查，不能宣稱單表重構完成。
 - 未合併 main，未修改正式 DB。
+
+
+### R1.42｜共用取消流程鎖定順序（2026-10-30）
+
+- `BookingEngine::endGroup()`：將 canonical `event_bookings` 的身份查詢及 `lockForUpdate()` 提前到舊版 invoice/group/attendee/waitlist 寫入之前，降低先修改舊資料、後取得 canonical 鎖的競爭窗口。
+- 此次僅調整鎖定順序，維持既有候補異常隔離語意；尚未完成所有取消入口的 canonical mismatch 前置拒絕與回歸測試，不可視為 R1 完工。
+- 對應 commit：`ab630aff1ebb2f1e8e1283bd1353aeb0e39ee184`。須以本 HEAD 的 CI 為準；PR #63 保持 Draft、不自動合併、不觸碰正式資料庫。

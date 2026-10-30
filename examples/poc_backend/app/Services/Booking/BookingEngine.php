@@ -150,12 +150,16 @@ final class BookingEngine
                 }
                 $this->assertEligible($locked, $member);
 
+                $bookedAt = now();
                 $booking = EventBooking::query()->create([
                     'calendar_event_id' => $locked->id,
-                    'user_id' => $member->id,
+                    'user_id' => $member->id, // S6 compatibility until the coordinated cutover.
+                    'member_user_id' => $member->id,
+                    'booker_user_id' => $member->id,
                     'status' => EventBooking::STATUS_CONFIRMED,
                     'active' => 1,
-                    'booked_at' => now(),
+                    'booked_at' => $bookedAt,
+                    'confirmed_at' => $bookedAt,
                 ]);
 
                 $group = $this->createGroup($locked, [

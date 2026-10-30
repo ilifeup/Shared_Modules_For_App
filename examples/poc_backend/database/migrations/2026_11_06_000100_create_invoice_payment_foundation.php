@@ -16,7 +16,6 @@ return new class extends Migration
 
         Schema::table('course_terms', function (Blueprint $table) {
             $table->unsignedInteger('payment_hold_hours')->nullable();
-            $table->timestamp('booking_closes_at')->nullable();
             $table->decimal('price_amount', 12, 2)->default(0);
         });
 
@@ -74,7 +73,7 @@ return new class extends Migration
         Schema::dropIfExists('invoices');
 
         Schema::table('course_terms', function (Blueprint $table) {
-            $table->dropColumn(['payment_hold_hours', 'booking_closes_at', 'price_amount']);
+            $table->dropColumn(['payment_hold_hours', 'price_amount']);
         });
 
         Schema::table('calendar_events', function (Blueprint $table) {

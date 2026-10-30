@@ -125,3 +125,20 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 直接檢查最新已知 R1.11 文件 commit `8d558e5`：GitHub PR-triggered workflow runs 回傳空陣列、combined statuses 也為空陣列；這只表示**沒有從該查詢取得 CI 結果**，不能宣稱 CI 綠燈、失敗或已執行。
 - 目前仍待：找齊原始 migration、schema 一致性、invoice 01/02 與退款、課程衍生場次、簽到 QR、Flutter/Filament/OpenAPI；應以跨模組批次為單位推進，避免零散小修取代主線。
 - 最近已知程式 commit：`5d30cb11c47f0183c93b016991cca6aa0eb6d796`；下次接手以 GitHub HEAD 重新核實。
+
+## R1.13｜資料庫 FK 實際核對（2026-10-30）
+
+本階段已直接從 `refactor/r1-single-booking` 分支讀取四支 migration，以下為**已驗證**的結構，不是依 Model 猜測：
+
+| Migration | 實際 schema/約束 | R1 變更前提 |
+| --- | --- | --- |
+| `2026_11_04_000100_add_event_waitlist_capacity.php` | `calendar_events` 增補 `waitlist_capacity` | 保留候補總容量，勿誤刪 |
+| `2026_11_05_000100_create_course_mvp_tables.php` | `course_sessions.calendar_event_id` UNIQUE + FK；`course_enrollments(course_term_id,user_id)` UNIQUE；`course_makeups.event_booking_group_id` UNIQUE + FK（restrictOnDelete） | 先改 `course_makeups` 及 CourseEnrollment/Makeup service 的引用，再移除 group |
+| `2026_11_09_000100_create_course_group_booking_tables.php` | `course_group_events.calendar_event_id` UNIQUE；`course_group_members(course_group_id,member_user_id)` UNIQUE、request_key/FIFO 唯一索引；`invoice_booking_items.event_booking_group_id` FK（restrictOnDelete）且全域 UNIQUE | `course_group_members` 是系列課程會員，不是多人活動預約；`invoice_booking_items` 須改新 event_booking FK |
+| `2026_11_06_000100_create_invoice_payment_foundation.php` | `invoices(booking_type,booking_id)` UNIQUE（無實體 FK）；`payment_transactions.transaction_code` UNIQUE、`idempotency_key` UNIQUE、`(provider_code,external_transaction_id)` UNIQUE | 不可直接改 `invoices.booking_id` FK 指向活動預約，因課程類型共用此欄；需先盤點 01/02 全部服務 |
+
+**實際阻擋：** 以上四支都不是建立 `event_bookings`、`event_booking_groups`、`event_booking_attendees`、`event_waitlist_entries`、`event_attendances` 的原始 migration；GitHub connector 的 `fetch_file` 不接受目錄，程式碼搜尋未回傳建表字串。需使用可列舉 Git tree 的途徑，或在授權開發環境 checkout 後 `rg -n "Schema::create\('(event_bookings|event_booking_groups|event_booking_attendees|event_waitlist_entries|event_attendances)'" examples/poc_backend/database/migrations`；找不到前不可破壞性修改。
+
+**CI 查核：** 最近文件 commit `8d558e5` 的 workflow runs / statuses 查詢均回傳空集合，不能推定測試通過。尚未實際執行 Pest、Flutter、Migration。
+
+**後續原則：** 下一階段先找到五張核心表的建表 migration；再形成完整 FK 變更清單，集中實作 schema/Model/Service/API/Flutter/OpenAPI/Tests；不可逐張刪表。不要動正式 DB 或合併 main。

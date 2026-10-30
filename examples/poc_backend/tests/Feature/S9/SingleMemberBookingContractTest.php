@@ -564,3 +564,34 @@ it('filters event-cancelled bookings explicitly without changing the cancelled a
         ->assertOk()->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $groupId);
 });
+
+
+it('skips a cross-event waitlist ledger without cancelling the unrelated booking', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true]);
+    $otherEvent = s9Event(['booking_capacity' => 2]);
+    $firstMember = User::factory()->create(['verified_status' => 2]);
+    $waitingMember = User::factory()->create(['verified_status' => 2]);
+
+    $firstId = $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+    $waitingId = $this->actingAs($waitingMember, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    // The queue still belongs to the first event, but the booking group is
+    // incorrectly associated with a different event. Do not cancel that group.
+    DB::table('event_booking_groups')->where('id', $waitingId)
+        ->update(['calendar_event_id' => $otherEvent->id]);
+
+    $this->actingAs($firstMember, 'sanctum')
+        ->postJson("/api/v1/me/booking-groups/{$firstId}/cancel")->assertOk();
+
+    expect(DB::table('event_waitlist_entries')->where('event_booking_group_id', $waitingId)
+        ->value('status'))->toBe('skipped');
+    expect(DB::table('event_booking_groups')->where('id', $waitingId)
+        ->value('status'))->toBe('waitlisted');
+    expect(seats($event))->toBe(0);
+});

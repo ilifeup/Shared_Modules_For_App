@@ -95,12 +95,6 @@ class SystemSettings extends Page
                         TextInput::make('otp_max_attempts')->label('OTP 錯誤次數上限')
                             ->numeric()->integer()->minValue(1)->required(),
                     ]),
-                    Tab::make('現金付款')->schema([
-                        TextInput::make('payment_hold_hours')
-                            ->label('整期付款保留時間（小時，預設 72）')
-                            ->numeric()->integer()->minValue(1)->maxValue(8760)->required()
-                            ->helperText('僅影響新預約及未覆寫的活動；已建立帳單的付款截止時間不追溯修改。'),
-                    ]),
                     Tab::make('全站設定預設值')->schema([
                         TextInput::make('payment_hold_hours')->label('整期課程付款：預約後小時數（預設72）')->integer()->minValue(1)->required(),
                         TextInput::make('booking_single_payment_before_hours')->label('單堂付款：課前小時數（預設48）')->integer()->minValue(1)->required(),

@@ -510,3 +510,16 @@ it('signs canonical booking QR independently of legacy attendee QR', function ()
     expect($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS - 1))->toBe($bookingId)
         ->and($tokens->verify($tokens->booking($bookingId, $nextWindow - 1), 'b', $nextWindow + CheckinTokens::GRACE_SECONDS))->toBeNull();
 });
+
+it('rejects tampered canonical booking QR and expired previous windows', function () {
+    $tokens = app(CheckinTokens::class);
+    $windowStart = $tokens->window() * CheckinTokens::WINDOW_SECONDS;
+    $bookingId = 12345;
+    $token = $tokens->booking($bookingId, $windowStart);
+    $parts = explode('.', $token);
+    $parts[1] = (string) ($bookingId + 1);
+
+    expect($tokens->verify(implode('.', $parts), 'b', $windowStart))->toBeNull()
+        ->and($tokens->verify($token, 'b', $windowStart + CheckinTokens::WINDOW_SECONDS + CheckinTokens::GRACE_SECONDS))->toBeNull()
+        ->and($tokens->verify($token, 'e', $windowStart))->toBeNull();
+});

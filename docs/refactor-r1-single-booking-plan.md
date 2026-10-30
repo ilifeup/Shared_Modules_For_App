@@ -197,3 +197,22 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 3. Migration 的不可逆資料清除與 production 備份閘門是既有安全設計；R1 只能對隔離 DB 做 fresh，不得執行正式環境破壞性變更。
 4. 發票唯一性須保留 invoices(booking_type,booking_id)、invoice_code、付款冪等索引；不得恢復 invoice_no 的唯一索引。
 5. 本階段只核對兩支增量 Migration；其他增量與全量引用仍需持續檢查。未執行程式測試、Migration 或 CI。
+
+
+## R1.19｜核心 Service/Model 相依引用實查（2026-10-30）
+
+本階段直接讀取 R1 分支以下七支程式，並非單憑檔名推估：
+
+| 檔案 | 目前已核對的舊契約 | 集中修改時必須同步處理 |
+| --- | --- | --- |
+| `app/Services/Booking/BookingEngine.php` | bookLegacy() 寫 event_bookings 並同步 group/attendee；book() 回傳 EventBookingGroup；confirmedSeats、activeAttendeeOf、cancelGroup、expireCashHold、promote 依 attendee/group/候補 | 單一 booking 寫入與鎖、active 唯一性、FIFO、付款到期、取消、家庭代管、舊入口相容 |
+| `app/Services/Payment/CashInvoiceService.php` | forEvent() 接收 EventBookingGroup；發票 01 對應 group ID；課程付款查 event_booking_groups、course_makeups.event_booking_group_id | 將事件發票及課程衍生場次對應到新 booking ID，保留 02 課程 enrollment 發票、冪等、退款 |
+| `app/Services/Course/CourseEnrollmentService.php` | 使用 EventBookingGroup 查衍生場次；invoice booking_type 02；整期取消／候補 | 課程衍生 booking 與單場次 booking 共用新主鍵，不破壞 course term/enrollment FIFO |
+| `app/Services/Checkin/CheckinService.php` | EventBookingAttendee 是查詢、鎖、簽到、簽退及管理員更正的主體；event_attendances.event_booking_attendee_id | 直接使用 EventBooking；QR 舊 attendee token 需版本化或失效；簽到併發鎖及更正稽核保留 |
+| `app/Models/EventBookingGroup.php` | legacyBooking() 指向 EventBooking；attendee()/attendees() 指向 EventBookingAttendee | 過渡相容後移除，避免殘留舊 relation |
+| `app/Models/EventBookingAttendee.php` | member_user_id、group FK、attendance relation | 會員與出席直接關聯新 EventBooking |
+| `app/Models/EventWaitlistEntry.php` | event_booking_group_id fillable 與 belongsTo(group) | 改 event_booking_id UNIQUE FK 及 belongsTo(EventBooking) |
+
+**依賴次序：** 先建立最終 schema／Model 的完整欄位與外鍵對照，再以同一整合批次處理 BookingEngine + CashInvoiceService + CourseEnrollmentService + CheckinService + controllers/requests/notifications；同步更新 Flutter、Filament、OpenAPI、Pest。任何一個 Service 單獨換主鍵都會產生破壞性不相容。
+
+**尚未核對：** 所有 Controller/Request、其他 Model、Jobs/Notification、Flutter DTO/provider、Filament relation managers 與全量增量 Migration；本輪未執行測試或修改核心程式。下一階段應優先以 repository 檔案樹或逐檔實讀完成引用清單，然後進入集中實作；禁止僅追加文件就宣稱重構完成。

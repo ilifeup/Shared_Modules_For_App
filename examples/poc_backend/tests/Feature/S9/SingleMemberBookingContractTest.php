@@ -764,3 +764,25 @@ it('detects an existing active canonical booking without relying on attendee row
         ->update(['status' => 'cancelled', 'active' => null]);
     expect(app(\App\Services\Booking\BookingEngine::class)->activeAttendeeOf($event, $member))->toBeNull();
 });
+
+
+it('assigns the canonical FIFO sequence when joining the waitlist', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $third = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+
+    foreach ([$first, $second, $third] as $member) {
+        $this->actingAs($member, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated();
+    }
+
+    $rows = DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->where('status', 'waitlisted')->orderBy('waitlist_sequence')->get();
+    expect($rows)->toHaveCount(2)
+        ->and($rows[0]->member_user_id)->toBe($second->id)
+        ->and($rows[1]->member_user_id)->toBe($third->id)
+        ->and((int) $rows[0]->waitlist_sequence)->toBe(1)
+        ->and((int) $rows[1]->waitlist_sequence)->toBe(2);
+});

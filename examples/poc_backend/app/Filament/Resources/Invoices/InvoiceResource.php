@@ -81,13 +81,13 @@ class InvoiceResource extends Resource
             TextColumn::make('id')->label('#')->sortable(),
             TextColumn::make('invoice_code')->label('帳單編號')->searchable(),
             TextColumn::make('invoice_amount')->label('金額'),
-            TextColumn::make('invoice_status')->label('狀態')->formatStateUsing(fn ($state) => [
-                0 => '未付', 1 => '已付', 2 => '取消', 3 => '逾期', 4 => '退款中', 5 => '已退款',
-            ][$state] ?? (string) $state),
+            TextColumn::make('invoice_status')->label('狀態')->formatStateUsing(fn ($state, Invoice $record) => (int) $state === 0
+                ? ($record->overdue_at !== null ? '欠費' : '待付款')
+                : ([1 => $record->overdue_at !== null ? '欠費已繳' : '已付款', 2 => '取消', 3 => '舊版逾期狀態', 4 => '退款中', 5 => '已退款'][(int) $state] ?? (string) $state)),
             TextColumn::make('invoice_no')->label('發票號碼')->placeholder('未配號'),
             TextColumn::make('created_at')->label('建立')->dateTime('Y-m-d H:i'),
         ])->defaultSort('id', 'desc')->recordActions([
-            Action::make('confirmCash')->label('確認現金收款')
+            Action::make('confirmCash')->label('確認收款／欠費已繳')
                 ->visible(fn (Invoice $record) => (int) $record->invoice_status === 0)
                 ->requiresConfirmation()
                 ->action(function (Invoice $record): void {

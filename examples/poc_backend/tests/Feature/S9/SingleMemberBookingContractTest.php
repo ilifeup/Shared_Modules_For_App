@@ -687,3 +687,16 @@ it('keeps the canonical row in sync when a waitlisted member is promoted', funct
         ->and($promoted->confirmed_at)->not->toBeNull()
         ->and((int) $promoted->active)->toBe(1);
 });
+
+
+it('resolves a delegated booking member separately from its booker', function () {
+    $booker = User::factory()->create();
+    $member = User::factory()->create();
+    $booking = new \App\Models\EventBooking([
+        'member_user_id' => $member->id,
+        'booker_user_id' => $booker->id,
+    ]);
+
+    expect($booking->member->id)->toBe($member->id)
+        ->and($booking->booker->id)->toBe($booker->id);
+});

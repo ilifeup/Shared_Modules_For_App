@@ -1068,3 +1068,33 @@ it('automatically closes course enrollment at its configured cutoff before class
         ->toThrow(\Illuminate\Validation\ValidationException::class);
     expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
 });
+
+
+it('replays an existing authorized course enrollment after booking closes without allocating a second seat', function () {
+    $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Closed term with prior enrollment',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->subDays(5),
+        'booking_closes_at' => now()->subMinute(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $enrollmentId = DB::table('course_enrollments')->insertGetId([
+        'course_term_id' => $termId,
+        'user_id' => $member->id,
+        'booker_user_id' => $member->id,
+        'status' => 'pending_payment',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $result = app(\\App\\Services\\Course\\CourseEnrollmentService::class)
+        ->enroll($termId, $member, $member);
+
+    expect($result['id'])->toBe($enrollmentId)
+        ->and($result['replayed'])->toBeTrue()
+        ->and(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(1);
+});

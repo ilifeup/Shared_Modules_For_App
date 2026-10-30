@@ -450,6 +450,14 @@ final class BookingEngine
      */
     public function cancelGroup(EventBookingGroup $group, User $actor, bool $byAdmin = false, ?string $reason = null): EventBookingGroup
     {
+        // Only actual administrators can bypass normal cancellation ownership.
+        // Course release reasons are handled separately by the verified parent
+        // enrollment/invoice checks inside the transaction below.
+        if ($byAdmin && ! in_array($reason, [
+            'course_payment_expired', 'course_enrollment_cancelled', 'course_makeup_released',
+        ], true)) {
+            $byAdmin = $actor->is_active && ! $actor->FamilyUser && $actor->isAdmin();
+        }
         $wasConfirmed = false;
         $result = $this->transaction(function () use ($group, $actor, $byAdmin, $reason, &$wasConfirmed): EventBookingGroup {
             $event = $this->lock($group->event);

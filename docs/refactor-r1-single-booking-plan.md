@@ -489,3 +489,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 舊 `event_booking_attendee_id` 與歷史資料不變；沒有自動 backfill。單欄唯一索引確保一個 canonical booking 只對應一筆 attendance，仍需在 Service 層驗證 event ID 一致。
 - **待驗證**：CI 執行 SQLite/MySQL migration 與 rollback，確認實際既有 schema、索引名稱、歷史資料相容性。完成 backfill 對帳前禁止移除 legacy 欄位；API/Flutter 尚未切換。
 - PR #63 Draft，不自動合併、不對正式資料庫執行 migration。
+
+### R1.60｜簽到 Migration 基礎回歸測試（2026-10-30）
+
+- `0f362d31`：M11CheckinTest 驗證 `event_attendances` 同時存在 `event_booking_id` 與 legacy `event_booking_attendee_id`，並檢查 EventAttendance 的 canonical/legacy belongsTo FK。
+- 此測試只確認 schema 與 Model 關聯；尚未驗證資料庫 unique/FK 約束、SQLite/MySQL rollback、歷史資料 backfill 或新 API 端到端簽到。
+- 新 Commit CI 尚未完成；保持 PR #63 Draft，禁止正式 DB 遷移及自動合併。

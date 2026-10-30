@@ -543,3 +543,24 @@ it('rejects legacy S6 booking on series-owned course occurrences', function () {
             ->where('calendar_event_id', $event->id)->count())->toBe(0);
     }
 });
+
+
+it('filters event-cancelled bookings explicitly without changing the cancelled aggregate', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+    $groupId = $this->actingAs($member, 'sanctum')
+        ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+            'client_request_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.id');
+
+    EventBookingGroup::query()->whereKey($groupId)->update(['status' => EventBookingGroup::STATUS_EVENT_CANCELLED]);
+
+    $this->getJson('/api/v1/me/booking-groups?status=event_cancelled')
+        ->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $groupId)
+        ->assertJsonPath('data.0.status', 'event_cancelled');
+
+    $this->getJson('/api/v1/me/booking-groups?status=cancelled')
+        ->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $groupId);
+});

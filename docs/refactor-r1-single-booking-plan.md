@@ -442,3 +442,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.49 回歸測試：新增取消後 canonical `active=1` 殘留有效席位時拒絕退款，斷言帳單仍已付款、無退款稽核及負向交易；commit `9a1bbfd8f57f59738fb86e3cf56cb863a88f2511`。與 R1.48 身分漂移測試共同覆蓋 R1.47 兩項不變量，仍待 CI 驗證。
 
 - R1.50 回歸測試：新增活動尚未取消時，管理員不得執行手動退款；驗證 canonical 仍 confirmed、帳單仍已付款、沒有退款稽核及負向交易。commit `30c65317d3875e18122c7033b7debfaba9cf3425`；最新 HEAD 尚待 CI 驗證。此測試與 R1.48–49 共同覆蓋退款前置條件，重複退款與併發仍待補。
+
+- R1.51 回歸測試：新增僅舊 `event_booking_groups.status=cancelled`、正式 `event_bookings.status=confirmed` 的不一致情境，必須拒絕退款並維持帳單/交易/稽核原狀；commit `0550f3fb93b0a01b3633aed07561c1385a891ed9`。此案例直接驗證 canonical 取消才是退款必要條件；待新 HEAD CI。

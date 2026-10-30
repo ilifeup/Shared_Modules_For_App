@@ -382,3 +382,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `4b471ddcf2603aad305829127e8203fd6f86f341`：延伸 canonical 身分錯置的候補案例，驗證舊 group 被取消、queue skipped 時，錯置 canonical row 不會被連帶取消。
 - **風險**：不一致的 canonical row 可能保留有效狀態，須在後續資料修復／單表切換時建立明確隔離或清理流程；此防護不代表最終狀態已一致。新提交的 Backend/Pest 尚未驗證。提交前舊 HEAD `768f3239` 的 S0 與 Shared Core success，Backend/Mobile in_progress；新提交可能觸發新的 CI 並取消舊 run。
 - 後續優先處理 canonical 為唯一真實來源、錯誤關聯隔離、invoice/course/check-in FK 與 API/migration 清理。未合併 main，未操作正式 DB。
+
+
+## R1.40｜Shared Core M08 失敗案例修復（2026-10-30）
+
+- HEAD `5490441f` 的 Shared Core workflow `41032350525`，`m08-backend-contract` job 失敗：`SingleMemberBookingContractTest.php:892` 原代訂者取消案例，期望 cancelled、實際 confirmed；測試摘要 1 failed、104 warnings、575 assertions。此案例僅修改 canonical member_user_id，未同步舊 attendee ledger，與 R1.39 的身分一致性防護衝突。
+- `439ca2792ae3113279e6a99d241031a9fae1e073`：修正測試 fixture，使 canonical 與 attendee 的參加會員相同，仍保留 S6 舊 user_id 作為原報名者；測試原報名者可合法取消，不放寬 R1.39 的防錯保護。
+- 注意：此修正尚待新 HEAD CI 驗證。先前 S0 success、Shared Core php/dart/flutter success，但 m08-backend-contract failure；Backend/Mobile 當時仍在執行。頻繁提交可能取消前一輪 workflow，應以新 HEAD 結果為準。
+- 尚待：canonical 單表為唯一來源，移除舊 queue/group/attendee，完成 invoice/course/check-in/API/migration；未合併 main，未操作正式 DB。

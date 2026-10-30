@@ -474,7 +474,9 @@ final class BookingEngine
             // Only the course-owned path may request a parent-validated release.
             // A forged course reason cannot grant admin rights on a normal event.
             if ($courseReleaseRequested && $courseSession && ! $byAdmin) {
-                $byAdmin = true; // Still subject to exact cancelled parent + invoice checks below.
+                // The release is authorized only by the exact cancelled parent
+                // enrollment and invoice below, never by a supplied reason alone.
+                $byAdmin = true;
             }
             if ($courseSession || $courseGroupSession) {
                 $releaseAllowed = false;

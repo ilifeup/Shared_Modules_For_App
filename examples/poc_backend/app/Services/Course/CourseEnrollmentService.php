@@ -341,22 +341,6 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['term' => '課程期別不存在。']);
             }
 
-            // A term opens only at its administrator-configured instant.
-            // Check before idempotent replay, so early requests cannot obtain a seat.
-            if ($term->booking_opens_at !== null
-                && now()->lt(Carbon::parse($term->booking_opens_at))) {
-                throw ValidationException::withMessages(['term' => '本期課程尚未開放預約。']);
-            }
-
-            if ($term->booking_closes_at !== null
-                && now()->gte(Carbon::parse($term->booking_closes_at))) {
-                throw ValidationException::withMessages(['term' => '本期課程已停止接受預約。']);
-            }
-            if ($term->booking_opens_at !== null && $term->booking_closes_at !== null
-                && Carbon::parse($term->booking_closes_at)->lte(Carbon::parse($term->booking_opens_at))) {
-                throw ValidationException::withMessages(['term' => '預約截止時間必須晚於開放時間。']);
-            }
-
             if ($term->price_amount === null || (float) $term->price_amount < 1) {
                 throw ValidationException::withMessages(['price_amount' => '課程最低實收 NT$1。']);
             }
@@ -377,6 +361,23 @@ final class CourseEnrollmentService
                         'replayed' => true];
                 }
                 throw ValidationException::withMessages(['member' => '此會員已報名或曾報名本期，請由管理員處理。']);
+            }
+
+            // Existing authorized retries are read-only and must remain idempotent
+            // after the booking window closes. Only new seats are time-gated.
+            // Enforce the administrator-configured window for new enrollments.
+            if ($term->booking_opens_at !== null
+                && now()->lt(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程尚未開放預約。']);
+            }
+
+            if ($term->booking_closes_at !== null
+                && now()->gte(Carbon::parse($term->booking_closes_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程已停止接受預約。']);
+            }
+            if ($term->booking_opens_at !== null && $term->booking_closes_at !== null
+                && Carbon::parse($term->booking_closes_at)->lte(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '預約截止時間必須晚於開放時間。']);
             }
 
             $occupied = DB::table('course_enrollments')->where('course_term_id', $termId)

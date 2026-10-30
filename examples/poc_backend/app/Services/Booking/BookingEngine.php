@@ -699,7 +699,8 @@ final class BookingEngine
                 ->whereNotNull('waitlist_sequence')
                 ->orderBy('waitlist_sequence')
                 ->pluck('waitlist_sequence')->all();
-            if (count($sequences) !== count($ids)) {
+            if (count($sequences) !== count($ids)
+                || count(array_unique($sequences)) !== count($sequences)) {
                 throw new ApiException(409, 'WAITLIST_STATE_INCONSISTENT', '候補排序資料不一致，請先檢查報名狀態。');
             }
             // Queue sequence has a UNIQUE(event, sequence) constraint across all

@@ -457,3 +457,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 直接讀取 `CheckinService.php`（445 行）：約 153、199–205、363–396 行以 `event_booking_attendee_id` 查找/建立 attendance；註解明確依賴 `UNIQUE(calendar_event_id,event_booking_attendee_id)` 防併發重掃。新 schema 須改為 `event_booking_id` 並同步 QR payload、API response 的 `attendee_id`、管理員更正、測試；禁止先刪舊 attendee 表。
 - `CourseEnrollmentService.php`（462 行）本次關鍵字搜尋未發現直接 SQL 字串 `event_booking_groups`、`event_booking_attendees`、`event_booking_group_id`；**不表示無間接依賴**，仍須檢查 BookingEngine/Request/Model 與課程發票流程。
 - 下一整合批次順序：先定位 migration 的 attendance/QR/invoice FK 與現有 API 契約；設計 canonical booking ID 全鏈路；整批更新 migration/Model/Engine/Invoice/Checkin/Course/Controller/OpenAPI/Flutter/Filament/測試；僅在隔離開發 DB migrate:fresh；確認舊 schema 引用清零及所有測試後，才考慮完成 R1。PR #63 保持 Draft、不自動合併。
+
+### R1.55｜Canonical booking QR Token 第一批實作（2026-10-30）
+
+- `f2360db8`：`CheckinTokens.php` 新增 `booking(int $bookingId, ?int $time = null)`，簽發 `b.{bookingId}.{window}.{sig}`；驗證正規式接受 `b`，HMAC 簽章仍綁定 kind/id/window，舊 `e` 活動 QR 與 `a` 參加者 QR 保持原樣。
+- `88b33e68`：`M11CheckinTest.php` 新增 `b` token 有效驗證、`a/b` 交叉拒絕、跨視窗 10 秒寬限到期測試。
+- 目前 **尚未切換** CheckinController/CheckinService/Flutter/OpenAPI 的簽到入口，`b` token 僅為 canonical ID 切換前的安全基礎；不得宣稱簽到單表遷移完成。新 HEAD CI 待確認，PR #63 保持 Draft。

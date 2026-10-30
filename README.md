@@ -1,5 +1,5 @@
 # Stop Github online -> offline will be faster for開發.
-2026-10-29 PM2200轉Ubuntu
+2026-10-29 PM2200 clone to Ubuntu
 
 # Shared Modules for Three Apps
 

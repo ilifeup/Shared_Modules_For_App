@@ -41,7 +41,10 @@ class SystemSettings extends Page
         'sms_test_mode', 'sms_provider', 'sms_global_hourly_limit', 'sms_phone_hourly_limit',
         'sms_resend_cooldown_minutes', 'otp_ttl_minutes', 'otp_max_attempts',
         'article_like_weight', 'article_view_dedupe_minutes', 'comment_report_threshold',
-        'payment_hold_hours',
+        'payment_hold_hours', 'booking_single_payment_before_hours', 'booking_no_show_payment_hours',
+        'booking_series_cancel_before_hours', 'booking_single_cancel_before_hours',
+        'booking_waitlist_default_capacity', 'booking_makeup_default_capacity',
+        'booking_notice_early_hours', 'booking_notice_day_hours', 'booking_notice_near_hours',
     ];
 
     public static function canAccess(): bool
@@ -94,9 +97,21 @@ class SystemSettings extends Page
                     ]),
                     Tab::make('現金付款')->schema([
                         TextInput::make('payment_hold_hours')
-                            ->label('預約付款保留時間（小時，預設 38）')
+                            ->label('整期付款保留時間（小時，預設 72）')
                             ->numeric()->integer()->minValue(1)->maxValue(8760)->required()
                             ->helperText('僅影響新預約及未覆寫的活動；已建立帳單的付款截止時間不追溯修改。'),
+                    ]),
+                    Tab::make('全站設定預設值')->schema([
+                        TextInput::make('payment_hold_hours')->label('整期課程付款：預約後小時數（預設72）')->integer()->minValue(1)->required(),
+                        TextInput::make('booking_single_payment_before_hours')->label('單堂付款：課前小時數（預設48）')->integer()->minValue(1)->required(),
+                        TextInput::make('booking_no_show_payment_hours')->label('有爽約紀錄：預約後小時數（預設26）')->integer()->minValue(1)->required(),
+                        TextInput::make('booking_series_cancel_before_hours')->label('整期事先取消：課前小時數（預設72）')->integer()->minValue(0)->required(),
+                        TextInput::make('booking_single_cancel_before_hours')->label('單堂事先取消：課前小時數（預設48）')->integer()->minValue(0)->required(),
+                        TextInput::make('booking_waitlist_default_capacity')->label('候補名額預設（5）')->integer()->minValue(0)->required(),
+                        TextInput::make('booking_makeup_default_capacity')->label('補課名額預設（0）')->integer()->minValue(0)->required(),
+                        TextInput::make('booking_notice_early_hours')->label('提前通知一：小時（48）')->integer()->minValue(1)->required(),
+                        TextInput::make('booking_notice_day_hours')->label('提前通知二：小時（24）')->integer()->minValue(1)->required(),
+                        TextInput::make('booking_notice_near_hours')->label('接近開課提醒：小時（3，約略通知）')->integer()->minValue(1)->required(),
                     ]),
                     Tab::make('文章互動')->schema([
                         TextInput::make('article_like_weight')->label('人氣：每個讚等於幾次瀏覽')

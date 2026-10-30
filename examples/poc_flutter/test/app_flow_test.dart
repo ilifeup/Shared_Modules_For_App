@@ -535,8 +535,39 @@ class FakeBackend implements ApiTransport {
     if (path == '/api/v1/me/family-memberships') {
       return {'data': <Map<String, dynamic>>[]};
     }
-    final groupBook = RegExp(
-      r'^/api/v1/events/(\\d+)/booking-groups
+    if (method == 'POST' &&
+        path.startsWith('/api/v1/events/') &&
+        path.endsWith('/booking-groups')) {
+      final eventId = path.split('/')[4];
+      await bookingGate?.future;
+      if (bookingRaceFull) {
+        throw const ApiException(
+          code: 'BOOKING_FULL',
+          message: '名額已滿。',
+          statusCode: 409,
+        );
+      }
+      bookings[eventId]!['mine'] = true;
+      return {'data': _groupBooking(eventId)};
+    }
+    if (method == 'POST' &&
+        path.startsWith('/api/v1/me/booking-groups/') &&
+        path.endsWith('/cancel')) {
+      final groupId = path.split('/')[5];
+      final eventId = groupId.substring(1);
+      bookings[eventId]!['mine'] = false;
+      return {'data': _groupBooking(eventId)};
+    }
+    if (path == '/api/v1/me/booking-groups') {
+      return {
+        'data': [
+          for (final entry in bookings.entries)
+            if (entry.value['mine'] == true) _groupBooking(entry.key),
+        ],
+        'meta': {'current_page': 1, 'last_page': 1},
+      };
+    }
+    final article = await _articles(method, path, body);
     if (article != null) return article;
     final cancelMatch = RegExp(
       r'^/api/v1/me/bookings/b(\d+)/cancel$',

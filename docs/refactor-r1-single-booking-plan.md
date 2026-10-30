@@ -434,3 +434,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.45 擴展靜態審查：確認 `recordManualRefund()` 已於 invoice lock 前初始化 canonical；同時發現第一次錯誤插入的鎖區塊殘留在帳單期限延長方法，已移除，避免影響課程帳單與無關路徑。修正 commit `1cc9f831d16a386d84aac8e0d650f27bb591ec9c`，以新 HEAD CI 驗證。
 
 - R1.46 測試穩定性：活動取消 rollback 回歸測試先 `Role::findOrCreate(User::ADMIN_ROLE, 'web')` 再 assignRole，避免測試單獨執行時依賴其他測試建立管理員角色；commit `4ae3ce781864a2b10e111f94dd76e92860873d98`。待最新 HEAD CI 驗證，尚未宣稱完整退款競態驗收。
+
+- R1.47 退款安全不變量：活動退款 canonical 除已取消、活動/代訂者/會員一致外，還須 `active IS NULL` 且 `user_id === member_user_id`，避免狀態雖取消卻仍占用有效名額或身份欄位漂移時退款。commit `1f4a97227fa94a8a1f1db2c58ec4be9f7891b49b`；待最新 HEAD CI 與退款反例測試驗證。

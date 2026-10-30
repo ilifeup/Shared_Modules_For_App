@@ -436,3 +436,5 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - R1.46 測試穩定性：活動取消 rollback 回歸測試先 `Role::findOrCreate(User::ADMIN_ROLE, 'web')` 再 assignRole，避免測試單獨執行時依賴其他測試建立管理員角色；commit `4ae3ce781864a2b10e111f94dd76e92860873d98`。待最新 HEAD CI 驗證，尚未宣稱完整退款競態驗收。
 
 - R1.47 退款安全不變量：活動退款 canonical 除已取消、活動/代訂者/會員一致外，還須 `active IS NULL` 且 `user_id === member_user_id`，避免狀態雖取消卻仍占用有效名額或身份欄位漂移時退款。commit `1f4a97227fa94a8a1f1db2c58ec4be9f7891b49b`；待最新 HEAD CI 與退款反例測試驗證。
+
+- R1.48 回歸測試：新增已取消活動的 canonical 會員身分漂移退款拒絕案例，驗證 `ValidationException`、帳單仍為已付款、無退款稽核與無負向交易；commit `d2714b71e15a045bf243f31e061eeae9007f3e68`。此測試故意製造帳單已付款但無實收交易，以驗證 canonical 守門必須在收款驗證之前拒絕。待 CI 實跑驗證；仍需取消前、重複退款與 MySQL 併發案例。

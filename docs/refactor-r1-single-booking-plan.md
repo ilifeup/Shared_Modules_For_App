@@ -306,3 +306,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `569ecd29`：新增 Pest 回歸測試，驗證舊 queue 狀態變化不改變 canonical 候補數量、canonical 預約取消釋放候補容量。
 - 尚未完成的部分：FIFO sequence／晉升仍由 event_waitlist_entries 管理；重複預約檢查仍有 attendee 依賴，付款／課程／簽到也仍引用舊表。最終目標仍為無歷史資料、單一 event_bookings 預約主表，不保留過渡雙寫。
 - Pest、CI、migrate:fresh 尚未執行；未合併 main，未操作正式資料庫。
+
+
+## R1.31｜重複預約檢查改查 canonical event_bookings（2026-10-30）
+
+- `0ef91d6e`：BookingEngine::activeAttendeeOf() 改以 `event_bookings.calendar_event_id + member_user_id + active=1 + status IN (confirmed,waitlisted)` 查詢；回傳型別改為 EventBooking，現有兩個呼叫點僅判斷 null 與否。
+- `8b3a0d57`：新增 Pest 測試，驗證 attendee ledger 即使狀態變動，canonical 有效預約仍阻擋重複報名；canonical 取消後查詢回 null。
+- 仍待：將 FIFO queue、付款／退款、課程、簽到、API、Migration 全部切至單表後移除舊 group/attendee。使用者已確認無舊資料，禁止擴張歷史相容層。
+- 未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。

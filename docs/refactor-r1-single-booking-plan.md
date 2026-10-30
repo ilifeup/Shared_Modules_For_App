@@ -342,3 +342,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 提交前 CI 狀態（對 `d1f1f99c`）：S0 Documentation success；Backend pending；Mobile queued；Shared Core in_progress。這是當時快照，不代表本提交 CI 結果。
 - **未驗證**：新增測試尚待新 HEAD CI/Pest 執行。仍須完成 FIFO、付款、課程、簽到、Migration 與 Flutter/Filament 對 canonical 單表的整體切換；目前舊表斷言僅保護過渡期一致性，非保留舊表的最終決策。
 - 未合併 main、未操作正式資料庫。
+
+
+## R1.35｜候補排序拒絕時的雙資料狀態保護（2026-10-30）
+
+- `8cb14bd0837640d3e4eafb728b89fc6e92da6e2b`：補強 `SingleMemberBookingContractTest.php` 的重複 canonical FIFO 序號拒絕案例。操作前保存 canonical `event_bookings.waitlist_sequence`，操作失敗後確認 canonical 序號完全不變；原本舊 queue 序號不變的斷言仍保留。
+- 目的：在過渡階段避免管理員排序失敗時造成新舊 FIFO 狀態不一致；此測試**不代表**已完成候補流程單表化。
+- 提交時前一 HEAD `1a9fce8d` 的 S0 文件檢查 success；Backend/Mobile pending、Shared Core in_progress（當時快照）。本次新增測試的 CI/Pest 尚未驗證。
+- 下一批：統一 canonical 候補晉升、管理員排序及下游付款/通知依賴，分階段移除舊表；需保持原有 FIFO、併發、回滾與審計語意。不得自動合併 main，不操作正式資料庫。

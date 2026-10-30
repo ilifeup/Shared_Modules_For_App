@@ -366,7 +366,9 @@ final class BookingEngine
                 }
 
                 if ($status === EventBookingGroup::STATUS_WAITLISTED) {
-                    $next = (int) EventWaitlistEntry::query()->where('calendar_event_id', $locked->id)->max('sequence') + 1;
+                    $next = (int) EventBooking::query()->where('calendar_event_id', $locked->id)->max('waitlist_sequence') + 1;
+                    EventBooking::query()->whereKey($group->legacy_booking_id)
+                        ->update(['waitlist_sequence' => $next, 'updated_at' => now()]);
                     EventWaitlistEntry::query()->create([
                         'calendar_event_id' => $locked->id,
                         'event_booking_group_id' => $group->id,

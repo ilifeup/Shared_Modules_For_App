@@ -977,12 +977,16 @@ it('rejects duplicate canonical FIFO positions before any administrator reorder 
         ->update(['waitlist_sequence' => DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence')]);
     $queueBefore = DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
         ->orderBy('id')->pluck('sequence')->all();
+    $canonicalBefore = DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('waitlist_sequence')->all();
 
     expect(fn () => app(BookingEngine::class)
         ->moveInWaitlist(EventBookingGroup::query()->findOrFail($ids[2]), 1, $members[0], 'duplicate positions'))
         ->toThrow(ApiException::class);
     expect(DB::table('event_waitlist_entries')->where('calendar_event_id', $event->id)
         ->orderBy('id')->pluck('sequence')->all())->toBe($queueBefore);
+    expect(DB::table('event_bookings')->where('calendar_event_id', $event->id)
+        ->orderBy('id')->pluck('waitlist_sequence')->all())->toBe($canonicalBefore);
 });
 
 it('blocks direct non-admin service calls that mutate event capacity or cancel the event', function () {

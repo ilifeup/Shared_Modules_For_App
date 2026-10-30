@@ -720,3 +720,29 @@ it('counts capacity from confirmed active canonical bookings, not the obsolete a
         ->update(['status' => 'cancelled', 'active' => null]);
     expect($engine->confirmedSeats($event))->toBe(0);
 });
+
+
+it('counts waitlist capacity from canonical active waitlisted bookings', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 2]);
+    $first = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $second = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $this->actingAs($first, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated();
+    $groupId = $this->actingAs($second, 'sanctum')->postJson("/api/v1/events/{$event->id}/booking-groups", [
+        'client_request_id' => (string) Str::uuid(),
+    ])->assertCreated()->assertJsonPath('data.status', 'waitlisted')->json('data.id');
+
+    $engine = app(\App\Services\Booking\BookingEngine::class);
+    expect($engine->waitingGroups($event))->toBe(1);
+
+    // The queue entry is not the source of the waitlist capacity count.
+    DB::table('event_waitlist_entries')->where('event_booking_group_id', $groupId)
+        ->update(['status' => 'skipped']);
+    expect($engine->waitingGroups($event))->toBe(1);
+
+    $bookingId = DB::table('event_booking_groups')->where('id', $groupId)->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $bookingId)
+        ->update(['status' => 'cancelled', 'active' => null]);
+    expect($engine->waitingGroups($event))->toBe(0);
+});

@@ -792,6 +792,19 @@ final class BookingEngine
                 $permanent = 'invalid_waitlist_entry';
             }
             if ($permanent === null) {
+                // During the migration, never grant a seat to an attendee whose
+                // identity differs from the canonical booking ledger.
+                $canonical = EventBooking::query()->whereKey($group->legacy_booking_id)
+                    ->where('calendar_event_id', $event->id)
+                    ->where('status', EventBooking::STATUS_WAITLISTED)
+                    ->where('active', 1)->lockForUpdate()->first();
+                if ($canonical === null
+                    || (int) $canonical->member_user_id !== (int) $attendees->first()->member_user_id
+                    || (int) $canonical->booker_user_id !== (int) $group->booker_user_id) {
+                    $permanent = 'canonical_booking_mismatch';
+                }
+            }
+            if ($permanent === null) {
                 $memberId = $attendees->first()?->member_user_id;
                 $member = $memberId === null ? null : User::query()->find($memberId);
                 if ($member === null || ! $member->is_active || (int) $member->verified_status !== 2) {

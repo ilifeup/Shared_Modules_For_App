@@ -700,8 +700,20 @@ final class BookingEngine
         $promoted = [];
         while (true) {
             /** @var EventWaitlistEntry|null $head */
-            $head = EventWaitlistEntry::query()->where('calendar_event_id', $event->id)->where('status', EventWaitlistEntry::WAITING)
-                ->orderBy('sequence')->lockForUpdate()->first();
+            // Select FIFO order from the canonical booking; the queue row remains
+            // temporarily for downstream audit and payment integrations.
+            $head = EventWaitlistEntry::query()
+                ->join('event_booking_groups', 'event_booking_groups.id', '=', 'event_waitlist_entries.event_booking_group_id')
+                ->join('event_bookings', 'event_bookings.id', '=', 'event_booking_groups.legacy_booking_id')
+                ->where('event_waitlist_entries.calendar_event_id', $event->id)
+                ->where('event_waitlist_entries.status', EventWaitlistEntry::WAITING)
+                ->where('event_bookings.calendar_event_id', $event->id)
+                ->where('event_bookings.status', EventBooking::STATUS_WAITLISTED)
+                ->where('event_bookings.active', 1)
+                ->orderBy('event_bookings.waitlist_sequence')
+                ->orderBy('event_bookings.id')
+                ->select('event_waitlist_entries.*')
+                ->lockForUpdate()->first();
             if ($head === null) {
                 break;
             }

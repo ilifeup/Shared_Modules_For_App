@@ -813,3 +813,31 @@ it('promotes by canonical FIFO order even when the obsolete queue sequence diffe
     expect(DB::table('event_bookings')->where('id', $thirdBookingId)->value('status'))->toBe('confirmed')
         ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted');
 });
+
+
+it('uses canonical FIFO order when an administrator reorders waiting members', function () {
+    $event = s9Event(['booking_capacity' => 1, 'waitlist_enabled' => true, 'waitlist_capacity' => 3]);
+    $members = [
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+        User::factory()->create(['verified_status' => 2, 'is_active' => true]),
+    ];
+    $groupIds = [];
+    foreach ($members as $member) {
+        $groupIds[] = $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", [
+                'client_request_id' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+    }
+    $secondBookingId = DB::table('event_booking_groups')->where('id', $groupIds[1])->value('legacy_booking_id');
+    $thirdBookingId = DB::table('event_booking_groups')->where('id', $groupIds[2])->value('legacy_booking_id');
+    DB::table('event_bookings')->where('id', $secondBookingId)->update(['waitlist_sequence' => 2]);
+    DB::table('event_bookings')->where('id', $thirdBookingId)->update(['waitlist_sequence' => 1]);
+
+    // The second member is already in canonical position 2, though old queue says 1.
+    $group = \App\Models\EventBookingGroup::query()->findOrFail($groupIds[1]);
+    app(\App\Services\Booking\BookingEngine::class)->moveInWaitlist($group, 2, $members[0], 'FIFO test');
+
+    expect((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(1)
+        ->and((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(2);
+});

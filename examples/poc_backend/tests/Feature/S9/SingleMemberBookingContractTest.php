@@ -1050,6 +1050,7 @@ it('rejects duplicate canonical FIFO positions before any administrator reorder 
 it('rolls back event cancellation when a linked canonical member does not match the legacy attendee', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $admin = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    Role::findOrCreate(User::ADMIN_ROLE, 'web');
     $admin->assignRole(User::ADMIN_ROLE);
     $member = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
     $other = User::factory()->create(['verified_status' => 2, 'is_active' => true]);

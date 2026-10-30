@@ -2,13 +2,16 @@
 
 namespace App\Services\Payment;
 
+use App\Models\AuditEvent;
 use App\Models\CalendarEvent;
 use App\Models\EventBookingGroup;
+use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Booking\BookingEngine;
 use App\Services\Booking\BookingRequest;
 use App\Support\Api\ApiException;
 use App\Support\Settings;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -39,7 +42,7 @@ final class CashInvoiceService
     }
 
     public function create(string $type, int $productId, string $bookingType, int $bookingId,
-        int $memberId, int $bookerId, string $amount, int $hours, ?\Illuminate\Support\Carbon $deadline = null): void
+        int $memberId, int $bookerId, string $amount, int $hours, ?Carbon $deadline = null): void
     {
         if (DB::table('invoices')->where('booking_type', $bookingType)->where('booking_id', $bookingId)->exists()) {
             return;
@@ -262,7 +265,7 @@ final class CashInvoiceService
             throw ValidationException::withMessages(['reason' => '請填寫延長原因。']);
         }
         try {
-            $deadline = \Illuminate\Support\Carbon::parse($newDeadline);
+            $deadline = Carbon::parse($newDeadline);
         } catch (\Throwable) {
             throw ValidationException::withMessages(['payment_due_at' => '付款期限格式不正確。']);
         }
@@ -304,16 +307,16 @@ final class CashInvoiceService
                 throw ValidationException::withMessages(['invoice' => '帳單已付款、取消或資料已變更。']);
             }
             if ($invoice->overdue_at !== null || $invoice->payment_due_at === null
-                || \Illuminate\Support\Carbon::parse($invoice->payment_due_at)->lte(now())) {
+                || Carbon::parse($invoice->payment_due_at)->lte(now())) {
                 throw ValidationException::withMessages(['invoice' => '付款期限已到期，請使用管理員逾期收款流程。']);
             }
-            if ($deadline->lte(\Illuminate\Support\Carbon::parse($invoice->payment_due_at))) {
+            if ($deadline->lte(Carbon::parse($invoice->payment_due_at))) {
                 throw ValidationException::withMessages(['payment_due_at' => '新期限必須晚於原付款期限。']);
             }
             DB::table('invoices')->where('id', $invoiceId)->update([
                 'payment_due_at' => $deadline, 'updated_at' => now(),
             ]);
-            \App\Models\AuditEvent::record('invoice.payment_deadline_extended', $admin->id, \App\Models\Invoice::find($invoiceId), [
+            AuditEvent::record('invoice.payment_deadline_extended', $admin->id, Invoice::find($invoiceId), [
                 'old_payment_due_at' => $invoice->payment_due_at,
                 'new_payment_due_at' => $deadline->toDateTimeString(),
                 'reason' => trim($reason),
@@ -593,7 +596,7 @@ final class CashInvoiceService
             // overdue job runs. Preserve that overdue history at settlement time.
             $overdueAt = $invoice->overdue_at;
             if ($overdueAt === null && $invoice->payment_due_at !== null
-                && now()->gt(\Illuminate\Support\Carbon::parse($invoice->payment_due_at))) {
+                && now()->gt(Carbon::parse($invoice->payment_due_at))) {
                 $overdueAt = now();
             }
             DB::table('invoices')->where('id', $invoiceId)->update([

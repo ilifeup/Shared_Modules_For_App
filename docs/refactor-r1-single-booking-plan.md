@@ -475,3 +475,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `82b13513`：M11CheckinTest 補上 canonical `b` QR 的 ID 竄改、過期視窗、錯誤類型 (`e`) 驗證拒絕測試。
 - 測試目前為提交待 CI 驗證，不代表 canonical 簽到入口已切換；仍須整合 Migration、Service、Controller、Flutter 與 E2E。
 - PR #63 保持 Draft；不執行正式 DB 變更、不自動合併。
+
+### R1.58｜EventAttendance canonical booking Model 預備（2026-10-30）
+
+- `822b4f3a`：`EventAttendance` 新增 `event_booking_id` fillable 與 `booking(): BelongsTo<EventBooking>`；既有 `attendee()` 關聯保留。
+- **重要部署門檻**：`event_attendances.event_booking_id` 尚未建立，禁止在 Migration 前使用新 relation/欄位寫入；這次修改不代表資料庫遷移或 Checkin API 切換完成。
+- 待辦：確認原始 Migration、設計雙欄過渡與歷史資料映射、unique(calendar_event_id,event_booking_id)、更新 Service/Controller/QR/OpenAPI/Flutter 與測試，最後移除舊依賴。
+- PR #63 保持 Draft，無正式資料庫操作；新 HEAD CI 待驗證。

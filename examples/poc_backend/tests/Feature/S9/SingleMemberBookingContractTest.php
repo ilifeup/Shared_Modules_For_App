@@ -329,6 +329,7 @@ it('does not promote a waitlisted member when canonical booking identity disagre
 
     expect(EventBookingGroup::query()->findOrFail($waiting)->status)->toBe('cancelled')
         ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $waiting)->value('status'))->toBe('skipped')
+        ->and(DB::table('event_bookings')->where('id', $bookingId)->value('status'))->toBe('waitlisted')
         ->and(seats($event))->toBe(0);
 });
 

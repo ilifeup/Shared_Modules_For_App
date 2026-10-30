@@ -955,5 +955,9 @@ class CourseEnrollmentServiceTest extends TestCase
         }
         $this->assertSame(0, DB::table('course_enrollments')->where('course_term_id', $term)->count());
         $this->assertSame(0, DB::table('invoices')->where('booking_type', '02')->count());
+        $this->assertSame(0, DB::table('event_bookings')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_groups')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('event_booking_attendees')->where('calendar_event_id', $eventId)->count());
+        $this->assertSame(0, DB::table('payment_transactions')->count());
     }
 }

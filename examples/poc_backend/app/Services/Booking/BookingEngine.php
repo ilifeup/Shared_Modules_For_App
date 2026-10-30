@@ -953,10 +953,12 @@ final class BookingEngine
         $incomingMemberId = count($request->attendees) === 1
             ? ($request->attendees[0]['member_user_id'] ?? null)
             : null;
+        // Apply the same strict ID parsing to idempotent retries as to new bookings.
+        // A malformed ID must not be coerced to a different registered member.
+        $parsedMemberId = filter_var($incomingMemberId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (! $same || count($request->attendees) !== 1 || $existing->seat_count !== 1
             || count($storedMemberIds) !== 1 || $storedMemberIds[0] === null
-            || $incomingMemberId === null || ! is_numeric($incomingMemberId)
-            || $storedMemberIds[0] !== (int) $incomingMemberId) {
+            || $parsedMemberId === false || $storedMemberIds[0] !== $parsedMemberId) {
             throw new ApiException(409, 'IDEMPOTENCY_CONFLICT', '此 client_request_id 已用於不同的報名內容。');
         }
 

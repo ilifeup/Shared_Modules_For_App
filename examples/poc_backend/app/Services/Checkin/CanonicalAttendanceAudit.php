@@ -73,7 +73,10 @@ final class CanonicalAttendanceAudit
                 $report['event_mismatch']++;
                 continue;
             }
-            if ((int) $row->attendee_member_id !== (int) $row->booking_member_id) {
+            // NULL is never a valid registered member. Casting both NULLs to
+            // integer zero would otherwise incorrectly mark the row as safe.
+            if ($row->attendee_member_id === null || $row->booking_member_id === null
+                || (int) $row->attendee_member_id !== (int) $row->booking_member_id) {
                 $report['member_mismatch']++;
                 continue;
             }

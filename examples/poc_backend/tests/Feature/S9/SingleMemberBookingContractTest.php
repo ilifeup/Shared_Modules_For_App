@@ -1029,3 +1029,22 @@ it('does not allow a forged admin flag to bypass the booking opening window', fu
         ->toThrow(\App\Support\Api\ApiException::class);
     expect(seats($event))->toBe(0);
 });
+
+
+it('does not accept course enrollment before the administrator scheduled opening time', function () {
+    $booker = User::factory()->create(['verified_status' => 2, 'is_active' => true]);
+    $termId = DB::table('course_terms')->insertGetId([
+        'title' => 'Scheduled enrollment',
+        'enrollment_capacity' => 5,
+        'waitlist_capacity' => 5,
+        'price_amount' => '100.00',
+        'booking_opens_at' => now()->addDay(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => app(\App\Services\Course\CourseEnrollmentService::class)
+        ->enroll($termId, $booker, $booker))
+        ->toThrow(\Illuminate\Validation\ValidationException::class);
+    expect(DB::table('course_enrollments')->where('course_term_id', $termId)->count())->toBe(0);
+});

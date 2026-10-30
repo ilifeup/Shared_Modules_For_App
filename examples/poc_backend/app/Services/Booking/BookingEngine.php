@@ -818,10 +818,10 @@ final class BookingEngine
                 break; // Strict FIFO: the next single-member booking must wait for one free seat.
             }
 
-            // Strict FIFO: do not skip the head if the full cash hold cannot fit.
-            if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
-                break;
-            }
+            // Near-start paid bookings use the earlier of the configured
+            // hold and event start as their deadline (CashInvoiceService).
+            // Do not block FIFO promotion merely because the full hold
+            // period cannot fit before the event begins.
             $confirmedAt = now();
             $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => $confirmedAt])->save();
             if ($group->legacy_booking_id !== null) {

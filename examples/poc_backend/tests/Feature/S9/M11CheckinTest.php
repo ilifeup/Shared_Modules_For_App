@@ -540,3 +540,16 @@ it('enforces a unique canonical booking attendance index in the migrated schema'
         ->and($canonical['unique'])->toBeTrue()
         ->and($canonical['columns'])->toBe(['event_booking_id']);
 });
+
+it('keeps canonical attendance nullable and linked to event bookings during transition', function () {
+    $column = collect(Schema::getColumns('event_attendances'))
+        ->first(fn (array $item): bool => $item['name'] === 'event_booking_id');
+    $foreignKey = collect(Schema::getForeignKeys('event_attendances'))
+        ->first(fn (array $item): bool => $item['columns'] === ['event_booking_id']);
+
+    expect($column)->not->toBeNull()
+        ->and($column['nullable'])->toBeTrue()
+        ->and($foreignKey)->not->toBeNull()
+        ->and($foreignKey['foreign_table'])->toBe('event_bookings')
+        ->and($foreignKey['foreign_columns'])->toBe(['id']);
+});

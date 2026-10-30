@@ -407,6 +407,8 @@ final class CashInvoiceService
                 if ($canonical === null
                     || (int) $canonical->calendar_event_id !== (int) $group->calendar_event_id
                     || (int) $canonical->booker_user_id !== (int) $group->booker_user_id
+                    || (int) $canonical->user_id !== (int) $canonical->member_user_id
+                    || $canonical->active !== null
                     || ! in_array($canonical->status, ['cancelled', 'event_cancelled'], true)) {
                     throw ValidationException::withMessages(['invoice' => '正式預約尚未取消或關聯不一致，禁止退款。']);
                 }

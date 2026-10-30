@@ -235,7 +235,7 @@ it('keeps the FIFO head waiting instead of promoting it onto an unavailable sess
         ->and(ctcStatus($second['id']))->toBe('pending_payment');
 });
 
-it('expires an unpaid term, fills FIFO and treats a later cancel as a replay', function () {
+it('marks unpaid term overdue without cancelling the booking or promoting waitlist', function () {
     $term = ctcTerm();
     $holder = User::factory()->create();
     $next = User::factory()->create();
@@ -243,13 +243,16 @@ it('expires an unpaid term, fills FIFO and treats a later cancel as a replay', f
     $first = $service->enroll($term, $holder, $holder);
     $second = $service->enroll($term, $next, $next);
 
-    $this->travel(39)->hours();
+    DB::table('invoices')->where('id', ctcInvoice($first['id'])->id)
+        ->update(['payment_due_at' => now()->subMinute()]);
+
     expect(app(CashInvoiceService::class)->expireDue())->toBeGreaterThanOrEqual(1)
-        ->and(ctcStatus($first['id']))->toBe('cancelled')
-        ->and((int) ctcInvoice($first['id'])->invoice_status)->toBe(3)
-        ->and(ctcStatus($second['id']))->toBe('pending_payment')
-        ->and($service->cancel($first['id'], $holder)['replayed'])->toBeTrue()
-        ->and((int) ctcInvoice($first['id'])->invoice_status)->toBe(3);
+        ->and(ctcStatus($first['id']))->toBe('pending_payment')
+        ->and((int) ctcInvoice($first['id'])->invoice_status)->toBe(0)
+        ->and(ctcInvoice($first['id'])->overdue_at)->not->toBeNull()
+        ->and(ctcStatus($second['id']))->toBe('waitlisted')
+        ->and($service->cancel($first['id'], $holder)['replayed'])->toBeFalse()
+        ->and(ctcStatus($second['id']))->toBe('pending_payment');
 });
 
 it('replays waitlist withdrawal and refuses it for a seat holder', function () {

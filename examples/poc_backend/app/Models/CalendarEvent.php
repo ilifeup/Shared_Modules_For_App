@@ -115,16 +115,14 @@ class CalendarEvent extends Model
                 ]);
             }
 
-            // A paid bookable event must allow the last booker their entire
-            // configured payment hold period before the event starts.
-            if ($event->booking_enabled && (float) $event->price_amount > 0) {
-                $hours = $event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours');
-                $closes = $event->bookingClosesAt();
-                if ($closes->copy()->addHours($hours)->greaterThan($event->starts_at)) {
-                    throw ValidationException::withMessages([
-                        'booking_closes_at' => ['最後預約時間加上付款保留時間，不得晚於活動開始時間。'],
-                    ]);
-                }
+            // A paid booking may be made close to the event start. The cash
+            // invoice deadline is bounded at booking time, rather than
+            // rejecting an otherwise valid event configuration here.
+            if ($event->booking_enabled && (float) $event->price_amount > 0
+                && $event->bookingClosesAt()->greaterThan($event->starts_at)) {
+                throw ValidationException::withMessages([
+                    'booking_closes_at' => ['最後預約時間不得晚於活動開始時間。'],
+                ]);
             }
 
             // The legacy per-booking seat setting remains readable for old event rows.

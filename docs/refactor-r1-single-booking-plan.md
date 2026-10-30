@@ -298,3 +298,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `96e4e710`：新增 Pest 測試，確認舊 attendee 狀態不影響 canonical 名額數，而取消 canonical 預約會釋放名額。
 - **整體切換仍未完成**：目前 activeAttendeeOf()、候補 queue、check-in、付款及課程仍有舊表依賴。因使用者已明確無舊資料、要求簡單設計，最終需刪除舊表與相容程式，不應保留雙寫作為完成狀態。
 - 尚未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。
+
+
+## R1.30｜候補名額改由 canonical event_bookings 計算（2026-10-30）
+
+- `1285cd10`：BookingEngine::waitingGroups() 改以 `event_bookings.status=waitlisted AND active=1` 計數，候補容量不再依賴 event_waitlist_entries.status=waiting 的筆數。
+- `569ecd29`：新增 Pest 回歸測試，驗證舊 queue 狀態變化不改變 canonical 候補數量、canonical 預約取消釋放候補容量。
+- 尚未完成的部分：FIFO sequence／晉升仍由 event_waitlist_entries 管理；重複預約檢查仍有 attendee 依賴，付款／課程／簽到也仍引用舊表。最終目標仍為無歷史資料、單一 event_bookings 預約主表，不保留過渡雙寫。
+- Pest、CI、migrate:fresh 尚未執行；未合併 main，未操作正式資料庫。

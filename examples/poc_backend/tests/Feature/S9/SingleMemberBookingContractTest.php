@@ -108,6 +108,29 @@ it('rejects obsolete multi-attendee payloads instead of silently booking a subse
     expect(seats($event))->toBe(0);
 });
 
+it('rejects unknown guest and group keys without creating a booking', function () {
+    $event = s9Event(['booking_capacity' => 2]);
+    $member = User::factory()->create(['verified_status' => 2]);
+
+    foreach ([
+        ['seat_count' => 2],
+        ['guest_name' => 'Guest'],
+        ['guest_count' => 1],
+        ['booking_max_seats' => 2],
+        ['unexpected_future_field' => 'unsafe'],
+    ] as $extra) {
+        $this->actingAs($member, 'sanctum')
+            ->postJson("/api/v1/events/{$event->id}/booking-groups", array_merge([
+                'client_request_id' => (string) Str::uuid(),
+            ], $extra))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(array_keys($extra));
+    }
+
+    expect(seats($event))->toBe(0);
+    expect(EventBookingGroup::query()->where('calendar_event_id', $event->id)->count())->toBe(0);
+});
+
 it('rejects an unverified member before booking or replay', function () {
     $event = s9Event(['booking_capacity' => 2]);
     $member = User::factory()->create(['verified_status' => 1]);

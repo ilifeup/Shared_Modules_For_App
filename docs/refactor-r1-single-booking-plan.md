@@ -118,3 +118,10 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - 重新讀取 `BookingEngine.php`：`bookLegacy` 寫 event_bookings + event_booking_groups + attendee；`book` 寫 group + attendee；兩者使用 event row lock 與共用座位計算。遷移時須一次改 S6/S9 寫入、取消、候補、付款、通知。
 - GitHub 程式碼搜尋原始 migration 建表字串未返回結果，且 fetch_file 不支援直接讀取目錄。**原始 migration 尚未定位；不得因此假設不存在，也不得先刪表。** 下一階段應透過可列舉 Git tree 的工具或本機 checkout 全量搜尋 `Schema::create`，並以實際檔案核對索引與外鍵。
 - 交接時先讀本文件，確認 branch HEAD、CI 和未完成依賴；**嚴禁把新增測試視為測試已通過**。不自動合併 main。
+
+## R1.12 階段快照（2026-10-30）
+
+- `5d30cb1`：BookingEngine::createAttendee 寫入邊界新增檢查，`seat_count` 必須等於 1，且該 group 不能已有 attendee；內部／管理者呼叫也不可追加第二位參加者。此為舊表過渡性防護，**不等於完成 event_bookings 單表重構**。
+- 直接檢查最新已知 R1.11 文件 commit `8d558e5`：GitHub PR-triggered workflow runs 回傳空陣列、combined statuses 也為空陣列；這只表示**沒有從該查詢取得 CI 結果**，不能宣稱 CI 綠燈、失敗或已執行。
+- 目前仍待：找齊原始 migration、schema 一致性、invoice 01/02 與退款、課程衍生場次、簽到 QR、Flutter/Filament/OpenAPI；應以跨模組批次為單位推進，避免零散小修取代主線。
+- 最近已知程式 commit：`5d30cb11c47f0183c93b016991cca6aa0eb6d796`；下次接手以 GitHub HEAD 重新核實。

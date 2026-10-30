@@ -14,12 +14,12 @@ void main() {
     });
   });
 
-  test('logout cleanup removes all pending booking keys only', () async {
+  test('logout cleanup removes only the current member pending booking keys', () async {
     const storage = FlutterSecureStorage();
-    await clearPendingBookingStorage(storage);
+    await clearPendingBookingStorage('member-a', storage);
 
     expect(await storage.read(key: 'pending_booking_v1:member-a:event-1'), isNull);
-    expect(await storage.read(key: 'pending_booking_v1:member-b:event-2'), isNull);
+    expect(await storage.read(key: 'pending_booking_v1:member-b:event-2'), 'request-b|123');
     expect(await storage.read(key: 'auth_token'), 'keep-token');
     expect(await storage.read(key: 'unrelated_key'), 'keep-value');
   });

@@ -70,63 +70,26 @@ final class CashInvoiceService
      */
     public function expireDue(int $limit = 100): int
     {
-        $due = DB::table('invoices')->where('invoice_status', 0)
-            ->where('booking_type', '01')->whereNotNull('payment_due_at')
-            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
-            ->get(['id', 'booking_id']);
-        $expired = 0;
-        foreach ($due as $invoice) {
-            if (app(BookingEngine::class)->expireCashHold((int) $invoice->booking_id, (int) $invoice->id)) {
-                $expired++;
+        // Legacy compatibility entry point. Expiry must NEVER cancel bookings.
+        // The only automated action is marking invoices as overdue.
+        $count = 0;
+        do {
+            $ids = DB::table('invoices')
+                ->where('invoice_status', 0)
+                ->whereNull('overdue_at')
+                ->whereNotNull('payment_due_at')
+                ->where('payment_due_at', '<=', now())
+                ->orderBy('id')->limit($limit)->pluck('id');
+            if ($ids->isEmpty()) {
+                break;
             }
-        }
+            $changed = DB::table('invoices')->whereIn('id', $ids)
+                ->where('invoice_status', 0)->whereNull('overdue_at')
+                ->update(['overdue_at' => now(), 'updated_at' => now()]);
+            $count += $changed;
+        } while ($changed > 0 && $ids->count() === $limit);
 
-        // Course expiration must also release its session bookings before a waitlist promotion.
-        $courseDue = DB::table('invoices')->where('invoice_status', 0)
-            ->where('booking_type', '02')->whereNotNull('payment_due_at')
-            ->where('payment_due_at', '<=', now())->orderBy('id')->limit($limit)
-            ->get(['id', 'booking_id']);
-        foreach ($courseDue as $item) {
-            $didExpire = DB::transaction(function () use ($item): bool {
-                // Resolve the parent without a write lock, then acquire locks
-                // in the shared order: term -> enrollment -> invoice.
-                $hint = DB::table('invoices')->where('id', $item->id)->first();
-                if ($hint === null || $hint->booking_type !== '02') {
-                    return false;
-                }
-                $termId = DB::table('course_enrollments')->where('id', $hint->booking_id)
-                    ->value('course_term_id');
-                if ($termId === null || DB::table('course_terms')->where('id', $termId)
-                    ->lockForUpdate()->first() === null) {
-                    return false;
-                }
-                $entry = DB::table('course_enrollments')->where('id', $hint->booking_id)
-                    ->lockForUpdate()->first();
-                $invoice = DB::table('invoices')->where('id', $item->id)->lockForUpdate()->first();
-                if ($entry === null || (int) $entry->course_term_id !== (int) $termId
-                    || $entry->status !== 'pending_payment'
-                    || $invoice === null || $invoice->booking_type !== '02'
-                    || (int) $invoice->booking_id !== (int) $entry->id
-                    || (int) $invoice->invoice_status !== 0
-                    || $invoice->payment_due_at === null || now()->lt($invoice->payment_due_at)) {
-                    return false;
-                }
-                DB::table('course_enrollments')->where('id', $entry->id)
-                    ->update(['status' => 'cancelled', 'updated_at' => now()]);
-                DB::table('invoices')->where('id', $invoice->id)
-                    ->update(['invoice_status' => 3, 'updated_at' => now()]);
-                $this->releaseCourseBookings($entry);
-                // Same FIFO fill as cancellation and capacity changes (term still locked).
-                $this->fillCourseWaitlistAfterCapacityChange((int) $entry->course_term_id);
-
-                return true;
-            }, 3);
-            if ($didExpire) {
-                $expired++;
-            }
-        }
-
-        return $expired;
+        return $count;
     }
 
     /**

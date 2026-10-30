@@ -290,3 +290,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `8aba531b`：新增委託預約的 member/booker 關聯測試。
 - 查詢最新 Commit 的 PR workflow runs 回傳空清單；未證實 CI 已執行。Pest 尚未執行，未合併 main。
 - **R1 最終單表仍未完成**：舊 group/attendee、付款、課程、簽到、API 依賴尚待協調切換；不要把上述準備與測試當成已完成。
+
+
+## R1.29｜活動確認名額改以 event_bookings 為權威（2026-10-30）
+
+- `7e7e5835`：BookingEngine::confirmedSeats() 改由 `event_bookings` 計算 `status=confirmed AND active=1`，不再以 `event_booking_attendees` 計算已佔用名額；同時更新服務註解。
+- `96e4e710`：新增 Pest 測試，確認舊 attendee 狀態不影響 canonical 名額數，而取消 canonical 預約會釋放名額。
+- **整體切換仍未完成**：目前 activeAttendeeOf()、候補 queue、check-in、付款及課程仍有舊表依賴。因使用者已明確無舊資料、要求簡單設計，最終需刪除舊表與相容程式，不應保留雙寫作為完成狀態。
+- 尚未執行 Pest、CI、migrate:fresh；未操作正式資料庫，未合併 main。

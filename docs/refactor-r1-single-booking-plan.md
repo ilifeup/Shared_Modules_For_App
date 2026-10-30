@@ -263,3 +263,13 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `f418ff0c`：Pest 增加 S6 建立預約後檢查 canonical 身分欄位與 confirmed_at 的回歸測試。
 - **目前僅 S6 寫入雙寫**，S9 仍以 group/attendee 為權威，未搬移 S9 歷史資料，尚未切換候補／付款／課程／簽到外鍵。這些步驟須集中協調以避免雙權威資料漂移。
 - **Migration/Pest/CI 未執行**；沒有合併 main 或操作正式資料庫。
+
+
+## R1.26｜決策變更：全新資料庫、不要舊資料相容（2026-10-30）
+
+**此節優先於 R1.24、R1.25 的歷史過渡規劃。** 使用者明確確認「沒有舊資料！簡單設計就好，不要過度設計」。因此最終採用全新隔離開發資料庫，以 `migrate:fresh` 重建；不執行歷史 S6/S9 回填、雙寫過渡期維護、資料搬移或正式環境資料清理。
+
+- `4f5c91a9`：將 canonical 欄位直接合入初始 `2026_10_30_000100_s6_event_bookings.php` Migration。
+- `69a7ff78`：刪除 `2026_11_10_000100_prepare_canonical_event_bookings.php` 過渡 Migration。
+- **尚未完成**：目前舊 S6 `user_id` 與 S9 group/attendee 還存在，為了保持未完成重構分支可讀，下一步須集中修改 BookingEngine、check-in、payment、course、API、Filament、相關 Migration 和 Pest，最後移除所有舊表／欄位，不能將目前暫留視為新決策已完整落地。
+- 不觸碰正式資料庫；尚未執行 migrate:fresh／Pest／CI；未合併 main。

@@ -91,7 +91,13 @@ final class BookingEngine
 
     public function waitingGroups(CalendarEvent $event): int
     {
-        return EventWaitlistEntry::query()->where('calendar_event_id', $event->id)->where('status', EventWaitlistEntry::WAITING)->count();
+        // Each active waitlisted member occupies one waitlist slot.
+        // Queue entries retain their sequence only until the queue cutover.
+        return EventBooking::query()
+            ->where('calendar_event_id', $event->id)
+            ->where('status', EventBooking::STATUS_WAITLISTED)
+            ->where('active', 1)
+            ->count();
     }
 
     /**

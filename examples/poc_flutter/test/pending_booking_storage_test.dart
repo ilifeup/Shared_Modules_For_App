@@ -26,8 +26,8 @@ void main() {
 
   test('cleanup can be repeated safely', () async {
     const storage = FlutterSecureStorage();
-    await clearPendingBookingStorage(storage);
-    await clearPendingBookingStorage(storage);
+    await clearPendingBookingStorage('member-a', storage);
+    await clearPendingBookingStorage('member-a', storage);
     expect(await storage.read(key: 'auth_token'), 'keep-token');
   });
 }

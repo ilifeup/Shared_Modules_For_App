@@ -904,6 +904,12 @@ final class BookingEngine
      */
     private function createGroup(CalendarEvent $event, array $attributes): EventBookingGroup
     {
+        // R1 invariant at the shared write boundary: neither legacy nor S9
+        // callers may create a multi-seat booking, including admin paths.
+        if (($attributes['seat_count'] ?? null) !== 1 || empty($attributes['booker_user_id'])) {
+            throw new ApiException(422, 'SINGLE_MEMBER_BOOKING_REQUIRED', '每筆活動報名必須由一位正式會員操作，且僅佔一個名額。');
+        }
+
         $now = now();
 
         return EventBookingGroup::query()->create($attributes + [
@@ -915,6 +921,11 @@ final class BookingEngine
 
     private function createAttendee(EventBookingGroup $group, string $name, ?int $memberId, string $status): EventBookingAttendee
     {
+        // Do not let any internal caller persist a guest attendee.
+        if ($memberId === null || $memberId <= 0) {
+            throw new ApiException(422, 'MEMBER_ID_REQUIRED', '參加者必須有正式會員 ID。');
+        }
+
         return EventBookingAttendee::query()->create([
             'event_booking_group_id' => $group->id,
             'calendar_event_id' => $group->calendar_event_id,

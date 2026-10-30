@@ -3,7 +3,6 @@
 use App\Services\Analytics\LinkAnalytics;
 use App\Services\Checkin\CheckinService;
 use App\Services\Payment\CashInvoiceService;
-use Illuminate\Support\Facades\DB;
 use App\Support\S9DataGuard;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -24,16 +23,8 @@ Artisan::command('s9:purge-link-stats', function (LinkAnalytics $analytics) {
     $this->info('M17 cleanup: '.json_encode($result));
 })->purpose('Delete raw clicks after 90 days and aggregates after 24 months (M17-D22)');
 
-Artisan::command('payments:mark-overdue', function () {
-    // Payment overdue is an accounting flag, NOT a booking cancellation.
-    // Preserve the original booking and seats; manual recovery remains possible.
-    $updated = DB::table('invoices')
-        ->where('invoice_status', 0)
-        ->whereNull('overdue_at')
-        ->whereNotNull('payment_due_at')
-        ->where('payment_due_at', '<=', now())
-        ->update(['overdue_at' => now(), 'updated_at' => now()]);
-    $this->info('Newly overdue unpaid invoices: '.$updated);
+Artisan::command('payments:mark-overdue', function (CashInvoiceService $cash) {
+    $this->info('Newly overdue unpaid invoices: '.$cash->expireDue());
 })->purpose('Mark unpaid invoices overdue without cancelling bookings or releasing seats');
 
 // Read-only: what an S9 rollback would delete (run before deciding on a rollback).

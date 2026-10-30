@@ -576,6 +576,7 @@ final class BookingEngine
      */
     public function cancelEvent(CalendarEvent $event, ?string $reason, User $actor): void
     {
+        $this->assertBookingAdministrator($actor);
         $count = $this->transaction(function () use ($event, $reason, $actor): int {
             $locked = $this->lock($event);
             $this->assertNotCourseOwned($locked);
@@ -626,6 +627,7 @@ final class BookingEngine
      */
     public function changeCapacity(CalendarEvent $event, int $capacity, array $cancelGroupIds, User $actor, ?string $reason = null): void
     {
+        $this->assertBookingAdministrator($actor);
         if ($capacity < 1) {
             throw new ApiException(422, 'VALIDATION_FAILED', '名額至少 1 人。', ['capacity' => ['名額至少 1 人。']]);
         }
@@ -662,8 +664,17 @@ final class BookingEngine
      * Admin moves a waiting group to a new 1-based position (D14); audited with the
      * order before and after.
      */
+    /** Protect destructive booking operations even when invoked outside HTTP controllers. */
+    private function assertBookingAdministrator(User $actor): void
+    {
+        if (! $actor->is_active || $actor->FamilyUser || ! $actor->isAdmin()) {
+            throw new ApiException(403, 'ADMIN_REQUIRED', '此操作僅限管理員執行。');
+        }
+    }
+
     public function moveInWaitlist(EventBookingGroup $group, int $position, User $actor, string $reason): void
     {
+        $this->assertBookingAdministrator($actor);
         $order = [];
         $this->transaction(function () use ($group, $position, $actor, $reason, &$order): void {
             $event = $this->lock($group->event);

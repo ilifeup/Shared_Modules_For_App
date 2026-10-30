@@ -531,3 +531,12 @@ it('has the additive canonical booking attendance column without removing legacy
         ->and((new EventAttendance)->booking()->getForeignKeyName())->toBe('event_booking_id')
         ->and((new EventAttendance)->attendee()->getForeignKeyName())->toBe('event_booking_attendee_id');
 });
+
+it('enforces a unique canonical booking attendance index in the migrated schema', function () {
+    $indexes = collect(Schema::getIndexes('event_attendances'));
+    $canonical = $indexes->first(fn (array $index): bool => $index['name'] === 'event_attendances_booking_unique');
+
+    expect($canonical)->not->toBeNull()
+        ->and($canonical['unique'])->toBeTrue()
+        ->and($canonical['columns'])->toBe(['event_booking_id']);
+});

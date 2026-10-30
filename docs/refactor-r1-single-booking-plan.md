@@ -142,3 +142,11 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 **CI 查核：** 最近文件 commit `8d558e5` 的 workflow runs / statuses 查詢均回傳空集合，不能推定測試通過。尚未實際執行 Pest、Flutter、Migration。
 
 **後續原則：** 下一階段先找到五張核心表的建表 migration；再形成完整 FK 變更清單，集中實作 schema/Model/Service/API/Flutter/OpenAPI/Tests；不可逐張刪表。不要動正式 DB 或合併 main。
+
+## R1.14｜候補晉升資料一致性修正（2026-10-30）
+
+- `117cb3b`：BookingEngine::promote 在發放候補名額前，除既有單人、會員驗證、家庭授權檢查，新增 **group.calendar_event_id、attendee.calendar_event_id 均須符合目前活動**、member_user_id 不可為 null；歷史資料異常時標記 invalid_waitlist_entry 並走原有跳過／取消／稽核流程，不可晉升到錯誤活動。
+- `7d101a5`：SingleMemberBookingContractTest 新增跨活動 attendee ledger 損壞情境：一人已確認、一人候補；候補 attendee 的 calendar_event_id 被修改成其他活動，取消前者後，後者不得晉升，應取消且不占原活動名額。**尚未實際執行 Pest。**
+- 已確認 `tests/Pest.php` 使用 `RefreshDatabase`，並以 `s9Event` 建立活動、`seats` 查確認名額；原 fixture 仍保留過渡性 `booking_max_seats=5`（不是目標 schema）。
+- 核心資料庫 Migration 原始建表檔仍未定位；不能以本階段防護取代 R1 統一 `event_bookings`。需要 Git tree 列舉／完整 checkout，才能安全修改 migration 與 FK。
+- 最近已知程式 commit `7d101a58acb074d388bce3fcabeeed748db43e47`；以 GitHub HEAD 為準。未執行 CI、未合併 main。

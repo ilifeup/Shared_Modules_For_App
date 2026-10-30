@@ -1007,3 +1007,25 @@ it('blocks direct non-admin service calls that mutate event capacity or cancel t
         ->toThrow(\App\Support\Api\ApiException::class);
     expect((int) $event->fresh()->booking_capacity)->toBe(2);
 });
+
+
+it('does not allow a forged admin flag to bypass the booking opening window', function () {
+    $event = s9Event([
+        'booking_capacity' => 2,
+        'booking_opens_at' => now()->addDay(),
+    ]);
+    $member = User::factory()->create(['is_active' => true, 'verified_status' => 2]);
+    $request = new \App\Services\Booking\BookingRequest(
+        booker: $member,
+        contactName: $member->name,
+        contactEmail: $member->email,
+        contactPhone: null,
+        attendees: [['member_user_id' => $member->id, 'name' => $member->name]],
+        clientRequestId: (string) Str::uuid(),
+        byAdmin: true,
+    );
+
+    expect(fn () => app(\App\Services\Booking\BookingEngine::class)->book($event, $request))
+        ->toThrow(\App\Support\Api\ApiException::class);
+    expect(seats($event))->toBe(0);
+});

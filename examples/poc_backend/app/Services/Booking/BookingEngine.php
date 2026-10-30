@@ -713,7 +713,12 @@ final class BookingEngine
             }
             if ($permanent !== null) {
                 $head->forceFill(['status' => EventWaitlistEntry::SKIPPED, 'skip_reason' => $permanent, 'resolved_at' => now()])->save();
-                $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent);
+                // A corrupt queue row may point to a booking owned by another event.
+                // Skip this event's queue entry without cancelling a different event's
+                // booking, invoice, attendance or calendar sync.
+                if ((int) $group->calendar_event_id === (int) $event->id) {
+                    $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, $permanent);
+                }
                 AuditEvent::record('booking.waitlist_skipped', null, $group, ['event_id' => $event->id, 'reason' => $permanent]);
 
                 continue;

@@ -737,7 +737,13 @@ final class BookingEngine
             if ((float) $event->price_amount > 0 && now()->addHours($event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours'))->gt($event->starts_at)) {
                 break;
             }
-            $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
+            $confirmedAt = now();
+            $group->forceFill(['status' => EventBookingGroup::STATUS_CONFIRMED, 'confirmed_at' => $confirmedAt])->save();
+            if ($group->legacy_booking_id !== null) {
+                EventBooking::query()->whereKey($group->legacy_booking_id)
+                    ->where('status', EventBooking::STATUS_WAITLISTED)
+                    ->update(['status' => EventBooking::STATUS_CONFIRMED, 'confirmed_at' => $confirmedAt, 'updated_at' => $confirmedAt]);
+            }
             app(CashInvoiceService::class)->forEvent($event, $group, (int) $attendees->first()->member_user_id);
             EventBookingAttendee::query()->where('event_booking_group_id', $group->id)->where('status', EventBookingAttendee::STATUS_WAITLISTED)
                 ->update(['status' => EventBookingAttendee::STATUS_CONFIRMED, 'updated_at' => now()]);

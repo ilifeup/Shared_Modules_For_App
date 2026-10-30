@@ -25,7 +25,12 @@ return new class extends Migration
         Schema::create('event_bookings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('calendar_event_id')->constrained()->restrictOnDelete();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete(); // Temporary S6 API compatibility.
+            $table->foreignId('member_user_id')->nullable()->constrained('users')->restrictOnDelete();
+            $table->foreignId('booker_user_id')->nullable()->constrained('users')->restrictOnDelete();
+            $table->uuid('client_request_id')->nullable();
+            $table->timestamp('confirmed_at')->nullable();
+            $table->string('cancel_reason')->nullable();
             $table->string('status', 20)->default('confirmed'); // confirmed | cancelled
             $table->unsignedTinyInteger('active')->nullable()->default(1);
             $table->timestamp('booked_at');
@@ -34,6 +39,9 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['calendar_event_id', 'user_id', 'active']);
+            $table->unique(['calendar_event_id', 'member_user_id', 'active'], 'event_bookings_member_active_unique');
+            $table->unique('client_request_id', 'event_bookings_request_unique');
+            $table->index(['booker_user_id', 'booked_at'], 'event_bookings_booker_history_index');
             $table->index(['calendar_event_id', 'status']);
             $table->index(['user_id', 'status']);
         });

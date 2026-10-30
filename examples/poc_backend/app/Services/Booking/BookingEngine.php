@@ -689,7 +689,10 @@ final class BookingEngine
             // guest/group records must never be promoted into a valid seat.
             $attendees = $group->attendees()->get();
             if ($permanent === null && ($group->status !== EventBookingGroup::STATUS_WAITLISTED
-                || $group->seat_count !== 1 || $attendees->count() !== 1
+                || (int) $group->calendar_event_id !== (int) $event->id
+                || (int) $group->seat_count !== 1 || $attendees->count() !== 1
+                || (int) $attendees->first()?->calendar_event_id !== (int) $event->id
+                || $attendees->first()?->member_user_id === null
                 || $attendees->first()?->status !== EventBookingAttendee::STATUS_WAITLISTED
                 || $attendees->first()?->active != 1)) {
                 $permanent = 'invalid_waitlist_entry';

@@ -101,7 +101,7 @@ class InvoiceResource extends Resource
                 ->requiresConfirmation()
                 ->action(function (Invoice $record, array $data): void {
                     app(CashInvoiceService::class)->extendPaymentDeadline(
-                        $record->id, auth()->user(), (string) $data['payment_due_at'], (string) $data['reason']
+                        $record->id, auth()->user(), \Illuminate\Support\Carbon::parse((string) $data['payment_due_at'], 'Asia/Taipei')->toIso8601String(), (string) $data['reason']
                     );
                     Notification::make()->title('付款期限已延長')->success()->send();
                 }),

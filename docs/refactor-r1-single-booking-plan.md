@@ -390,3 +390,12 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `439ca2792ae3113279e6a99d241031a9fae1e073`：修正測試 fixture，使 canonical 與 attendee 的參加會員相同，仍保留 S6 舊 user_id 作為原報名者；測試原報名者可合法取消，不放寬 R1.39 的防錯保護。
 - 注意：此修正尚待新 HEAD CI 驗證。先前 S0 success、Shared Core php/dart/flutter success，但 m08-backend-contract failure；Backend/Mobile 當時仍在執行。頻繁提交可能取消前一輪 workflow，應以新 HEAD 結果為準。
 - 尚待：canonical 單表為唯一來源，移除舊 queue/group/attendee，完成 invoice/course/check-in/API/migration；未合併 main，未操作正式 DB。
+
+
+## R1.41｜取消前身分一致性防護（2026-10-30）
+
+- 上一版 HEAD `026b9e16`：S0、Shared Core（含 M08）、Backend Gate 皆 success，Mobile E2E success；Android APK 編譯尚未完成。
+- `d145c21f3863a15c7a737d6194704660d649df6a`：S6 `cancelLegacy()` 在變更 invoice/group/attendee 之前驗證 canonical event/booker/member 與舊群組、參加者一致；不一致回傳 409 `CANONICAL_BOOKING_MISMATCH`，由既有 transaction 回滾。
+- `bed4e9e38e3f16ae9e999750dd917c867185c4e3`：新增 canonical member pointer 損壞的取消回歸測試，要求 canonical/group/attendee 保持 confirmed。
+- **驗證狀態：新提交尚待 CI。** 本階段僅封鎖 S6 取消入口的部分更新風險；`endGroup()` 其他呼叫路徑、異常候補跳過及 invoice 生命週期仍需完整檢查，不能宣稱單表重構完成。
+- 未合併 main，未修改正式 DB。

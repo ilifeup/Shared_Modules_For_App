@@ -823,6 +823,8 @@ it('uses canonical FIFO order when an administrator reorders waiting members', f
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
     ];
+    \Spatie\Permission\Models\Role::findOrCreate(\App\Models\User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(\App\Models\User::ADMIN_ROLE);
     $groupIds = [];
     foreach ($members as $member) {
         $groupIds[] = $this->actingAs($member, 'sanctum')
@@ -891,6 +893,8 @@ it('rejects administrator reorder if canonical waitlist and legacy queue diverge
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
     ];
+    \Spatie\Permission\Models\Role::findOrCreate(\App\Models\User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(\App\Models\User::ADMIN_ROLE);
     $ids = [];
     foreach ($members as $member) {
         $ids[] = $this->actingAs($member, 'sanctum')
@@ -917,6 +921,8 @@ it('preserves unique legacy queue slots when canonical FIFO numbers differ', fun
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
     ];
+    \Spatie\Permission\Models\Role::findOrCreate(\App\Models\User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(\App\Models\User::ADMIN_ROLE);
     $ids = [];
     foreach ($members as $member) {
         $ids[] = $this->actingAs($member, 'sanctum')
@@ -966,6 +972,8 @@ it('rejects duplicate canonical FIFO positions before any administrator reorder 
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
         User::factory()->create(['verified_status' => 2, 'is_active' => true]),
     ];
+    \Spatie\Permission\Models\Role::findOrCreate(\App\Models\User::ADMIN_ROLE, 'web');
+    $members[0]->assignRole(\App\Models\User::ADMIN_ROLE);
     $ids = [];
     foreach ($members as $member) {
         $ids[] = $this->actingAs($member, 'sanctum')

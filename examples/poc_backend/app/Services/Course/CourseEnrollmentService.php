@@ -341,6 +341,13 @@ final class CourseEnrollmentService
                 throw ValidationException::withMessages(['term' => '課程期別不存在。']);
             }
 
+            // A term opens only at its administrator-configured instant.
+            // Check before idempotent replay, so early requests cannot obtain a seat.
+            if ($term->booking_opens_at !== null
+                && now()->lt(Carbon::parse($term->booking_opens_at))) {
+                throw ValidationException::withMessages(['term' => '本期課程尚未開放預約。']);
+            }
+
             if ($term->price_amount === null || (float) $term->price_amount < 1) {
                 throw ValidationException::withMessages(['price_amount' => '課程最低實收 NT$1。']);
             }

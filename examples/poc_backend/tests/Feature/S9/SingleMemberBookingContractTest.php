@@ -124,7 +124,8 @@ it('rejects unknown guest and group keys without creating a booking', function (
                 'client_request_id' => (string) Str::uuid(),
             ], $extra))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(array_keys($extra));
+            ->assertJsonPath('error.code', 'VALIDATION_FAILED')
+            ->assertJsonStructure(['error' => ['fields' => [array_key_first($extra)]]]);
     }
 
     expect(seats($event))->toBe(0);

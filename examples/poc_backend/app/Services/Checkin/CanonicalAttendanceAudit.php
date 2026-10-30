@@ -33,6 +33,7 @@ final class CanonicalAttendanceAudit
         $report = [
             'total' => 0,
             'unmapped' => 0,
+            'canonical_only' => 0,
             'missing_legacy_attendee' => 0,
             'missing_booking_group' => 0,
             'missing_canonical_booking' => 0,
@@ -56,6 +57,13 @@ final class CanonicalAttendanceAudit
             $report['total']++;
             if ($row->assigned_booking_id === null) {
                 $report['unmapped']++;
+            }
+            if ($row->attendee_id === null && $row->assigned_booking_id !== null) {
+                // Canonical-only attendance has no legacy attendee by design.
+                // Do not misclassify it as a failed legacy backfill.
+                $report['canonical_only']++;
+
+                continue;
             }
             if ($row->attendee_id === null) {
                 $report['missing_legacy_attendee']++;

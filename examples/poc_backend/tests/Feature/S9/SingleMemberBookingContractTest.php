@@ -834,10 +834,11 @@ it('uses canonical FIFO order when an administrator reorders waiting members', f
     DB::table('event_bookings')->where('id', $secondBookingId)->update(['waitlist_sequence' => 2]);
     DB::table('event_bookings')->where('id', $thirdBookingId)->update(['waitlist_sequence' => 1]);
 
-    // The second member is already in canonical position 2, though old queue says 1.
+    // Canonical order is third -> second, although the obsolete queue says second -> third.
+    // Move second to the front: a no-op based on the old queue would be incorrect.
     $group = \App\Models\EventBookingGroup::query()->findOrFail($groupIds[1]);
-    app(\App\Services\Booking\BookingEngine::class)->moveInWaitlist($group, 2, $members[0], 'FIFO test');
+    app(\App\Services\Booking\BookingEngine::class)->moveInWaitlist($group, 1, $members[0], 'FIFO test');
 
-    expect((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(1)
-        ->and((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(2);
+    expect((int) DB::table('event_bookings')->where('id', $secondBookingId)->value('waitlist_sequence'))->toBe(1)
+        ->and((int) DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBe(2);
 });

@@ -377,20 +377,32 @@ class _GroupBookingScreenState extends ConsumerState<GroupBookingScreen> {
             ),
           ] else ...[
             DropdownButtonFormField<int?>(
-              key: ValueKey('booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}'),
-              initialValue: availableMembers == null ||
-                      !(availableMembers.any((m) => m.id == (bookingMemberForRetry(pending, _memberUserId))))
+              key: ValueKey(
+                'booking-member:${scope ?? 'signed-out'}:${pending?.requestId ?? 'new'}',
+              ),
+              initialValue:
+                  availableMembers == null ||
+                      !(availableMembers.any(
+                        (m) =>
+                            m.id ==
+                            (bookingMemberForRetry(pending, _memberUserId)),
+                      ))
                   ? null
                   : bookingMemberForRetry(pending, _memberUserId),
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('我本人')),
-                for (final member in availableMembers ?? <ManageableFamilyMember>[])
+                for (final member
+                    in availableMembers ?? <ManageableFamilyMember>[])
                   DropdownMenuItem<int?>(
                     value: member.id,
                     child: Text('${member.name}（ID ${member.id}）'),
                   ),
               ],
-              onChanged: _busy || restoring || pending != null || availableMembers == null
+              onChanged:
+                  _busy ||
+                      restoring ||
+                      pending != null ||
+                      availableMembers == null
                   ? null
                   : (id) => setState(() => _memberUserId = id),
               decoration: const InputDecoration(

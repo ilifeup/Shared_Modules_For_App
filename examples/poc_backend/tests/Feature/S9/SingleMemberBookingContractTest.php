@@ -1091,7 +1091,7 @@ it('replays an existing authorized course enrollment after booking closes withou
         'updated_at' => now(),
     ]);
 
-    $result = app(\\App\\Services\\Course\\CourseEnrollmentService::class)
+    $result = app(\App\Services\Course\CourseEnrollmentService::class)
         ->enroll($termId, $member, $member);
 
     expect($result['id'])->toBe($enrollmentId)

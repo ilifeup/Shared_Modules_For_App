@@ -114,6 +114,34 @@ it('promotes the oldest single-member waitlist booking first', function () {
         ->and(AuditEvent::query()->where('event', 'booking.promoted')->count())->toBe(1);
 });
 
+it('promotes a paid FIFO waitlist booking near start without creating an expired deadline', function () {
+    $event = s9Event(['booking_capacity' => 1, 'price_amount' => 100,
+        'payment_hold_hours' => 48,
+        'starts_at' => now()->addHours(2),
+        'ends_at' => now()->addHours(3),
+        'booking_closes_at' => now()->addHour()]);
+    $first = User::factory()->create(['verified_status' => 2]);
+    $waiting = User::factory()->create(['verified_status' => 2]);
+
+    groupBook($event, $first)->assertCreated()->assertJsonPath('data.status', 'confirmed');
+    groupBook($event, $waiting)->assertCreated()->assertJsonPath('data.status', 'waitlisted');
+
+    $firstGroup = EventBookingGroup::query()->where('booker_user_id', $first->id)
+        ->where('calendar_event_id', $event->id)->firstOrFail();
+    app(BookingEngine::class)->cancelGroup($firstGroup, makeAdmin(), true, 'seat released');
+
+    $promoted = EventBookingGroup::query()->where('booker_user_id', $waiting->id)
+        ->where('calendar_event_id', $event->id)->firstOrFail();
+    $invoice = DB::table('invoices')->where('booking_type', '01')
+        ->where('booking_id', $promoted->id)->first();
+
+    expect($promoted->status)->toBe('confirmed')
+        ->and($invoice)->not->toBeNull()
+        ->and(Carbon::parse($invoice->payment_due_at)->isFuture())->toBeTrue()
+        ->and(Carbon::parse($invoice->payment_due_at)->lessThanOrEqualTo($event->starts_at))->toBeTrue()
+        ->and(seats($event))->toBe(1);
+});
+
 it('lets members withdraw from the waitlist at any time and promotes after S6 cancels too', function () {
     $event = s9Event(['booking_capacity' => 1]);
     $legacy = User::factory()->create();

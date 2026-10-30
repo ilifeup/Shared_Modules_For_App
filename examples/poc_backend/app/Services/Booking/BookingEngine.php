@@ -689,19 +689,22 @@ final class BookingEngine
             if (count($sequences) !== count($ids)) {
                 throw new ApiException(409, 'WAITLIST_STATE_INCONSISTENT', '候補排序資料不一致，請先檢查報名狀態。');
             }
-            // Two passes keep UNIQUE(calendar_event_id, sequence) valid.
-            foreach ($entries as $i => $entry) {
-                $entry->forceFill(['sequence' => $base + $i])->save();
-            }
+            // Reserve temporary positions in both tables before assigning the
+            // final order. This avoids collisions with unique queue positions.
+            $canonicalBase = (int) EventBooking::query()
+                ->where('calendar_event_id', $event->id)->max('waitlist_sequence') + 1;
             $byGroup = $entries->keyBy('event_booking_group_id');
+            $bookingIds = EventBookingGroup::query()->whereIn('id', $ids)
+                ->pluck('legacy_booking_id', 'id');
+            foreach ($ids as $i => $groupId) {
+                $byGroup[$groupId]->forceFill(['sequence' => $base + $i])->save();
+                EventBooking::query()->whereKey($bookingIds[$groupId])
+                    ->update(['waitlist_sequence' => $canonicalBase + $i, 'updated_at' => now()]);
+            }
             foreach ($ids as $i => $groupId) {
                 $byGroup[$groupId]->forceFill(['sequence' => $sequences[$i]])->save();
-                // Keep canonical FIFO ordering aligned until the legacy queue is removed.
-                $bookingId = EventBookingGroup::query()->whereKey($groupId)->value('legacy_booking_id');
-                if ($bookingId !== null) {
-                    EventBooking::query()->whereKey($bookingId)
-                        ->update(['waitlist_sequence' => $sequences[$i], 'updated_at' => now()]);
-                }
+                EventBooking::query()->whereKey($bookingIds[$groupId])
+                    ->update(['waitlist_sequence' => $sequences[$i], 'updated_at' => now()]);
             }
 
             $this->promote($event);

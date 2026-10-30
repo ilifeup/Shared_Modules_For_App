@@ -19,6 +19,7 @@ return new class extends Migration
             $table->unsignedInteger('cancel_cutoff_days')->default(10);
             // Administrators schedule the opening of term enrollment (UTC).
             $table->timestamp('booking_opens_at')->nullable();
+            $table->timestamp('booking_closes_at')->nullable();
             $table->timestamps();
         });
 

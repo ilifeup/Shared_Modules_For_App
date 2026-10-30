@@ -19,9 +19,8 @@ import 'package:s1_poc_app/ui/content_unavailable.dart';
 
 class _SignedInAuthController extends AuthController {
   @override
-  AuthState build() => const AuthState.signedIn(
-    MemberProfile(id: '1', displayName: '測試會員'),
-  );
+  AuthState build() =>
+      const AuthState.signedIn(MemberProfile(id: '1', displayName: '測試會員'));
 }
 
 typedef Handler =

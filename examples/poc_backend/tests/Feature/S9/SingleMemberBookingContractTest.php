@@ -151,7 +151,7 @@ it('rejects non-integer member identities even for internal booking calls', func
             );
             $this->fail('Malformed member ID was accepted.');
         } catch (\App\Support\Api\ApiException $e) {
-            expect($e->getCode())->toBe(422);
+            expect($e->status)->toBe(422)->and($e->errorCode)->toBe('MEMBER_ID_REQUIRED');
         }
     }
 

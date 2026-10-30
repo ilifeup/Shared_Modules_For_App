@@ -413,3 +413,9 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 - `BookingEngine::endGroup()` 在帳單、group、attendee、waitlist 任何寫入前，先鎖定並核對 canonical event/booker/member/status；有 `legacy_booking_id` 但找不到匹配有效 canonical 預約時，預設拋出 `409 CANONICAL_BOOKING_MISMATCH`，避免活動取消與管理員取消只變更舊資料。
 - `promote()` 的永久無效候補隔離明確傳入 `quarantineInvalidWaitlist: true`，允許隔離無效舊版候補群組，但不修改不匹配的 canonical 預約；此例外不得由一般取消入口使用。
 - 程式 commit：`c40e0981a35cccd8c4836a149ea5064985aa982a`。本階段仍需新增活動取消 mismatch 與候補隔離回歸測試，並等待此 HEAD 的 Backend/Mobile CI；不得自動合併。
+
+
+### R1.44｜活動取消 canonical mismatch 回歸測試（2026-10-30）
+
+- 新增 `SingleMemberBookingContractTest.php` 活動取消回歸案例：建立正常單人預約後，刻意將 canonical `member_user_id` 改為另一會員；管理員呼叫 `cancelEvent()` 必須拋出 `ApiException`，且 canonical、舊版群組與參加者狀態仍為 confirmed，帳單不得被設為取消狀態。
+- 測試 commit：`9d294658b03811524421c2c80d12b8b038477770`。仍需由最新 HEAD CI 實證；候補隔離及全模組依賴清除尚未完成。

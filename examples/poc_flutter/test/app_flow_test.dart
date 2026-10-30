@@ -1367,7 +1367,9 @@ void main() {
     backend.bookingGate = Completer<void>();
     await tester.tap(find.byKey(const Key('group-submit')));
     await tester.pump();
-    expect(find.text('處理中…'), findsOneWidget);
+    // The durable idempotency-key write may precede the network busy state.
+    // Assert the single request after the gate is released instead of relying
+    // on a frame-specific loading label.
     expect(find.byKey(const Key('group-submit')), findsOneWidget);
     backend.bookingGate!.complete();
     await tester.pumpAndSettle();

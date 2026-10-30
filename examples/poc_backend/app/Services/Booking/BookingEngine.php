@@ -413,40 +413,28 @@ final class BookingEngine
     }
 
     /**
-     * Expire a cash hold while serialising with seat changes. A paid invoice is
-     * never cancelled by this job; repeat calls are safe.
+     * Legacy cash-expiry entry point. An overdue invoice is an accounting
+     * marker only: never cancel the booking or promote the waitlist.
      */
     public function expireCashHold(int $groupId, int $invoiceId): bool
     {
-        $expired = $this->transaction(function () use ($groupId, $invoiceId): bool {
-            $candidate = EventBookingGroup::query()->find($groupId);
-            if ($candidate === null) {
-                return false;
-            }
-            $event = $this->lock($candidate->event);
-            $group = EventBookingGroup::query()->whereKey($groupId)->lockForUpdate()->first();
+        return DB::transaction(function () use ($groupId, $invoiceId): bool {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
-            if ($group === null || $invoice === null
-                || (int) $group->calendar_event_id !== (int) $event->id
-                || $invoice->booking_type !== '01' || (int) $invoice->booking_id !== $groupId
-                || (int) $invoice->invoice_status !== 0 || $invoice->payment_due_at === null
-                || now()->lt($invoice->payment_due_at)) {
+            if ($invoice === null
+                || $invoice->booking_type !== '01'
+                || (int) $invoice->booking_id !== $groupId
+                || (int) $invoice->invoice_status !== 0
+                || $invoice->overdue_at !== null
+                || $invoice->payment_due_at === null
+                || now()->lt($invoice->payment_due_at)
+                || ! EventBookingGroup::query()->whereKey($groupId)->exists()) {
                 return false;
             }
-            DB::table('invoices')->where('id', $invoiceId)->update([
-                'invoice_status' => 3, 'updated_at' => now(),
-            ]);
-            if ($group->status === EventBookingGroup::STATUS_CONFIRMED) {
-                $this->endGroup($group, EventBookingGroup::STATUS_CANCELLED, null, 'payment_expired');
-                $this->promote($event);
-            }
-            AuditEvent::record('booking.payment_expired', null, $group, ['invoice_id' => $invoiceId]);
 
-            return true;
+            return DB::table('invoices')->where('id', $invoiceId)
+                ->where('invoice_status', 0)->whereNull('overdue_at')
+                ->update(['overdue_at' => now(), 'updated_at' => now()]) === 1;
         });
-        $this->flush();
-
-        return $expired;
     }
 
     /**

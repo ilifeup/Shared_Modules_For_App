@@ -809,7 +809,9 @@ it('promotes by canonical FIFO order even when the obsolete queue sequence diffe
 
     expect(DB::table('event_bookings')->where('id', $thirdBookingId)->value('status'))->toBe('confirmed')
         ->and(DB::table('event_bookings')->where('id', $thirdBookingId)->value('waitlist_sequence'))->toBeNull()
-        ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted');
+        ->and(DB::table('event_bookings')->where('id', $secondBookingId)->value('status'))->toBe('waitlisted')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $ids[2])->value('status'))->toBe('promoted')
+        ->and(DB::table('event_waitlist_entries')->where('event_booking_group_id', $ids[1])->value('status'))->toBe('waiting');
 });
 
 it('uses canonical FIFO order when an administrator reorders waiting members', function () {

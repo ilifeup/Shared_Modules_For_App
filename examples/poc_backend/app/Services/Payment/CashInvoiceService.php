@@ -191,7 +191,7 @@ final class CashInvoiceService
             ->join('calendar_events', 'calendar_events.id', '=', 'course_sessions.calendar_event_id')
             ->where('course_sessions.course_term_id', $termId)
             ->min('calendar_events.starts_at');
-        if ($firstStart === null || now()->copy()->addHours($hours)->gt($firstStart)) {
+        if ($firstStart === null || now()->gte(Carbon::parse($firstStart))) {
             return false;
         }
         $member = User::query()->find($head->user_id);

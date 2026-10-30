@@ -400,6 +400,7 @@ final class BookingEngine
             $group = EventBookingGroup::query()->whereKey($groupId)->lockForUpdate()->first();
             $invoice = DB::table('invoices')->where('id', $invoiceId)->lockForUpdate()->first();
             if ($group === null || $invoice === null
+                || (int) $group->calendar_event_id !== (int) $event->id
                 || $invoice->booking_type !== '01' || (int) $invoice->booking_id !== $groupId
                 || (int) $invoice->invoice_status !== 0 || $invoice->payment_due_at === null
                 || now()->lt($invoice->payment_due_at)) {

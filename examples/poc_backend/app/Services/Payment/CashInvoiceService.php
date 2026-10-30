@@ -27,16 +27,19 @@ final class CashInvoiceService
         }
 
         $hours = $event->payment_hold_hours ?? app(Settings::class)->int('payment_hold_hours');
-        if (now()->copy()->addHours($hours)->gt($event->starts_at)) {
-            throw ValidationException::withMessages(['payment' => '剩餘時間不足以保留完整付款期限，無法取得付費名額。']);
+        // Late booking exception: never generate an already-expired invoice.
+        // Payment is due at the earlier of the configured hold and class start.
+        if (! $event->starts_at->isFuture()) {
+            throw ValidationException::withMessages(['payment' => '活動已開始，無法建立付款帳單。']);
         }
+        $deadline = now()->addHours($hours)->min($event->starts_at);
 
         $this->create('01', $event->id, '01', $group->id, $memberId,
-            (int) $group->booker_user_id, (string) $event->price_amount, $hours);
+            (int) $group->booker_user_id, (string) $event->price_amount, $hours, $deadline);
     }
 
     public function create(string $type, int $productId, string $bookingType, int $bookingId,
-        int $memberId, int $bookerId, string $amount, int $hours): void
+        int $memberId, int $bookerId, string $amount, int $hours, ?\Illuminate\Support\Carbon $deadline = null): void
     {
         if (DB::table('invoices')->where('booking_type', $bookingType)->where('booking_id', $bookingId)->exists()) {
             return;
@@ -55,7 +58,7 @@ final class CashInvoiceService
             'app_stage' => 0,
             'payment_method' => 0,
             'invoice_datetime' => now(),
-            'payment_due_at' => now()->addHours($hours),
+            'payment_due_at' => $deadline ?? now()->addHours($hours),
             'created_at' => now(),
             'updated_at' => now(),
         ]);

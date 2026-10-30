@@ -8,7 +8,8 @@ namespace App\Services\Checkin;
  * still accepted for 10 seconds after it ended. The server clock decides.
  *
  *   e.{eventId}.{window}.{sig}     event QR shown at the venue (members scan it)
- *   a.{attendeeId}.{window}.{sig}  attendee pass shown by the member (staff scan it)
+ *   a.{attendeeId}.{window}.{sig}  legacy attendee pass (temporary compatibility)
+ *   b.{bookingId}.{window}.{sig}   canonical booking pass
  */
 class CheckinTokens
 {
@@ -31,6 +32,12 @@ class CheckinTokens
         return $this->make('a', $attendeeId, $this->window($time));
     }
 
+    /** Canonical booking QR: separate kind prevents collisions with legacy attendee IDs. */
+    public function booking(int $bookingId, ?int $time = null): string
+    {
+        return $this->make('b', $bookingId, $this->window($time));
+    }
+
     /** Seconds until the current token rotates. */
     public function expiresIn(?int $time = null): int
     {
@@ -44,7 +51,7 @@ class CheckinTokens
      */
     public function verify(string $token, string $kind, ?int $time = null): ?int
     {
-        if (preg_match('/^([ea])\.(\d{1,19})\.(\d{1,12})\.([0-9a-f]{24})$/', $token, $m) !== 1 || $m[1] !== $kind) {
+        if (preg_match('/^([eab])\.(\d{1,19})\.(\d{1,12})\.([0-9a-f]{24})$/', $token, $m) !== 1 || $m[1] !== $kind) {
             return null;
         }
         [$id, $window] = [(int) $m[2], (int) $m[3]];

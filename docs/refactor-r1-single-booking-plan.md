@@ -63,3 +63,50 @@ E. 更新並執行 Pest、Flutter、OpenAPI 契約及並發測試，搜尋舊 gr
 4. CheckinService 的 QR 'a' token 目前指 attendee ID；改 booking ID 前必須同步更改產生/驗證與所有 API 契約及測試。
 5. 前台 Flutter 有舊 S6 我的預約頁和 S9 單人預約頁；須檢查 router、provider、API client、tests 以防刪除仍在使用的路由。
 6. 已有 Filament 防呆修改僅為過渡：booking_max_seats 欄位仍在 DB，正式完成 schema 之後應刪掉隱藏表單欄位，不可誤以為完成資料模型統一。
+
+## R1.10 階段式交接快照（2026-10-30）
+
+> 本節供下一段 ChatGPT 對話接續使用。狀態是「GitHub 遠端已提交、尚未執行完整測試」，**不是 R1 完成或 CI 通過證明**。
+
+### 固定工作方式與分支
+- 使用者已明確選定 **B：ChatGPT 直接在 GitHub 開發**，因 Claude 額度已滿；不要再要求 Claude Code 主開發或重複詢問 A/B。
+- Repository：`ilifeup/Shared_Modules_For_App`；唯一開發分支 `refactor/r1-single-booking`。不得自行合併 `main`。
+- 已從當時 `main` 建立回退分支 `backup/pre-r1-single-booking`；這是 branch 而非 tag，不能涵蓋尚未推送的本機修改。
+- 使用者要求每個階段更新**本文件**，因對話接近容量限制；新對話先讀取本文件、GitHub 最新 branch HEAD、CI 結果，再修改程式。
+- 2026-10-30 比較 GitHub 分支時：R1 分支較 main ahead 8、behind 1（main 差異為 README.md）；此數值是當時快照，必須重新查證。
+
+### 已提交修改（按時間順序）
+1. `6a54893`：建立本 R1 實作計畫文件。
+2. `364d4fe`：Filament CalendarEventResource 過渡性單人限制／欄位顯示調整。
+3. `3fe55fa`：補充 R1 依賴與 Migration 審查文件。
+4. `f7f8685`：BookingGroupController 初步拒絕舊多人／訪客欄位。
+5. `89b0e3b`：擴充禁止欄位清單（後由 allowlist 取代）。
+6. `a064cff`、`55fdea0`：BookingGroupController 改為只允許 `client_request_id`、`member_user_id`；未知輸入以 ValidationException 拒絕，修正 namespace。
+7. `133366d`：SingleMemberBookingContractTest 新增未知欄位拒絕、不得產生預約的案例。
+8. `82fef43`：BookingEngine 共用 `createGroup` 強制 `seat_count=1` 與 `booker_user_id`，`createAttendee` 拒絕 null/非正會員 ID。
+9. `8c0bf0d`、`a37ff1f`、`a59ff0d`：BookingEngine `validateRequest` 改用 FILTER_VALIDATE_INT；加入內部非法會員 ID 測試，改用 ApiException.status/errorCode 斷言。
+10. `cc38ad4`、`9cc1390`：冪等 replay 也用 FILTER_VALIDATE_INT，新增 replay 異常會員 ID 測試。
+
+### 已確認的技術事實與風險
+- BookingEngine 仍同時有 `bookLegacy` (S6) 和 `book` (S9)；兩者寫入 event_booking_groups + event_booking_attendees；S6 另寫 event_bookings。**尚未建立唯一的 event_bookings 單場次契約。**
+- `validateRequest` 在 `book` 的 transaction 內執行，但冪等 `replay` 在前段可能先執行；目前已對 replay 會員 ID 加嚴解析，仍須檢查完整資格／授權與取消重試語意。
+- `coveredByCourseTerm` 路徑依賴 course_enrollments/course_sessions、確定性 UUID5；重構不可直接移除。
+- `course_group_events` 是系列課程入口限制；`course_group_members` 不是舊活動多人預約表，不可只因名稱含 group 就刪除。
+- `CashInvoiceService`、`CheckinService`、`CourseEnrollmentService` 及 QR attendee ID、invoice_booking_items、course_makeups 等仍依賴舊 group/attendee ID。
+- 新增的測試案例尚未實際執行；不得聲稱 Pest/Flutter/CI 通過。先確認現有測試 fixture、API middleware、資料庫隔離設定。
+- 目前零散 hardening commits 過多；後續以 **schema/engine/跨模組整合為單位集中修改與測試**，不要再把單一驗證修補當成 R1 主進度。
+- **重要：** 既有計畫的「沒有正式資料」只是一項待核實前提；任何 `migrate:fresh` 或破壞性 migration 前，必須核對實際目標為隔離開發 DB，禁止碰正式資料。
+
+### 下一階段執行順序（接手 AI 必看）
+1. 先在 GitHub 查明建立 `event_bookings`、`event_booking_groups`、`event_booking_attendees`、`event_waitlist_entries`、`event_attendances` 的原始 migrations、增量 migrations、索引和 FK；不可從 Model 猜測。
+2. 審查 `course_terms` vs `course_groups`、invoice 01/02、退款與多場次課程 invoice_booking_items 的實際關係，明確保留必要功能。
+3. 設計並**整批**實作目標 schema 與 Model、BookingEngine/Request、Controller/route、付款/退款、候補、簽到/QR、課程/補課、通知；禁止先刪舊表造成未同步依賴中斷。
+4. 同批更新 Filament、Flutter DTO/provider/router/UI、OpenAPI、Pest 與 Flutter 測試；保留 idempotency key 與家庭代管授權。
+5. 在隔離 DB 執行從零 migration、Pest、併發／付款退款／候補／簽到／課程測試、Flutter analyze/test、OpenAPI 契約檢查；列出確實執行結果與未覆蓋風險。
+6. 完成後再提出 PR 供使用者審核；**不可自動 merge main**。
+
+### 對話交接最低必要資訊
+- 最近已知 R1 commit：`9cc1390665d24860ae6e2c39c011122d21a1d3e9`（本節更新前；下次以 GitHub HEAD 為準）。
+- 本文件位置：`docs/refactor-r1-single-booking-plan.md`。
+- 已有測試：`examples/poc_backend/tests/Feature/S9/SingleMemberBookingContractTest.php`；原有 `M08BookingTest.php` 含 S6/S9 共存情境，正式移除 S6 時須同步改測試。
+- GitHub 操作使用既有 GitHub connector；先讀取最新 SHA，再帶 SHA 更新，避免覆蓋其他修改。

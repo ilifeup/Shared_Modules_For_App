@@ -128,8 +128,8 @@ final class CourseEnrollmentService
             && (int) $invoice->booker_user_id === (int) $entry->booker_user_id
             && (float) $invoice->invoice_amount >= 1
             && $invoice->currency === 'TWD'
-            && $invoice->payment_due_at !== null
-            && ! now()->gt($invoice->payment_due_at);
+            && $invoice->payment_due_at !== null;
+        // Past due is recoverable by an administrator; it is not a cancelled seat.
 
         $ready = $entry->status === 'pending_payment' && $sessionIds !== []
             && $invalidSessionIds === [] && $eligible && $invoiceReady;
@@ -145,7 +145,7 @@ final class CourseEnrollmentService
                 : ($invalidSessionIds !== []
                     ? '部分從屬場次預約關聯不存在或尚未確認。'
                     : (! $eligible ? '會員資格或代管權限不符。'
-                        : (! $invoiceReady ? '整期帳單不存在、已逾期或與報名資料不符。'
+                        : (! $invoiceReady ? '整期帳單不存在、已取消或與報名資料不符。'
                             : ($ready ? '從屬場次預約已建立，可確認實際現金收款。' : '此報名目前不可確認收費。')))),
         ];
     }

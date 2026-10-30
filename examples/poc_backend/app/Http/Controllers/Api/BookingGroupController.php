@@ -34,6 +34,14 @@ class BookingGroupController extends Controller
             'client_request_id' => ['required', 'uuid'],
             'include_self' => ['prohibited'],
             'attendees' => ['prohibited'],
+            // No guest contacts, group sizes, or client-supplied attendee identity.
+            'seat_count' => ['prohibited'],
+            'contact_name' => ['prohibited'],
+            'contact_email' => ['prohibited'],
+            'contact_phone' => ['prohibited'],
+            'guest_name' => ['prohibited'],
+            'guest_email' => ['prohibited'],
+            'guest_phone' => ['prohibited'],
             'member_user_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
